@@ -101,7 +101,7 @@ func New(settings Settings) (*mlog.Logger, error) {
 			formatOpts = `{"enable_caller": true}`
 		} else {
 			format = "plain"
-			formatOpts = fmt.Sprintf(`{"delim": " ", "min_level_len": 5, "min_msg_len": 45, "enable_color": false, "enable_caller": true}`)
+			formatOpts = `{"delim": " ", "min_level_len": 5, "min_msg_len": 45, "enable_color": false, "enable_caller": true}`
 		}
 
 		opts := fmt.Sprintf(`{"filename": "%s", "max_size": 100, "max_age": 0, "max_backups": 0, "compress": true}`, settings.FileLocation)

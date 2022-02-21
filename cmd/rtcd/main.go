@@ -31,7 +31,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("rtcd: failed to init logger: %s", err.Error())
 	}
-	defer logger.Shutdown()
+	defer func() {
+		if err := logger.Shutdown(); err != nil {
+			log.Printf("rtcd: failed to shutdown logger: %s", err.Error())
+		}
+	}()
 
 	logger.Info("rtcd: starting up")
 
