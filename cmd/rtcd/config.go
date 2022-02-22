@@ -1,3 +1,6 @@
+// Copyright (c) 2022-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+
 package main
 
 import (
@@ -9,7 +12,7 @@ import (
 	"github.com/kelseyhightower/envconfig"
 )
 
-// loadConfig reads the config file and returns a new *Config,
+// loadConfig reads the config file and returns a new service.Config,
 // This method overrides values in the file if there is any environment
 // variables corresponding to a specific setting.
 func loadConfig(path string) (service.Config, error) {
