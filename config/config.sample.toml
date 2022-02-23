@@ -1,0 +1,10 @@
+[logging]
+enable_console = true
+console_json = false
+console_level = "INFO"
+enable_file = true
+file_json = true
+file_level = "DEBUG"
+file_location = "rtcd.log"
+enable_color = true
+
