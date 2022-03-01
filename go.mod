@@ -3,7 +3,7 @@ module github.com/mattermost/rtcd
 go 1.17
 
 require (
-	github.com/BurntSushi/toml v0.3.1
+	github.com/BurntSushi/toml v1.0.0
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/mattermost/mattermost-server/v6 v6.4.0
 	github.com/stretchr/testify v1.7.0

@@ -1,3 +1,7 @@
+DEFAULT_GOARCH := $(shell go env GOARCH)
+BUILD_HASH = $(shell git rev-parse HEAD)
+LDFLAGS += -X "github.com/mattermost/rtcd/service.buildHash=$(BUILD_HASH)"
+
 ## Check go mod files consistency
 .PHONY: gomod-check
 gomod-check:
@@ -23,7 +27,7 @@ test:
 
 build:
 	mkdir -p dist
-	env GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o dist/rtcd -mod=readonly -trimpath ./cmd/rtcd
+	env GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o dist/rtcd -ldflags '$(LDFLAGS)' -mod=readonly -trimpath ./cmd/rtcd
 
 clean:
 	rm -rf dist
