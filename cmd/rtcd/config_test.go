@@ -36,7 +36,7 @@ func TestLoadConfig(t *testing.T) {
 		require.NotNil(t, file)
 		defer file.Close()
 		defer os.Remove(file.Name())
-		configData := []byte(`[invalid]`)
+		configData := `[invalid]`
 		_, err = file.Write([]byte(configData))
 		require.NoError(t, err)
 

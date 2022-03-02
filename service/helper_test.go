@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type testHelper struct {
+type TestHelper struct {
 	srvc   *Service
 	log    *mlog.Logger
 	cfg    Config
@@ -21,8 +21,8 @@ type testHelper struct {
 	apiURL string
 }
 
-func SetupTestHelper(tb testing.TB) *testHelper {
-	var th testHelper
+func SetupTestHelper(tb testing.TB) *TestHelper {
+	var th TestHelper
 	var err error
 
 	th.cfg = Config{
@@ -47,7 +47,7 @@ func SetupTestHelper(tb testing.TB) *testHelper {
 	return &th
 }
 
-func (th *testHelper) Teardown() {
+func (th *TestHelper) Teardown() {
 	err := th.log.Shutdown()
 	require.NoError(th.tb, err)
 
