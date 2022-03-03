@@ -36,7 +36,7 @@ func TestLoadConfig(t *testing.T) {
 		require.NotNil(t, file)
 		defer file.Close()
 		defer os.Remove(file.Name())
-		configData := []byte(`[invalid]`)
+		configData := `[invalid]`
 		_, err = file.Write([]byte(configData))
 		require.NoError(t, err)
 
@@ -55,13 +55,13 @@ func TestLoadConfig(t *testing.T) {
 		cfg, err := loadConfig("../../config/config.sample.toml")
 		require.NoError(t, err)
 		require.NotEmpty(t, cfg)
-		require.Equal(t, "DEBUG", cfg.LogSettings.FileLevel)
+		require.Equal(t, "DEBUG", cfg.Logger.FileLevel)
 
-		os.Setenv("RTCD_LOGSETTINGS_FILELEVEL", "ERROR")
-		defer os.Unsetenv("RTCD_LOGSETTINGS_FILELEVEL")
+		os.Setenv("RTCD_LOGGER_FILELEVEL", "ERROR")
+		defer os.Unsetenv("RTCD_LOGGER_FILELEVEL")
 		cfg, err = loadConfig("../../config/config.sample.toml")
 		require.NoError(t, err)
 		require.NotEmpty(t, cfg)
-		require.Equal(t, "ERROR", cfg.LogSettings.FileLevel)
+		require.Equal(t, "ERROR", cfg.Logger.FileLevel)
 	})
 }

@@ -1,3 +1,4 @@
 config/config.toml
 dist/
 *.log
+*.vim

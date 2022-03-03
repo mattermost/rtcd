@@ -55,84 +55,29 @@ func TestGetLevels(t *testing.T) {
 	})
 }
 
-func TestIsValid(t *testing.T) {
-	t.Run("empty struct", func(t *testing.T) {
-		var settings Settings
-		err := settings.IsValid()
-		require.Error(t, err)
-		require.Equal(t, "should enable at least one logging target", err.Error())
-	})
-
-	t.Run("ConsoleLevel", func(t *testing.T) {
-		var settings Settings
-		settings.EnableConsole = true
-		err := settings.IsValid()
-		require.Error(t, err)
-
-		settings.ConsoleLevel = "invalid"
-		err = settings.IsValid()
-		require.Error(t, err)
-		require.Equal(t, `invalid ConsoleLevel value "invalid"`, err.Error())
-
-		settings.ConsoleLevel = "INFO"
-		err = settings.IsValid()
-		require.NoError(t, err)
-	})
-
-	t.Run("FileLevel", func(t *testing.T) {
-		var settings Settings
-		settings.EnableFile = true
-		settings.FileLocation = "rtcd.log"
-		err := settings.IsValid()
-		require.Error(t, err)
-
-		settings.FileLevel = "invalid"
-		err = settings.IsValid()
-		require.Error(t, err)
-		require.Equal(t, `invalid FileLevel value "invalid"`, err.Error())
-
-		settings.FileLevel = "INFO"
-		err = settings.IsValid()
-		require.NoError(t, err)
-	})
-
-	t.Run("FileLocation", func(t *testing.T) {
-		var settings Settings
-		settings.EnableFile = true
-		settings.FileLevel = "DEBUG"
-		err := settings.IsValid()
-		require.Error(t, err)
-		require.Equal(t, `invalid FileLocation value: should not be empty`, err.Error())
-
-		settings.FileLocation = "rtcd.log"
-		err = settings.IsValid()
-		require.NoError(t, err)
-	})
-}
-
 func TestNewLogger(t *testing.T) {
-	t.Run("empty settings", func(t *testing.T) {
-		var settings Settings
-		logger, err := New(settings)
+	t.Run("empty cfg", func(t *testing.T) {
+		var cfg Config
+		logger, err := New(cfg)
 		require.Nil(t, logger)
 		require.Error(t, err)
 	})
 
-	t.Run("invalid settings", func(t *testing.T) {
-		var settings Settings
-		settings.EnableConsole = true
-		settings.ConsoleLevel = "INVALID"
-		logger, err := New(settings)
+	t.Run("invalid cfg", func(t *testing.T) {
+		var cfg Config
+		cfg.EnableConsole = true
+		cfg.ConsoleLevel = "INVALID"
+		logger, err := New(cfg)
 		require.Nil(t, logger)
 		require.Error(t, err)
 		require.Equal(t, `invalid ConsoleLevel value "INVALID"`, err.Error())
 	})
 
-	t.Run("valid settings", func(t *testing.T) {
-		var settings Settings
-		settings.EnableConsole = true
-		settings.ConsoleLevel = "INFO"
-		logger, err := New(settings)
+	t.Run("valid cfg", func(t *testing.T) {
+		var cfg Config
+		cfg.EnableConsole = true
+		cfg.ConsoleLevel = "INFO"
+		logger, err := New(cfg)
 		require.NoError(t, err)
 		require.NotNil(t, logger)
 	})

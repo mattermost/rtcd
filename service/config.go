@@ -4,16 +4,17 @@
 package service
 
 import (
-	"github.com/mattermost/rtcd/logger"
+	"github.com/mattermost/rtcd/service/api"
 )
 
 type Config struct {
-	LogSettings logger.Settings `toml:"logging"`
+	API api.Config
 }
 
 func (c Config) IsValid() error {
-	if err := c.LogSettings.IsValid(); err != nil {
+	if err := c.API.IsValid(); err != nil {
 		return err
 	}
+
 	return nil
 }

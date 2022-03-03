@@ -1,4 +1,12 @@
-[logging]
+[service.api]
+listen_address = ":8045"
+
+[service.api.tls]
+enable = false
+cert_file = ""
+cert_key = ""
+
+[logger]
 enable_console = true
 console_json = false
 console_level = "INFO"
