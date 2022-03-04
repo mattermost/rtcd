@@ -18,7 +18,7 @@ type Config struct {
 	Logger  logger.Config
 }
 
-func (c *Config) IsValid() error {
+func (c Config) IsValid() error {
 	if err := c.Service.IsValid(); err != nil {
 		return err
 	}

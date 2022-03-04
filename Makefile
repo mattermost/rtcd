@@ -9,7 +9,7 @@ gomod-check:
 	go mod tidy -v && git --no-pager diff --exit-code go.mod go.sum || (echo "Please run \"go mod tidy\" and commit the changes in go.mod and go.sum." && exit 1)
 
 .PHONY: check-style
-check-style: gomod-check golangci-lint
+check-style: golangci-lint gomod-check
 	@echo Checking for style guide compliance
 
 golangci-lint: ## Run golangci-lint on codebase
