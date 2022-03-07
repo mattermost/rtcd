@@ -29,6 +29,7 @@ type Server struct {
 	receiveCh chan Message
 }
 
+// NewServer initializes and returns a new WebSocket server.
 func NewServer(cfg Config, log *mlog.Logger, opts ...Option) (*Server, error) {
 	if err := cfg.IsValid(); err != nil {
 		return nil, fmt.Errorf("failed to validate config: %w", err)
@@ -52,14 +53,18 @@ func NewServer(cfg Config, log *mlog.Logger, opts ...Option) (*Server, error) {
 	return s, nil
 }
 
+// SendCh returns a channel that can be used to send messages to ws connections.
 func (s *Server) SendCh() chan<- Message {
 	return s.sendCh
 }
 
+// ReceiveCh returns a channel that can be used to receive messages from ws connections.
 func (s *Server) ReceiveCh() <-chan Message {
 	return s.receiveCh
 }
 
+// ServeHTTP makes the WebSocket server implement http.Handler so that it can
+// be passed to a RegisterHandler method.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	connID := newID()
 
@@ -90,7 +95,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ws.SetReadLimit(connMaxReadBytes)
 
 	conn := newConn(connID, ws)
-	defer conn.Close()
+	defer conn.close()
 	defer close(conn.closeCh)
 	s.addConn(conn)
 
@@ -120,10 +125,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Close stops the websocket server and closes all the ws connections.
+// Must be called once all senders are done and cannot be called more than once.
 func (s *Server) Close() {
 	conns := s.getConns()
 	for _, conn := range conns {
-		if err := conn.Close(); err != nil {
+		if err := conn.close(); err != nil {
 			s.log.Error("failed to close ws conn", mlog.Err(err))
 		}
 		<-conn.closeCh

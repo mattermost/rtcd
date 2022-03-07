@@ -8,7 +8,11 @@ import (
 )
 
 type Config struct {
-	ReadBufferSize  int
+	// ReadBufferSize specifies the size of the internal buffer
+	// used to read from a ws connection.
+	ReadBufferSize int
+	// WriteBufferSize specifies the size of the internal buffer
+	// used to wirte to a ws connection.
 	WriteBufferSize int
 }
 
