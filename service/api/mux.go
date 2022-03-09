@@ -7,8 +7,12 @@ import (
 	"net/http"
 )
 
-type Handler func(http.ResponseWriter, *http.Request)
+type HandleFunc func(http.ResponseWriter, *http.Request)
 
-func (s *Server) RegisterHandler(path string, handler Handler) {
-	s.mux.HandleFunc(path, handler)
+func (s *Server) RegisterHandleFunc(path string, hf HandleFunc) {
+	s.mux.HandleFunc(path, hf)
+}
+
+func (s *Server) RegisterHandler(path string, handler http.Handler) {
+	s.mux.Handle(path, handler)
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/mattermost/rtcd/service/api"
+	"github.com/mattermost/rtcd/service/ws"
 
 	"github.com/mattermost/mattermost-server/v6/shared/mlog"
 )
@@ -14,6 +15,7 @@ import (
 type Service struct {
 	cfg       Config
 	apiServer *api.Server
+	wsServer  *ws.Server
 	log       *mlog.Logger
 }
 
@@ -22,18 +24,28 @@ func New(cfg Config, log *mlog.Logger) (*Service, error) {
 		return nil, err
 	}
 
-	apiServer, err := api.NewServer(cfg.API, log)
+	s := &Service{
+		log: log,
+		cfg: cfg,
+	}
+
+	var err error
+	s.apiServer, err = api.NewServer(cfg.API, log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create api server: %w", err)
 	}
 
-	s := &Service{
-		apiServer: apiServer,
-		log:       log,
-		cfg:       cfg,
+	wsConfig := ws.Config{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+	}
+	s.wsServer, err = ws.NewServer(wsConfig, log, ws.WithUpgradeCb(s.wsAuthHandler))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ws server: %w", err)
 	}
 
-	apiServer.RegisterHandler("/version", s.getVersion)
+	s.apiServer.RegisterHandleFunc("/version", s.getVersion)
+	s.apiServer.RegisterHandler("/ws", s.wsServer)
 
 	return s, nil
 }
