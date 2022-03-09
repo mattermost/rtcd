@@ -5,6 +5,7 @@ package service
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/mattermost/rtcd/service/api"
 	"github.com/mattermost/rtcd/service/ws"
@@ -35,9 +36,10 @@ func New(cfg Config, log *mlog.Logger) (*Service, error) {
 		return nil, fmt.Errorf("failed to create api server: %w", err)
 	}
 
-	wsConfig := ws.Config{
+	wsConfig := ws.ServerConfig{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
+		PingInterval:    10 * time.Second,
 	}
 	s.wsServer, err = ws.NewServer(wsConfig, log, ws.WithUpgradeCb(s.wsAuthHandler))
 	if err != nil {
