@@ -3,6 +3,8 @@
 
 package ws
 
+// MessageType defines the type of message sent to or received from a ws
+// connection.
 type MessageType int
 
 const (
@@ -12,6 +14,7 @@ const (
 	CloseMessage
 )
 
+// Message defines the data to be sent to or received from a ws connection.
 type Message struct {
 	ConnID string
 	Type   MessageType

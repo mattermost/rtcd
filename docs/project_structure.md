@@ -22,4 +22,4 @@ This is where the HTTP API server implementation lives.
 
 ### [service/ws](../service/ws)
 
-This is where the WebSocket server implementation lives.
+This is where the WebSocket server and client implementations live.

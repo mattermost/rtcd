@@ -3,9 +3,12 @@
 
 package ws
 
-type Option func(s *Server) error
+type ServerOption func(s *Server) error
+type ClientOption func(c *Client) error
 
-func WithUpgradeCb(cb UpgradeCb) Option {
+// WithUpgradeCb lets the caller set an optional callback to be called prior to
+// performing the WebSocket upgrade.
+func WithUpgradeCb(cb UpgradeCb) ServerOption {
 	return func(s *Server) error {
 		s.upgradeCb = cb
 		return nil

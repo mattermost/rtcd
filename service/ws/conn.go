@@ -25,7 +25,7 @@ func newConn(id string, ws *websocket.Conn) *conn {
 	}
 }
 
-func (c *conn) Close() error {
+func (c *conn) close() error {
 	return c.ws.Close()
 }
 

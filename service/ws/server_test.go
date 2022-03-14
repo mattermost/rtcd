@@ -9,33 +9,61 @@ import (
 	"net/url"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/mattermost/mattermost-server/v6/shared/mlog"
 	"github.com/stretchr/testify/require"
 )
 
-func createClientConn(t *testing.T, serverAddr string) *websocket.Conn {
+func setupClient(t *testing.T, serverAddr string, opts ...ClientOption) (*Client, func()) {
 	t.Helper()
 
 	_, port, err := net.SplitHostPort(serverAddr)
 	require.NoError(t, err)
 	u := url.URL{Scheme: "ws", Host: "localhost:" + port, Path: "/ws"}
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+
+	cfg := ClientConfig{
+		URL: u.String(),
+	}
+	c, err := NewClient(cfg, opts...)
 	require.NoError(t, err)
-	return c
+	require.NotNil(t, c)
+
+	closeCh := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		select {
+		case err := <-c.ErrorCh():
+			require.NoError(t, err)
+		case <-closeCh:
+			return
+		}
+	}()
+
+	closeClient := func() {
+		close(closeCh)
+		wg.Wait()
+		err := c.Close()
+		require.NoError(t, err)
+	}
+
+	return c, closeClient
 }
 
-func setupServer(t *testing.T, opts ...Option) (*Server, string, func()) {
+func setupServer(t *testing.T, opts ...ServerOption) (*Server, string, func()) {
 	t.Helper()
 
 	log, err := mlog.NewLogger()
 	require.NoError(t, err)
 	require.NotNil(t, log)
 
-	cfg := Config{
+	cfg := ServerConfig{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
+		PingInterval:    time.Second,
 	}
 
 	s, err := NewServer(cfg, log, opts...)
@@ -50,6 +78,7 @@ func setupServer(t *testing.T, opts ...Option) (*Server, string, func()) {
 	}()
 
 	return s, listener.Addr().String(), func() {
+		s.Close()
 		listener.Close()
 		err := log.Shutdown()
 		require.NoError(t, err)
@@ -65,15 +94,16 @@ func TestNewServer(t *testing.T) {
 	}()
 
 	t.Run("empty config", func(t *testing.T) {
-		s, err := NewServer(Config{}, log)
+		s, err := NewServer(ServerConfig{}, log)
 		require.Error(t, err)
 		require.Nil(t, s)
 	})
 
 	t.Run("valid config", func(t *testing.T) {
-		cfg := Config{
+		cfg := ServerConfig{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
+			PingInterval:    time.Second,
 		}
 		s, err := NewServer(cfg, log)
 		require.NoError(t, err)
@@ -90,9 +120,8 @@ func TestServeHTTP(t *testing.T) {
 		return nil
 	}
 
-	s, addr, shutdown := setupServer(t, WithUpgradeCb(upgradeCb))
+	_, addr, shutdown := setupServer(t, WithUpgradeCb(upgradeCb))
 	defer shutdown()
-	defer s.Close()
 
 	_, port, err := net.SplitHostPort(addr)
 	require.NoError(t, err)
@@ -111,6 +140,14 @@ func TestServeHTTP(t *testing.T) {
 func TestAddRemoveConn(t *testing.T) {
 	s, _, shutdown := setupServer(t)
 	defer shutdown()
+	defer func() {
+		// cleanup
+		s.mut.Lock()
+		defer s.mut.Unlock()
+		for id := range s.conns {
+			delete(s.conns, id)
+		}
+	}()
 
 	require.Empty(t, s.conns)
 
@@ -227,6 +264,14 @@ func TestGetConn(t *testing.T) {
 func TestGetConns(t *testing.T) {
 	s, _, shutdown := setupServer(t)
 	defer shutdown()
+	defer func() {
+		// cleanup
+		s.mut.Lock()
+		defer s.mut.Unlock()
+		for id := range s.conns {
+			delete(s.conns, id)
+		}
+	}()
 
 	conns := s.getConns()
 	require.Empty(t, conns)
@@ -274,24 +319,23 @@ func TestWithUpgradeCb(t *testing.T) {
 func TestReceiveMessages(t *testing.T) {
 	s, addr, shutdown := setupServer(t)
 	defer shutdown()
-	defer s.Close()
 
 	var wg sync.WaitGroup
 	wg.Add(2)
 
 	go func() {
 		defer wg.Done()
-		c := createClientConn(t, addr)
-		defer c.Close()
-		err := c.WriteMessage(websocket.TextMessage, []byte("conn1 data"))
+		c, closeClient := setupClient(t, addr)
+		defer closeClient()
+		err := c.conn.ws.WriteMessage(websocket.TextMessage, []byte("conn1 data"))
 		require.NoError(t, err)
 	}()
 
 	go func() {
 		defer wg.Done()
-		c := createClientConn(t, addr)
-		defer c.Close()
-		err := c.WriteMessage(websocket.TextMessage, []byte("conn2 data"))
+		c, closeClient := setupClient(t, addr)
+		defer closeClient()
+		err := c.conn.ws.WriteMessage(websocket.TextMessage, []byte("conn2 data"))
 		require.NoError(t, err)
 	}()
 
@@ -307,33 +351,47 @@ func TestReceiveMessages(t *testing.T) {
 }
 
 func TestRaceReceiveClose(t *testing.T) {
-	s, addr, shutdown := setupServer(t)
+	_, addr, shutdown := setupServer(t)
 
 	var wg sync.WaitGroup
 	wg.Add(3)
 
-	c1 := createClientConn(t, addr)
+	setupClient := func(t *testing.T, addr string) *Client {
+		_, port, err := net.SplitHostPort(addr)
+		require.NoError(t, err)
+		u := url.URL{Scheme: "ws", Host: "localhost:" + port, Path: "/ws"}
+
+		cfg := ClientConfig{
+			URL: u.String(),
+		}
+		c, err := NewClient(cfg)
+		require.NoError(t, err)
+		require.NotNil(t, c)
+
+		return c
+	}
+
+	c1 := setupClient(t, addr)
 	go func() {
 		defer wg.Done()
 		defer c1.Close()
 		for i := 0; i < 100; i++ {
-			_ = c1.WriteMessage(websocket.TextMessage, []byte("conn data"))
+			c1.Send(TextMessage, []byte("conn data"))
 		}
 	}()
 
-	c2 := createClientConn(t, addr)
+	c2 := setupClient(t, addr)
 	go func() {
 		defer wg.Done()
 		defer c2.Close()
 		for i := 0; i < 100; i++ {
-			_ = c2.WriteMessage(websocket.TextMessage, []byte("conn data"))
+			c2.Send(TextMessage, []byte("conn data"))
 		}
 	}()
 
 	go func() {
 		defer wg.Done()
 		shutdown()
-		s.Close()
 	}()
 
 	wg.Wait()
@@ -341,13 +399,12 @@ func TestRaceReceiveClose(t *testing.T) {
 
 func TestSendMessages(t *testing.T) {
 	s, addr, shutdown := setupServer(t)
-	defer s.Close()
 	defer shutdown()
 
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	c := createClientConn(t, addr)
+	c, closeClient := setupClient(t, addr)
 
 	openMsg := <-s.ReceiveCh()
 	require.Equal(t, OpenMessage, openMsg.Type)
@@ -369,12 +426,10 @@ func TestSendMessages(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		defer c.Close()
+		defer closeClient()
 		var received int
-		for {
-			_, data, err := c.ReadMessage()
-			require.NoError(t, err)
-			require.Equal(t, []byte("some data"), data)
+		for msg := range c.ReceiveCh() {
+			require.Equal(t, []byte("some data"), msg.Data)
 			received++
 			if received == 100 {
 				break

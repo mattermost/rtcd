@@ -22,13 +22,16 @@ type TestHelper struct {
 }
 
 func SetupTestHelper(tb testing.TB) *TestHelper {
-	var th TestHelper
+	tb.Helper()
 	var err error
 
-	th.cfg = Config{
-		API: api.Config{
-			ListenAddress: ":0",
+	th := &TestHelper{
+		cfg: Config{
+			API: api.Config{
+				ListenAddress: ":0",
+			},
 		},
+		tb: tb,
 	}
 
 	th.log, err = mlog.NewLogger()
@@ -36,6 +39,7 @@ func SetupTestHelper(tb testing.TB) *TestHelper {
 
 	th.srvc, err = New(th.cfg, th.log)
 	require.NoError(th.tb, err)
+	require.NotNil(th.tb, th.srvc)
 
 	err = th.srvc.Start()
 	require.NoError(th.tb, err)
@@ -44,7 +48,7 @@ func SetupTestHelper(tb testing.TB) *TestHelper {
 	require.NoError(th.tb, err)
 	th.apiURL = "http://localhost:" + port
 
-	return &th
+	return th
 }
 
 func (th *TestHelper) Teardown() {
