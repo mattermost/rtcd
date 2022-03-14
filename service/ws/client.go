@@ -149,7 +149,6 @@ func (c *Client) ErrorCh() <-chan error {
 }
 
 // Close closes the underlying WebSocket connection.
-// Must be called once all sending operations are done and cannot be called more than once.
 func (c *Client) Close() error {
 	err := c.conn.close()
 	c.wg.Wait()

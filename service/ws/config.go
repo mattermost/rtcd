@@ -58,7 +58,7 @@ func (c ClientConfig) IsValid() error {
 	}
 
 	if c.ConnID != "" && len(c.ConnID) != 26 {
-		return fmt.Errorf("invalid ConnID value: too short")
+		return fmt.Errorf("invalid ConnID value: should be 26 characters long")
 	}
 
 	return nil

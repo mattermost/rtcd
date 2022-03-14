@@ -67,7 +67,7 @@ func TestClientConfigIsValid(t *testing.T) {
 		cfg.ConnID = "invalid"
 		err := cfg.IsValid()
 		require.Error(t, err)
-		require.Equal(t, "invalid ConnID value: too short", err.Error())
+		require.Equal(t, "invalid ConnID value: should be 26 characters long", err.Error())
 	})
 
 	t.Run("empty connID", func(t *testing.T) {
