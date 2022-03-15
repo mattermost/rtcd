@@ -21,7 +21,7 @@ type Service struct {
 }
 
 func New(cfg Config, log *mlog.Logger) (*Service, error) {
-	if err := cfg.API.IsValid(); err != nil {
+	if err := cfg.IsValid(); err != nil {
 		return nil, err
 	}
 

@@ -23,3 +23,11 @@ This is where the HTTP API server implementation lives.
 ### [service/ws](../service/ws)
 
 This is where the WebSocket server and client implementations live.
+
+### [service/store](../service/store)
+
+This is where the persistent data store implementation lives.
+
+### [service/auth](../service/auth)
+
+This is where the Authentication service implementation lives.
