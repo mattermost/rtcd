@@ -26,7 +26,7 @@ func (s *Service) getVersion(w http.ResponseWriter, req *http.Request) {
 		"build":   buildHash,
 	}
 
-	req.Header.Add("Content-Type", "application/json")
+	w.Header().Add("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(version); err != nil {
 		s.log.Error("failed to encode data", mlog.Err(err))
 	}

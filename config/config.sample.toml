@@ -6,6 +6,9 @@ enable = false
 cert_file = ""
 cert_key = ""
 
+[service.store]
+data_source = "/tmp/rtcd_db"
+
 [logger]
 enable_console = true
 console_json = false

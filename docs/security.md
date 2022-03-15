@@ -13,7 +13,7 @@ The authentication flow is as follows:
 
 ### Client Authentication
 
-1. Client makes a request for authentication by providing its client id and associated authentication key.
-2. Server fetches the hashed key from the embedded persistent k/v store.
-3. Server calculates the hash for the provided auth key and compares it to the stored value.
-4. Authentication is considered successful if the compare operation returns no error.
+1. Client makes a request for authentication by providing its client id and associated auth key through HTTP basic auth.
+2. Server fetches the saved hashed key from the embedded persistent k/v store for the given client id.
+3. Server calculates the hash for the client provided auth key and compares it to the stored value.
+4. Authentication is considered successful if the comparison operation returns no error.
