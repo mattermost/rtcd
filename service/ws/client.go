@@ -28,7 +28,7 @@ func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
 	}
 
 	header := http.Header{
-		"Authorization": []string{"Bearer " + cfg.AuthToken},
+		"Authorization": []string{"Basic " + cfg.AuthToken},
 	}
 
 	ws, _, err := websocket.DefaultDialer.Dial(cfg.URL, header)

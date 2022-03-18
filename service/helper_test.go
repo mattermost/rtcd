@@ -5,6 +5,7 @@ package service
 
 import (
 	"net"
+	"os"
 	"testing"
 
 	"github.com/mattermost/rtcd/service/api"
@@ -19,19 +20,27 @@ type TestHelper struct {
 	cfg    Config
 	tb     testing.TB
 	apiURL string
+	dbDir  string
 }
 
 func SetupTestHelper(tb testing.TB) *TestHelper {
 	tb.Helper()
 	var err error
 
+	dbDir, err := os.MkdirTemp("", "db")
+	require.NoError(tb, err)
+
 	th := &TestHelper{
 		cfg: Config{
 			API: api.Config{
 				ListenAddress: ":0",
 			},
+			Store: StoreConfig{
+				DataSource: dbDir,
+			},
 		},
-		tb: tb,
+		tb:    tb,
+		dbDir: dbDir,
 	}
 
 	th.log, err = mlog.NewLogger()
@@ -56,5 +65,8 @@ func (th *TestHelper) Teardown() {
 	require.NoError(th.tb, err)
 
 	err = th.srvc.Stop()
+	require.NoError(th.tb, err)
+
+	err = os.RemoveAll(th.dbDir)
 	require.NoError(th.tb, err)
 }

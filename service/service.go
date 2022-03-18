@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/mattermost/rtcd/service/api"
+	"github.com/mattermost/rtcd/service/auth"
+	"github.com/mattermost/rtcd/service/store"
 	"github.com/mattermost/rtcd/service/ws"
 
 	"github.com/mattermost/mattermost-server/v6/shared/mlog"
@@ -17,11 +19,13 @@ type Service struct {
 	cfg       Config
 	apiServer *api.Server
 	wsServer  *ws.Server
+	store     store.Store
+	auth      *auth.Service
 	log       *mlog.Logger
 }
 
 func New(cfg Config, log *mlog.Logger) (*Service, error) {
-	if err := cfg.API.IsValid(); err != nil {
+	if err := cfg.IsValid(); err != nil {
 		return nil, err
 	}
 
@@ -31,6 +35,19 @@ func New(cfg Config, log *mlog.Logger) (*Service, error) {
 	}
 
 	var err error
+
+	s.store, err = store.New(cfg.Store.DataSource)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create store: %w", err)
+	}
+	log.Info("initiated data store", mlog.String("DataSource", cfg.Store.DataSource))
+
+	s.auth, err = auth.NewService(s.store)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create auth service: %w", err)
+	}
+	log.Info("initiated auth service")
+
 	s.apiServer, err = api.NewServer(cfg.API, log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create api server: %w", err)
@@ -47,6 +64,7 @@ func New(cfg Config, log *mlog.Logger) (*Service, error) {
 	}
 
 	s.apiServer.RegisterHandleFunc("/version", s.getVersion)
+	s.apiServer.RegisterHandleFunc("/register", s.registerClient)
 	s.apiServer.RegisterHandler("/ws", s.wsServer)
 
 	return s, nil
@@ -63,6 +81,10 @@ func (s *Service) Start() error {
 func (s *Service) Stop() error {
 	if err := s.apiServer.Stop(); err != nil {
 		return fmt.Errorf("failed to stop API server: %w", err)
+	}
+
+	if err := s.store.Close(); err != nil {
+		return fmt.Errorf("failed to close store: %w", err)
 	}
 
 	return nil
