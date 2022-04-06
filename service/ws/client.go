@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mattermost/rtcd/service/random"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -38,9 +40,9 @@ func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
 
 	connID := cfg.ConnID
 	if connID == "" {
-		connID = newID()
+		connID = random.NewID()
 	}
-	conn := newConn(connID, ws)
+	conn := newConn(connID, "", ws)
 
 	c := &Client{
 		cfg:       cfg,

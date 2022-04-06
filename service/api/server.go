@@ -19,10 +19,10 @@ type Server struct {
 	listener net.Listener
 	srv      *http.Server
 	mux      *http.ServeMux
-	log      *mlog.Logger
+	log      mlog.LoggerIFace
 }
 
-func NewServer(cfg Config, log *mlog.Logger) (*Server, error) {
+func NewServer(cfg Config, log mlog.LoggerIFace) (*Server, error) {
 	if err := cfg.IsValid(); err != nil {
 		return nil, err
 	}

@@ -11,19 +11,19 @@ import (
 	"github.com/mattermost/mattermost-server/v6/shared/mlog"
 )
 
-func (s *Service) wsAuthHandler(connID string, w http.ResponseWriter, r *http.Request) error {
+func (s *Service) wsAuthHandler(w http.ResponseWriter, r *http.Request) (string, error) {
 	clientID, authKey, ok := r.BasicAuth()
 	if !ok {
 		w.WriteHeader(http.StatusUnauthorized)
-		return fmt.Errorf("authentication failed: invalid auth header")
+		return "", fmt.Errorf("authentication failed: invalid auth header")
 	}
 
 	if err := s.auth.Authenticate(clientID, authKey); err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		return fmt.Errorf("authentication failed: %w", err)
+		return "", fmt.Errorf("authentication failed: %w", err)
 	}
 
-	return nil
+	return clientID, nil
 }
 
 func (s *Service) registerClient(w http.ResponseWriter, req *http.Request) {

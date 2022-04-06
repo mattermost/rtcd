@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mattermost/rtcd/service/random"
+
 	"github.com/gorilla/websocket"
 	"github.com/mattermost/mattermost-server/v6/shared/mlog"
 )
@@ -19,20 +21,20 @@ const (
 	writeWaitTime = 10 * time.Second
 )
 
-type UpgradeCb func(connID string, w http.ResponseWriter, r *http.Request) error
+type AuthCb func(w http.ResponseWriter, r *http.Request) (string, error)
 
 type Server struct {
 	cfg       ServerConfig
-	log       *mlog.Logger
+	log       mlog.LoggerIFace
 	conns     map[string]*conn
-	upgradeCb UpgradeCb
+	authCb    AuthCb
 	mut       sync.RWMutex
 	sendCh    chan Message
 	receiveCh chan Message
 }
 
 // NewServer initializes and returns a new WebSocket server.
-func NewServer(cfg ServerConfig, log *mlog.Logger, opts ...ServerOption) (*Server, error) {
+func NewServer(cfg ServerConfig, log mlog.LoggerIFace, opts ...ServerOption) (*Server, error) {
 	if err := cfg.IsValid(); err != nil {
 		return nil, fmt.Errorf("failed to validate config: %w", err)
 	}
@@ -83,7 +85,7 @@ func (s *Server) Close() {
 // ServeHTTP makes the WebSocket server implement http.Handler so that it can
 // be passed to a RegisterHandler method.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	connID := newID()
+	connID := random.NewID()
 
 	sendOpenMsg := func() {
 		s.receiveCh <- newOpenMessage(connID)
@@ -92,9 +94,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.receiveCh <- newCloseMessage(connID)
 	}
 
-	if s.upgradeCb != nil {
-		if err := s.upgradeCb(connID, w, r); err != nil {
-			s.log.Error("upgradeCb failed", mlog.Err(err))
+	var err error
+	var clientID string
+	if s.authCb != nil {
+		clientID, err = s.authCb(w, r)
+		if err != nil {
+			s.log.Error("authCb failed", mlog.Err(err))
 			return
 		}
 	}
@@ -110,7 +115,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn := newConn(connID, ws)
+	conn := newConn(connID, clientID, ws)
 	defer conn.close()
 	defer close(conn.closeCh)
 	s.addConn(conn)

@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattermost/rtcd/service/random"
+
 	"github.com/gorilla/websocket"
 	"github.com/mattermost/mattermost-server/v6/shared/mlog"
 	"github.com/stretchr/testify/require"
@@ -114,13 +116,12 @@ func TestNewServer(t *testing.T) {
 func TestServeHTTP(t *testing.T) {
 	upgradeRan := false
 
-	upgradeCb := func(connID string, w http.ResponseWriter, r *http.Request) error {
+	authCb := func(w http.ResponseWriter, r *http.Request) (string, error) {
 		upgradeRan = true
-		require.NotEmpty(t, connID)
-		return nil
+		return "", nil
 	}
 
-	_, addr, shutdown := setupServer(t, WithUpgradeCb(upgradeCb))
+	_, addr, shutdown := setupServer(t, WithAuthCb(authCb))
 	defer shutdown()
 
 	_, port, err := net.SplitHostPort(addr)
@@ -158,7 +159,7 @@ func TestAddRemoveConn(t *testing.T) {
 	})
 
 	t.Run("duplicate", func(t *testing.T) {
-		conn := newConn(newID(), &websocket.Conn{})
+		conn := newConn(random.NewID(), random.NewID(), &websocket.Conn{})
 		ok := s.addConn(conn)
 		require.True(t, ok)
 		require.Len(t, s.conns, 1)
@@ -172,7 +173,7 @@ func TestAddRemoveConn(t *testing.T) {
 
 	t.Run("multiple", func(t *testing.T) {
 		for i := 0; i < 100; i++ {
-			conn := newConn(newID(), &websocket.Conn{})
+			conn := newConn(random.NewID(), random.NewID(), &websocket.Conn{})
 			ok := s.addConn(conn)
 			require.True(t, ok)
 			require.Len(t, s.conns, i+2)
@@ -191,12 +192,12 @@ func TestRemoveConn(t *testing.T) {
 	t.Run("missing", func(t *testing.T) {
 		ok := s.removeConn("")
 		require.False(t, ok)
-		ok = s.removeConn(newID())
+		ok = s.removeConn(random.NewID())
 		require.False(t, ok)
 	})
 
 	t.Run("remove", func(t *testing.T) {
-		conn := newConn(newID(), &websocket.Conn{})
+		conn := newConn(random.NewID(), random.NewID(), &websocket.Conn{})
 		ok := s.addConn(conn)
 		require.True(t, ok)
 		require.Len(t, s.conns, 1)
@@ -220,12 +221,12 @@ func TestGetConn(t *testing.T) {
 	require.Empty(t, s.conns)
 
 	t.Run("missing", func(t *testing.T) {
-		c := s.getConn(newID())
+		c := s.getConn(random.NewID())
 		require.Nil(t, c)
 	})
 
 	t.Run("added", func(t *testing.T) {
-		conn := newConn(newID(), &websocket.Conn{})
+		conn := newConn(random.NewID(), random.NewID(), &websocket.Conn{})
 		ok := s.addConn(conn)
 		require.True(t, ok)
 		require.Len(t, s.conns, 1)
@@ -242,10 +243,10 @@ func TestGetConn(t *testing.T) {
 	})
 
 	t.Run("removed", func(t *testing.T) {
-		c := s.getConn(newID())
+		c := s.getConn(random.NewID())
 		require.Nil(t, c)
 
-		conn := newConn(newID(), &websocket.Conn{})
+		conn := newConn(random.NewID(), random.NewID(), &websocket.Conn{})
 		ok := s.addConn(conn)
 		require.True(t, ok)
 		require.Len(t, s.conns, 1)
@@ -256,7 +257,7 @@ func TestGetConn(t *testing.T) {
 		require.True(t, ok)
 		require.Empty(t, s.conns)
 
-		c = s.getConn(newID())
+		c = s.getConn(random.NewID())
 		require.Nil(t, c)
 	})
 }
@@ -276,21 +277,21 @@ func TestGetConns(t *testing.T) {
 	conns := s.getConns()
 	require.Empty(t, conns)
 
-	conn1 := newConn(newID(), &websocket.Conn{})
+	conn1 := newConn(random.NewID(), random.NewID(), &websocket.Conn{})
 	ok := s.addConn(conn1)
 	require.True(t, ok)
 	require.Len(t, s.conns, 1)
 	require.NotNil(t, s.conns[conn1.id])
 	require.Equal(t, conn1, s.conns[conn1.id])
 
-	conn2 := newConn(newID(), &websocket.Conn{})
+	conn2 := newConn(random.NewID(), random.NewID(), &websocket.Conn{})
 	ok = s.addConn(conn2)
 	require.True(t, ok)
 	require.Len(t, s.conns, 2)
 	require.NotNil(t, s.conns[conn2.id])
 	require.Equal(t, conn2, s.conns[conn2.id])
 
-	conn3 := newConn(newID(), &websocket.Conn{})
+	conn3 := newConn(random.NewID(), random.NewID(), &websocket.Conn{})
 	ok = s.addConn(conn3)
 	require.True(t, ok)
 	require.Len(t, s.conns, 3)
@@ -302,18 +303,18 @@ func TestGetConns(t *testing.T) {
 	require.ElementsMatch(t, []*conn{conn1, conn2, conn3}, conns)
 }
 
-func TestWithUpgradeCb(t *testing.T) {
+func TestWithAuthCb(t *testing.T) {
 	s, _, shutdown := setupServer(t)
 	defer shutdown()
-	require.Nil(t, s.upgradeCb)
+	require.Nil(t, s.authCb)
 
-	upgradeCb := func(connID string, w http.ResponseWriter, r *http.Request) error {
-		return nil
+	authCb := func(w http.ResponseWriter, r *http.Request) (string, error) {
+		return "", nil
 	}
 
-	s2, _, shutdown2 := setupServer(t, WithUpgradeCb(upgradeCb))
+	s2, _, shutdown2 := setupServer(t, WithAuthCb(authCb))
 	defer shutdown2()
-	require.NotNil(t, s2.upgradeCb)
+	require.NotNil(t, s2.authCb)
 }
 
 func TestReceiveMessages(t *testing.T) {

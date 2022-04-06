@@ -31,3 +31,7 @@ This is where the persistent data store implementation lives.
 ### [service/auth](../service/auth)
 
 This is where the Authentication service implementation lives.
+
+### [service/rtc](../service/rtc)
+
+This is where the RTC server implementation lives.

@@ -7,10 +7,12 @@ import (
 	"fmt"
 
 	"github.com/mattermost/rtcd/service/api"
+	"github.com/mattermost/rtcd/service/rtc"
 )
 
 type Config struct {
 	API   api.Config
+	RTC   rtc.ServerConfig
 	Store StoreConfig
 }
 

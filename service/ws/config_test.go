@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattermost/rtcd/service/random"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -81,7 +83,7 @@ func TestClientConfigIsValid(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		var cfg ClientConfig
 		cfg.URL = "wss://localhost:8045"
-		cfg.ConnID = newID()
+		cfg.ConnID = random.NewID()
 		err := cfg.IsValid()
 		require.NoError(t, err)
 	})
