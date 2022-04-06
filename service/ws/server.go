@@ -31,6 +31,7 @@ type Server struct {
 	mut       sync.RWMutex
 	sendCh    chan Message
 	receiveCh chan Message
+	closed    bool
 }
 
 // NewServer initializes and returns a new WebSocket server.
@@ -69,8 +70,16 @@ func (s *Server) ReceiveCh() <-chan Message {
 }
 
 // Close stops the websocket server and closes all the ws connections.
-// Must be called once all senders are done and cannot be called more than once.
+// Must be called once all senders are done.
 func (s *Server) Close() {
+	s.mut.Lock()
+	if s.closed {
+		s.mut.Unlock()
+		return
+	}
+	s.closed = true
+	s.mut.Unlock()
+
 	conns := s.getConns()
 	for _, conn := range conns {
 		if err := conn.close(); err != nil {
@@ -119,6 +128,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer conn.close()
 	defer close(conn.closeCh)
 	s.addConn(conn)
+
+	if s.isClosed() {
+		return
+	}
 
 	sendOpenMsg()
 
@@ -207,4 +220,10 @@ func (s *Server) connWriter() {
 			}
 		}
 	}
+}
+
+func (s *Server) isClosed() bool {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+	return s.closed
 }

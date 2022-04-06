@@ -352,7 +352,7 @@ func TestReceiveMessages(t *testing.T) {
 }
 
 func TestRaceReceiveClose(t *testing.T) {
-	_, addr, shutdown := setupServer(t)
+	server, addr, shutdown := setupServer(t)
 
 	var wg sync.WaitGroup
 	wg.Add(3)
@@ -389,6 +389,42 @@ func TestRaceReceiveClose(t *testing.T) {
 			c2.Send(TextMessage, []byte("conn data"))
 		}
 	}()
+
+	go func() {
+		defer wg.Done()
+		server.Close()
+		shutdown()
+	}()
+
+	wg.Wait()
+}
+
+func TestRaceConnectClose(t *testing.T) {
+	_, addr, shutdown := setupServer(t)
+	setupClient := func(t *testing.T, addr string) *Client {
+		_, port, err := net.SplitHostPort(addr)
+		require.NoError(t, err)
+		u := url.URL{Scheme: "ws", Host: "localhost:" + port, Path: "/ws"}
+
+		cfg := ClientConfig{
+			URL: u.String(),
+		}
+		c, _ := NewClient(cfg)
+		return c
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(11)
+
+	for i := 0; i < 10; i++ {
+		go func() {
+			defer wg.Done()
+			c := setupClient(t, addr)
+			if c != nil {
+				c.Close()
+			}
+		}()
+	}
 
 	go func() {
 		defer wg.Done()
