@@ -88,6 +88,8 @@ func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, error) {
 }
 
 func (s *Server) InitSession(cfg SessionConfig) error {
+	s.metrics.IncRTCSessions(cfg.GroupID, cfg.CallID)
+
 	peerConnConfig := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
 			{
@@ -155,12 +157,16 @@ func (s *Server) InitSession(cfg SessionConfig) error {
 	peerConn.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		if state == webrtc.PeerConnectionStateConnected {
 			s.log.Debug("rtc connected!", mlog.String("sessionID", cfg.SessionID))
+			s.metrics.IncRTCConnState("connected")
 		} else if state == webrtc.PeerConnectionStateDisconnected {
 			s.log.Debug("peer connection disconnected", mlog.String("sessionID", cfg.SessionID))
+			s.metrics.IncRTCConnState("disconnected")
 		} else if state == webrtc.PeerConnectionStateFailed {
 			s.log.Debug("peer connection failed", mlog.String("sessionID", cfg.SessionID))
+			s.metrics.IncRTCConnState("failed")
 		} else if state == webrtc.PeerConnectionStateClosed {
 			s.log.Debug("peer connection closed", mlog.String("sessionID", cfg.SessionID))
+			s.metrics.IncRTCConnState("closed")
 		}
 	})
 
@@ -227,6 +233,9 @@ func (s *Server) InitSession(cfg SessionConfig) error {
 					return
 				}
 
+				s.metrics.IncRTPPackets("in", trackType)
+				s.metrics.AddRTPPacketBytes("in", trackType, len(rtp.Payload))
+
 				if trackType == "voice" {
 					us.mut.RLock()
 					isEnabled := us.outVoiceTrackEnabled
@@ -240,6 +249,14 @@ func (s *Server) InitSession(cfg SessionConfig) error {
 					s.log.Error("failed to write RTP packet", mlog.Err(err))
 					return
 				}
+
+				call.iterSessions(func(ss *session) {
+					if ss.cfg.UserID == us.cfg.UserID {
+						return
+					}
+					s.metrics.IncRTPPackets("out", trackType)
+					s.metrics.AddRTPPacketBytes("out", trackType, len(rtp.Payload))
+				})
 			}
 		} else if remoteTrack.Codec().MimeType == rtpVideoCodecVP8.MimeType {
 			if screenStreamID != "" && screenStreamID != streamID {
@@ -277,10 +294,22 @@ func (s *Server) InitSession(cfg SessionConfig) error {
 					s.log.Error("failed to read RTP packet", mlog.Err(err))
 					return
 				}
+
+				s.metrics.IncRTPPackets("in", "screen")
+				s.metrics.AddRTPPacketBytes("in", "screen", len(rtp.Payload))
+
 				if err := outScreenTrack.WriteRTP(rtp); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 					s.log.Error("failed to write RTP packet", mlog.Err(err))
 					return
 				}
+
+				call.iterSessions(func(ss *session) {
+					if ss.cfg.UserID == us.cfg.UserID {
+						return
+					}
+					s.metrics.IncRTPPackets("out", "screen")
+					s.metrics.AddRTPPacketBytes("out", "screen", len(rtp.Payload))
+				})
 			}
 		}
 	})
@@ -316,6 +345,8 @@ func (s *Server) InitSession(cfg SessionConfig) error {
 }
 
 func (s *Server) CloseSession(cfg SessionConfig) error {
+	s.metrics.DecRTCSessions(cfg.GroupID, cfg.CallID)
+
 	group := s.getGroup(cfg.GroupID)
 	if group == nil {
 		return fmt.Errorf("group not found: %s", cfg.GroupID)

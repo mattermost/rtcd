@@ -7,6 +7,8 @@ import (
 	"net"
 	"testing"
 
+	"github.com/mattermost/rtcd/service/perf"
+
 	"github.com/mattermost/mattermost-server/v6/shared/mlog"
 	"github.com/stretchr/testify/require"
 )
@@ -17,11 +19,14 @@ func setupServer(t *testing.T) (*Server, func()) {
 	log, err := mlog.NewLogger()
 	require.NoError(t, err)
 
+	metrics := perf.NewMetrics("rtcd", nil)
+	require.NotNil(t, metrics)
+
 	cfg := ServerConfig{
 		ICEPortUDP: 30433,
 	}
 
-	s, err := NewServer(cfg, log)
+	s, err := NewServer(cfg, log, metrics)
 	require.NoError(t, err)
 
 	return s, func() {
@@ -40,8 +45,11 @@ func TestNewServer(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
+	metrics := perf.NewMetrics("rtcd", nil)
+	require.NotNil(t, metrics)
+
 	t.Run("invalid config", func(t *testing.T) {
-		s, err := NewServer(ServerConfig{}, log)
+		s, err := NewServer(ServerConfig{}, log, metrics)
 		require.Error(t, err)
 		require.Nil(t, s)
 	})
@@ -50,7 +58,16 @@ func TestNewServer(t *testing.T) {
 		cfg := ServerConfig{
 			ICEPortUDP: 30433,
 		}
-		s, err := NewServer(cfg, nil)
+		s, err := NewServer(cfg, nil, metrics)
+		require.Error(t, err)
+		require.Nil(t, s)
+	})
+
+	t.Run("missing metrics", func(t *testing.T) {
+		cfg := ServerConfig{
+			ICEPortUDP: 30433,
+		}
+		s, err := NewServer(cfg, log, nil)
 		require.Error(t, err)
 		require.Nil(t, s)
 	})
@@ -59,7 +76,7 @@ func TestNewServer(t *testing.T) {
 		cfg := ServerConfig{
 			ICEPortUDP: 30433,
 		}
-		s, err := NewServer(cfg, log)
+		s, err := NewServer(cfg, log, metrics)
 		require.NoError(t, err)
 		require.NotNil(t, s)
 	})
@@ -73,12 +90,15 @@ func TestStartServer(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
+	metrics := perf.NewMetrics("rtcd", nil)
+	require.NotNil(t, metrics)
+
 	cfg := ServerConfig{
 		ICEPortUDP: 30433,
 	}
 
 	t.Run("port unavailable", func(t *testing.T) {
-		s, err := NewServer(cfg, log)
+		s, err := NewServer(cfg, log, metrics)
 		require.NoError(t, err)
 		require.NotNil(t, s)
 
@@ -98,7 +118,7 @@ func TestStartServer(t *testing.T) {
 	})
 
 	t.Run("started", func(t *testing.T) {
-		s, err := NewServer(cfg, log)
+		s, err := NewServer(cfg, log, metrics)
 		require.NoError(t, err)
 		require.NotNil(t, s)
 

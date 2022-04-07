@@ -24,8 +24,9 @@ const (
 )
 
 type Server struct {
-	cfg ServerConfig
-	log mlog.LoggerIFace
+	cfg     ServerConfig
+	log     mlog.LoggerIFace
+	metrics Metrics
 
 	groups map[string]*group
 
@@ -38,17 +39,21 @@ type Server struct {
 	mut sync.RWMutex
 }
 
-func NewServer(cfg ServerConfig, log mlog.LoggerIFace) (*Server, error) {
+func NewServer(cfg ServerConfig, log mlog.LoggerIFace, metrics Metrics) (*Server, error) {
 	if err := cfg.IsValid(); err != nil {
 		return nil, err
 	}
 	if log == nil {
 		return nil, fmt.Errorf("log should not be nil")
 	}
+	if metrics == nil {
+		return nil, fmt.Errorf("metrics should not be nil")
+	}
 
 	s := &Server{
 		cfg:       cfg,
 		log:       log,
+		metrics:   metrics,
 		groups:    map[string]*group{},
 		sendCh:    make(chan Message, msgChSize),
 		receiveCh: make(chan Message, msgChSize),
