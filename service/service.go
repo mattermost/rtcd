@@ -9,6 +9,7 @@ import (
 
 	"github.com/mattermost/rtcd/service/api"
 	"github.com/mattermost/rtcd/service/auth"
+	"github.com/mattermost/rtcd/service/perf"
 	"github.com/mattermost/rtcd/service/rtc"
 	"github.com/mattermost/rtcd/service/store"
 	"github.com/mattermost/rtcd/service/ws"
@@ -23,6 +24,7 @@ type Service struct {
 	rtcServer *rtc.Server
 	store     store.Store
 	auth      *auth.Service
+	metrics   *perf.Metrics
 	log       mlog.LoggerIFace
 }
 
@@ -32,8 +34,9 @@ func New(cfg Config, log mlog.LoggerIFace) (*Service, error) {
 	}
 
 	s := &Service{
-		log: log,
-		cfg: cfg,
+		log:     log,
+		cfg:     cfg,
+		metrics: perf.NewMetrics("rtcd", nil),
 	}
 
 	var err error
@@ -65,7 +68,7 @@ func New(cfg Config, log mlog.LoggerIFace) (*Service, error) {
 		return nil, fmt.Errorf("failed to create ws server: %w", err)
 	}
 
-	s.rtcServer, err = rtc.NewServer(cfg.RTC, log)
+	s.rtcServer, err = rtc.NewServer(cfg.RTC, log, s.metrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rtc server: %w", err)
 	}
