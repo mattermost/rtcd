@@ -12,16 +12,18 @@ const (
 )
 
 type conn struct {
-	id      string
-	ws      *websocket.Conn
-	closeCh chan struct{}
+	id       string
+	clientID string
+	ws       *websocket.Conn
+	closeCh  chan struct{}
 }
 
-func newConn(id string, ws *websocket.Conn) *conn {
+func newConn(id, clientID string, ws *websocket.Conn) *conn {
 	return &conn{
-		id:      id,
-		ws:      ws,
-		closeCh: make(chan struct{}),
+		id:       id,
+		clientID: clientID,
+		ws:       ws,
+		closeCh:  make(chan struct{}),
 	}
 }
 

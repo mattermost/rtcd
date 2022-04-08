@@ -6,6 +6,10 @@ enable = false
 cert_file = ""
 cert_key = ""
 
+[service.rtc]
+ice_port_udp = 8443
+ice_host_override = ""
+
 [service.store]
 data_source = "/tmp/rtcd_db"
 

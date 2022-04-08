@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mattermost/rtcd/service/api"
+	"github.com/mattermost/rtcd/service/rtc"
 
 	"github.com/mattermost/mattermost-server/v6/shared/mlog"
 	"github.com/stretchr/testify/require"
@@ -34,6 +35,9 @@ func SetupTestHelper(tb testing.TB) *TestHelper {
 		cfg: Config{
 			API: api.Config{
 				ListenAddress: ":0",
+			},
+			RTC: rtc.ServerConfig{
+				ICEPortUDP: 30443,
 			},
 			Store: StoreConfig{
 				DataSource: dbDir,

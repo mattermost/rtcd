@@ -1,7 +1,7 @@
 // Copyright (c) 2022-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
-package ws
+package random
 
 import (
 	"testing"
@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewId(t *testing.T) {
+func TestNewID(t *testing.T) {
 	for i := 0; i < 1000; i++ {
-		id := newID()
+		id := NewID()
 		require.Equal(t, len(id), 26)
 		for _, c := range id {
 			require.Contains(t, []rune(charset), c)

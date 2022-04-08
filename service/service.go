@@ -9,6 +9,8 @@ import (
 
 	"github.com/mattermost/rtcd/service/api"
 	"github.com/mattermost/rtcd/service/auth"
+	"github.com/mattermost/rtcd/service/perf"
+	"github.com/mattermost/rtcd/service/rtc"
 	"github.com/mattermost/rtcd/service/store"
 	"github.com/mattermost/rtcd/service/ws"
 
@@ -19,19 +21,22 @@ type Service struct {
 	cfg       Config
 	apiServer *api.Server
 	wsServer  *ws.Server
+	rtcServer *rtc.Server
 	store     store.Store
 	auth      *auth.Service
-	log       *mlog.Logger
+	metrics   *perf.Metrics
+	log       mlog.LoggerIFace
 }
 
-func New(cfg Config, log *mlog.Logger) (*Service, error) {
+func New(cfg Config, log mlog.LoggerIFace) (*Service, error) {
 	if err := cfg.IsValid(); err != nil {
 		return nil, err
 	}
 
 	s := &Service{
-		log: log,
-		cfg: cfg,
+		log:     log,
+		cfg:     cfg,
+		metrics: perf.NewMetrics("rtcd", nil),
 	}
 
 	var err error
@@ -58,9 +63,14 @@ func New(cfg Config, log *mlog.Logger) (*Service, error) {
 		WriteBufferSize: 1024,
 		PingInterval:    10 * time.Second,
 	}
-	s.wsServer, err = ws.NewServer(wsConfig, log, ws.WithUpgradeCb(s.wsAuthHandler))
+	s.wsServer, err = ws.NewServer(wsConfig, log, ws.WithAuthCb(s.wsAuthHandler))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ws server: %w", err)
+	}
+
+	s.rtcServer, err = rtc.NewServer(cfg.RTC, log, s.metrics)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create rtc server: %w", err)
 	}
 
 	s.apiServer.RegisterHandleFunc("/version", s.getVersion)
@@ -72,16 +82,46 @@ func New(cfg Config, log *mlog.Logger) (*Service, error) {
 
 func (s *Service) Start() error {
 	if err := s.apiServer.Start(); err != nil {
-		return fmt.Errorf("failed to start API server: %w", err)
+		return fmt.Errorf("failed to start api server: %w", err)
 	}
+
+	if err := s.rtcServer.Start(); err != nil {
+		return fmt.Errorf("failed to start rtc server: %w", err)
+	}
+
+	go func() {
+		for msg := range s.wsServer.ReceiveCh() {
+			switch msg.Type {
+			case ws.OpenMessage:
+				s.log.Debug("connect", mlog.String("connID", msg.ConnID))
+			case ws.CloseMessage:
+				s.log.Debug("disconnect", mlog.String("connID", msg.ConnID))
+			case ws.TextMessage:
+				s.log.Warn("unexpected text message", mlog.String("connID", msg.ConnID))
+			case ws.BinaryMessage:
+				var clientMsg ClientMessage
+				if err := clientMsg.Unpack(msg.Data); err != nil {
+					s.log.Error("failed to unpack message", mlog.Err(err), mlog.String("connID", msg.ConnID))
+					continue
+				}
+			default:
+			}
+		}
+	}()
 
 	return nil
 }
 
 func (s *Service) Stop() error {
-	if err := s.apiServer.Stop(); err != nil {
-		return fmt.Errorf("failed to stop API server: %w", err)
+	if err := s.rtcServer.Stop(); err != nil {
+		return fmt.Errorf("failed to stop rtc server: %w", err)
 	}
+
+	if err := s.apiServer.Stop(); err != nil {
+		return fmt.Errorf("failed to stop api server: %w", err)
+	}
+
+	s.wsServer.Close()
 
 	if err := s.store.Close(); err != nil {
 		return fmt.Errorf("failed to close store: %w", err)
