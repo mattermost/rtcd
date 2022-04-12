@@ -59,9 +59,14 @@ func NewServer(cfg ServerConfig, log mlog.LoggerIFace, opts ...ServerOption) (*S
 	return s, nil
 }
 
-// SendCh returns a channel that can be used to send messages to ws connections.
-func (s *Server) SendCh() chan<- Message {
-	return s.sendCh
+// SendCh queues a message to be sent through a ws connection.
+func (s *Server) Send(msg Message) error {
+	select {
+	case s.sendCh <- msg:
+	default:
+		return fmt.Errorf("failed to send ws message, channel is full")
+	}
+	return nil
 }
 
 // ReceiveCh returns a channel that can be used to receive messages from ws connections.
@@ -96,11 +101,11 @@ func (s *Server) Close() {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	connID := random.NewID()
 
-	sendOpenMsg := func() {
-		s.receiveCh <- newOpenMessage(connID)
+	sendOpenMsg := func(clientID string) {
+		s.receiveCh <- newOpenMessage(connID, clientID)
 	}
-	sendCloseMsg := func() {
-		s.receiveCh <- newCloseMessage(connID)
+	sendCloseMsg := func(clientID string) {
+		s.receiveCh <- newCloseMessage(connID, clientID)
 	}
 
 	var err error
@@ -120,7 +125,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		s.log.Error("failed to upgrade connection", mlog.Err(err))
-		sendCloseMsg()
+		sendCloseMsg(clientID)
 		return
 	}
 
@@ -133,10 +138,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sendOpenMsg()
+	sendOpenMsg(clientID)
 
 	defer s.removeConn(conn.id)
-	defer sendCloseMsg()
+	defer sendCloseMsg(clientID)
 
 	ws.SetReadLimit(connMaxReadBytes)
 	if err := ws.SetReadDeadline(time.Now().Add(2 * s.cfg.PingInterval)); err != nil {
@@ -166,9 +171,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		s.receiveCh <- Message{
-			ConnID: connID,
-			Type:   msgType,
-			Data:   data,
+			ConnID:   connID,
+			ClientID: conn.clientID,
+			Type:     msgType,
+			Data:     data,
 		}
 	}
 }
@@ -183,9 +189,10 @@ func (s *Server) connWriter() {
 			if !ok {
 				return
 			}
-			conn := s.getConn(msg.ConnID)
+
+			conn := s.getConn(msg.ConnID, msg.ClientID)
 			if conn == nil {
-				s.log.Error("failed to get conn for sending", mlog.String("connID", msg.ConnID))
+				s.log.Error("failed to get conn for sending", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
 				continue
 			}
 

@@ -7,11 +7,18 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mattermost/rtcd/service/random"
 
 	"github.com/gorilla/websocket"
+)
+
+const (
+	wsConnClosed int32 = iota
+	wsConnOpen
+	wsConnClosing
 )
 
 type Client struct {
@@ -21,6 +28,7 @@ type Client struct {
 	receiveCh chan Message
 	errorCh   chan error
 	wg        sync.WaitGroup
+	connState int32
 }
 
 // NewClient initializes and returns a new WebSocket client.
@@ -61,6 +69,7 @@ func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
 	c.wg.Add(2)
 	go c.connReader()
 	go c.connWriter()
+	c.setConnState(wsConnOpen)
 
 	return c, nil
 }
@@ -72,6 +81,7 @@ func (c *Client) connReader() {
 		close(c.conn.closeCh)
 		c.wg.Wait()
 		close(c.errorCh)
+		c.setConnState(wsConnClosed)
 	}()
 
 	c.conn.ws.SetReadLimit(connMaxReadBytes)
@@ -124,6 +134,9 @@ func (c *Client) connWriter() {
 }
 
 func (c *Client) sendError(err error) {
+	if c.getConnState() != wsConnOpen {
+		return
+	}
 	select {
 	case c.errorCh <- err:
 	default:
@@ -131,11 +144,21 @@ func (c *Client) sendError(err error) {
 }
 
 // SendMsg sends a WebSocket message with the specified type and data.
-func (c *Client) Send(mt MessageType, data []byte) {
-	c.sendCh <- Message{
+func (c *Client) Send(mt MessageType, data []byte) error {
+	if c.getConnState() != wsConnOpen {
+		return fmt.Errorf("failed to send message: connection is closed")
+	}
+
+	msg := Message{
 		Type: mt,
 		Data: data,
 	}
+	select {
+	case c.sendCh <- msg:
+	default:
+		return fmt.Errorf("failed to send message: channel is full")
+	}
+	return nil
 }
 
 // ReceiveCh returns a channel that should be used to receive messages from the
@@ -152,7 +175,16 @@ func (c *Client) ErrorCh() <-chan error {
 
 // Close closes the underlying WebSocket connection.
 func (c *Client) Close() error {
+	c.setConnState(wsConnClosing)
 	err := c.conn.close()
 	c.wg.Wait()
 	return err
+}
+
+func (c *Client) setConnState(st int32) {
+	atomic.StoreInt32(&c.connState, st)
+}
+
+func (c *Client) getConnState() int32 {
+	return atomic.LoadInt32(&c.connState)
 }

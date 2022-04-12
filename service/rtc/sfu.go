@@ -112,11 +112,13 @@ func (s *Server) InitSession(cfg SessionConfig) error {
 	sEngine := webrtc.SettingEngine{}
 	sEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
 	sEngine.SetICEUDPMux(s.udpMux)
-	hostIP, err := resolveHost(s.cfg.ICEHostOverride, time.Second)
-	if err != nil {
-		return fmt.Errorf("failed to resolve host: %w", err)
+	if s.cfg.ICEHostOverride != "" {
+		hostIP, err := resolveHost(s.cfg.ICEHostOverride, time.Second)
+		if err != nil {
+			return fmt.Errorf("failed to resolve host: %w", err)
+		}
+		sEngine.SetNAT1To1IPs([]string{hostIP}, webrtc.ICECandidateTypeHost)
 	}
-	sEngine.SetNAT1To1IPs([]string{hostIP}, webrtc.ICECandidateTypeHost)
 
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithSettingEngine(sEngine), webrtc.WithInterceptorRegistry(i))
 	peerConn, err := api.NewPeerConnection(peerConnConfig)
@@ -344,7 +346,16 @@ func (s *Server) InitSession(cfg SessionConfig) error {
 	return nil
 }
 
-func (s *Server) CloseSession(cfg SessionConfig) error {
+func (s *Server) CloseSession(sessionID string) error {
+	s.mut.Lock()
+	cfg, ok := s.sessions[sessionID]
+	if !ok {
+		s.mut.Unlock()
+		return fmt.Errorf("session does not exist: %q", sessionID)
+	}
+	delete(s.sessions, sessionID)
+	s.mut.Unlock()
+
 	s.metrics.DecRTCSessions(cfg.GroupID, cfg.CallID)
 
 	group := s.getGroup(cfg.GroupID)
@@ -401,17 +412,17 @@ func (s *Server) handleTracks(call *call, us *session) error {
 
 		if outVoiceTrack != nil {
 			if err := us.addTrack(s.log, call, s.receiveCh, outVoiceTrack, isEnabled); err != nil {
-				s.log.Error("failed to add voice track", mlog.Err(err))
+				s.log.Error("failed to add voice track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 			}
 		}
 		if outScreenTrack != nil {
 			if err := us.addTrack(s.log, call, s.receiveCh, outScreenTrack, true); err != nil {
-				s.log.Error("failed to add screen track", mlog.Err(err))
+				s.log.Error("failed to add screen track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 			}
 		}
 		if outScreenAudioTrack != nil {
 			if err := us.addTrack(s.log, call, s.receiveCh, outScreenAudioTrack, true); err != nil {
-				s.log.Error("failed to add screen audio track", mlog.Err(err))
+				s.log.Error("failed to add screen audio track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 			}
 		}
 
@@ -424,7 +435,7 @@ func (s *Server) handleTracks(call *call, us *session) error {
 				return nil
 			}
 			if err := us.addTrack(s.log, call, s.receiveCh, track, true); err != nil {
-				s.log.Error("failed to add track", mlog.Err(err))
+				s.log.Error("failed to add track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 				continue
 			}
 		case msg, ok := <-us.sdpInCh:
@@ -485,7 +496,7 @@ func (s *Server) handleTracks(call *call, us *session) error {
 				if sender != nil {
 					s.log.Debug("replacing track on sender")
 					if err := sender.ReplaceTrack(replacingTrack); err != nil {
-						s.log.Error("failed to replace track", mlog.Err(err))
+						s.log.Error("failed to replace track", mlog.Err(err), mlog.String("sessionID", ss.cfg.SessionID))
 					}
 				}
 			})
