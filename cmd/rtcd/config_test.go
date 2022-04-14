@@ -13,9 +13,12 @@ import (
 
 func TestLoadConfig(t *testing.T) {
 	t.Run("non existant file", func(t *testing.T) {
+		var testCfg Config
+		testCfg.SetDefaults()
 		cfg, err := loadConfig("")
-		require.Error(t, err)
-		require.Empty(t, cfg)
+		require.NoError(t, err)
+		require.NotEmpty(t, cfg)
+		require.Equal(t, testCfg, cfg)
 	})
 
 	t.Run("empty file", func(t *testing.T) {
