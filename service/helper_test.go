@@ -16,12 +16,13 @@ import (
 )
 
 type TestHelper struct {
-	srvc   *Service
-	log    *mlog.Logger
-	cfg    Config
-	tb     testing.TB
-	apiURL string
-	dbDir  string
+	srvc        *Service
+	adminClient *Client
+	log         *mlog.Logger
+	cfg         Config
+	tb          testing.TB
+	apiURL      string
+	dbDir       string
 }
 
 func SetupTestHelper(tb testing.TB) *TestHelper {
@@ -33,8 +34,14 @@ func SetupTestHelper(tb testing.TB) *TestHelper {
 
 	th := &TestHelper{
 		cfg: Config{
-			API: api.Config{
-				ListenAddress: ":0",
+			API: APIConfig{
+				HTTP: api.Config{
+					ListenAddress: ":0",
+				},
+				Admin: AdminConfig{
+					Enable:    true,
+					SecretKey: "admin_secret_key",
+				},
 			},
 			RTC: rtc.ServerConfig{
 				ICEPortUDP: 30443,
@@ -61,6 +68,13 @@ func SetupTestHelper(tb testing.TB) *TestHelper {
 	require.NoError(th.tb, err)
 	th.apiURL = "http://localhost:" + port
 
+	th.adminClient, err = NewClient(ClientConfig{
+		URL:     th.apiURL,
+		AuthKey: th.srvc.cfg.API.Admin.SecretKey,
+	})
+	require.NoError(th.tb, err)
+	require.NotNil(th.tb, th.adminClient)
+
 	return th
 }
 
@@ -72,5 +86,8 @@ func (th *TestHelper) Teardown() {
 	require.NoError(th.tb, err)
 
 	err = os.RemoveAll(th.dbDir)
+	require.NoError(th.tb, err)
+
+	err = th.adminClient.Close()
 	require.NoError(th.tb, err)
 }

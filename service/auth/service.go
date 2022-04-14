@@ -25,12 +25,12 @@ func NewService(store store.Store) (*Service, error) {
 	}, nil
 }
 
-func (s *Service) Authenticate(id, authKey string) error {
+func (s *Service) Authenticate(id, authToken string) error {
 	hash, err := s.store.Get(id)
 	if err != nil {
 		return fmt.Errorf("authentication failed: %w", err)
 	}
-	if err := compareKeyHash(hash, authKey); err != nil {
+	if err := compareKeyHash(hash, authToken); err != nil {
 		return fmt.Errorf("authentication failed")
 	}
 	return nil
@@ -43,12 +43,12 @@ func (s *Service) Register(id string) (string, error) {
 		return "", fmt.Errorf("registration failed: %w", err)
 	}
 
-	authKey, err := newRandomString(DefaultKeyLen)
+	authToken, err := newRandomString(DefaultKeyLen)
 	if err != nil {
 		return "", fmt.Errorf("registration failed: %w", err)
 	}
 
-	hash, err := hashKey(authKey)
+	hash, err := hashKey(authToken)
 	if err != nil {
 		return "", fmt.Errorf("registration failed: %w", err)
 	}
@@ -57,7 +57,7 @@ func (s *Service) Register(id string) (string, error) {
 		return "", fmt.Errorf("registration failed: %w", err)
 	}
 
-	return authKey, nil
+	return authToken, nil
 }
 
 func (s *Service) Unregister(id string) error {

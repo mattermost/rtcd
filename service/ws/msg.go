@@ -16,21 +16,24 @@ const (
 
 // Message defines the data to be sent to or received from a ws connection.
 type Message struct {
-	ConnID string
-	Type   MessageType
-	Data   []byte
+	ClientID string
+	ConnID   string
+	Type     MessageType
+	Data     []byte
 }
 
-func newOpenMessage(connID string) Message {
+func newOpenMessage(connID, clientID string) Message {
 	return Message{
-		ConnID: connID,
-		Type:   OpenMessage,
+		ClientID: clientID,
+		ConnID:   connID,
+		Type:     OpenMessage,
 	}
 }
 
-func newCloseMessage(connID string) Message {
+func newCloseMessage(connID, clientID string) Message {
 	return Message{
-		ConnID: connID,
-		Type:   CloseMessage,
+		ClientID: clientID,
+		ConnID:   connID,
+		Type:     CloseMessage,
 	}
 }

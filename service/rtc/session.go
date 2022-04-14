@@ -82,6 +82,9 @@ func (s *Server) addSession(cfg SessionConfig, peerConn *webrtc.PeerConnection) 
 	if !ok {
 		return nil, fmt.Errorf("user session already exists")
 	}
+	s.mut.Lock()
+	s.sessions[cfg.SessionID] = cfg
+	s.mut.Unlock()
 
 	return us, nil
 }

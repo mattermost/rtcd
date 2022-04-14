@@ -1,10 +1,10 @@
 [service.api]
-listen_address = ":8045"
-
-[service.api.tls]
-enable = false
-cert_file = ""
-cert_key = ""
+http.listen_address = ":8045"
+http.tls.enable = false
+http.tls.cert_file = ""
+http.tls.cert_key = ""
+admin.enable = false
+admin.secret_key = "admin_secret_key"
 
 [service.rtc]
 ice_port_udp = 8443

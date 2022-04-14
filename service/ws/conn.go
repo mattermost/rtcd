@@ -4,6 +4,8 @@
 package ws
 
 import (
+	"math/rand"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -54,11 +56,22 @@ func (s *Server) removeConn(connID string) bool {
 	return true
 }
 
-func (s *Server) getConn(connID string) *conn {
+func (s *Server) getConn(connID, clientID string) *conn {
 	s.mut.RLock()
 	defer s.mut.RUnlock()
-	c := s.conns[connID]
-	return c
+
+	if connID != "" {
+		c := s.conns[connID]
+		return c
+	}
+
+	if clientID != "" {
+		if conns := s.getClientConns(clientID); len(conns) > 0 {
+			return conns[rand.Intn(len(conns))]
+		}
+	}
+
+	return nil
 }
 
 func (s *Server) getConns() []*conn {
@@ -69,6 +82,18 @@ func (s *Server) getConns() []*conn {
 	for _, conn := range s.conns {
 		conns[i] = conn
 		i++
+	}
+	return conns
+}
+
+func (s *Server) getClientConns(clientID string) []*conn {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+	var conns []*conn
+	for _, conn := range s.conns {
+		if conn.clientID == clientID {
+			conns = append(conns, conn)
+		}
 	}
 	return conns
 }

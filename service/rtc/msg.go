@@ -22,14 +22,15 @@ const (
 )
 
 type Message struct {
-	Session SessionConfig
-	Type    MessageType
-	Data    []byte
+	GroupID   string      `msgpack:"group_id"`
+	SessionID string      `msgpack:"session_id"`
+	Type      MessageType `msgpack:"type"`
+	Data      []byte      `msgpack:"data,omitempty"`
 }
 
 func (m *Message) IsValid() error {
-	if err := m.Session.IsValid(); err != nil {
-		return err
+	if m.SessionID == "" {
+		return fmt.Errorf("invalid SessionID value: should not be empty")
 	}
 	if m.Type == 0 {
 		return fmt.Errorf("invalid Type value")
@@ -40,9 +41,10 @@ func (m *Message) IsValid() error {
 
 func newMessage(s *session, msgType MessageType, data []byte) Message {
 	return Message{
-		Session: s.cfg,
-		Type:    ICEMessage,
-		Data:    data,
+		GroupID:   s.cfg.GroupID,
+		SessionID: s.cfg.SessionID,
+		Type:      ICEMessage,
+		Data:      data,
 	}
 }
 

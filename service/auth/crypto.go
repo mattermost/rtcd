@@ -20,7 +20,7 @@ func newRandomString(length int) (string, error) {
 	} else if n != len(data) {
 		return "", fmt.Errorf("failed to read enough data")
 	}
-	return base64.RawStdEncoding.EncodeToString(data)[:length], nil
+	return base64.RawURLEncoding.EncodeToString(data)[:length], nil
 }
 
 // hashKey generates a hash using the bcrypt.GenerateFromPassword

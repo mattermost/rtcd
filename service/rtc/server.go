@@ -28,7 +28,8 @@ type Server struct {
 	log     mlog.LoggerIFace
 	metrics Metrics
 
-	groups map[string]*group
+	groups   map[string]*group
+	sessions map[string]SessionConfig
 
 	udpConn *net.UDPConn
 	udpMux  ice.UDPMux
@@ -55,6 +56,7 @@ func NewServer(cfg ServerConfig, log mlog.LoggerIFace, metrics Metrics) (*Server
 		log:       log,
 		metrics:   metrics,
 		groups:    map[string]*group{},
+		sessions:  map[string]SessionConfig{},
 		sendCh:    make(chan Message, msgChSize),
 		receiveCh: make(chan Message, msgChSize),
 	}
@@ -62,8 +64,13 @@ func NewServer(cfg ServerConfig, log mlog.LoggerIFace, metrics Metrics) (*Server
 	return s, nil
 }
 
-func (s *Server) SendCh() chan<- Message {
-	return s.sendCh
+func (s *Server) Send(msg Message) error {
+	select {
+	case s.sendCh <- msg:
+	default:
+		return fmt.Errorf("failed to send rtc message, channel is full")
+	}
+	return nil
 }
 
 func (s *Server) ReceiveCh() <-chan Message {
@@ -147,25 +154,37 @@ func (s *Server) Stop() error {
 func (s *Server) msgReader() {
 	for msg := range s.sendCh {
 		if err := msg.IsValid(); err != nil {
-			s.log.Error("invalid message", mlog.Err(err))
+			s.log.Error("invalid message", mlog.Err(err), mlog.Int("msgType", int(msg.Type)))
 			continue
 		}
 
-		group := s.getGroup(msg.Session.GroupID)
+		s.mut.RLock()
+		cfg, ok := s.sessions[msg.SessionID]
+		if !ok {
+			s.mut.RUnlock()
+			s.log.Error("session not found",
+				mlog.String("sessionID", msg.SessionID),
+				mlog.String("groupID", msg.GroupID),
+				mlog.Int("msgType", int(msg.Type)))
+			continue
+		}
+		s.mut.RUnlock()
+
+		group := s.getGroup(cfg.GroupID)
 		if group == nil {
-			s.log.Error("group not found", mlog.String("groupID", msg.Session.GroupID))
+			s.log.Error("group not found", mlog.String("groupID", cfg.GroupID))
 			continue
 		}
 
-		call := group.getCall(msg.Session.CallID)
+		call := group.getCall(cfg.CallID)
 		if call == nil {
-			s.log.Error("call not found", mlog.String("callID", msg.Session.CallID))
+			s.log.Error("call not found", mlog.String("callID", cfg.CallID))
 			continue
 		}
 
-		session := call.getSession(msg.Session.SessionID)
+		session := call.getSession(cfg.SessionID)
 		if session == nil {
-			s.log.Error("session not found", mlog.String("sessionID", msg.Session.SessionID))
+			s.log.Error("session not found", mlog.String("sessionID", cfg.SessionID))
 			continue
 		}
 

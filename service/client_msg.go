@@ -4,35 +4,74 @@
 package service
 
 import (
+	"fmt"
+
+	"github.com/mattermost/rtcd/service/rtc"
+
 	"github.com/vmihailenco/msgpack/v5"
 )
 
 type ClientMessage struct {
-	Type string                 `msgpack:"type"`
-	Data map[string]interface{} `msgpack:"data"`
+	Type string      `msgpack:"type"`
+	Data interface{} `msgpack:"data,omitempty"`
 }
 
 const (
-	ClientMessageJoin      = "join"
-	ClientMessageSDP       = "sdp"
-	ClientMessageICE       = "ice"
-	ClientMessageMute      = "mute"
-	ClientMessageUnmute    = "unmute"
-	ClientMessageScreenOn  = "screen_on"
-	ClientMessageScreenOff = "screen_off"
+	ClientMessageJoin  = "join"
+	ClientMessageLeave = "leave"
+	ClientMessageRTC   = "rtc"
 )
 
-func NewClientMessage(msgType string, data map[string]interface{}) *ClientMessage {
+var _ msgpack.CustomEncoder = (*ClientMessage)(nil)
+
+func (cm *ClientMessage) EncodeMsgpack(enc *msgpack.Encoder) error {
+	return enc.EncodeMulti(cm.Type, cm.Data)
+}
+
+var _ msgpack.CustomDecoder = (*ClientMessage)(nil)
+
+func (cm *ClientMessage) DecodeMsgpack(dec *msgpack.Decoder) error {
+	msgType, err := dec.DecodeString()
+	if err != nil {
+		return fmt.Errorf("failed to decode msg.Type: %w", err)
+	}
+	cm.Type = msgType
+
+	switch cm.Type {
+	case ClientMessageJoin, ClientMessageLeave:
+		data, err := dec.DecodeTypedMap()
+		if err != nil {
+			return fmt.Errorf("failed to decode msg.Data: %w", err)
+		}
+		cm.Data = data
+	case ClientMessageRTC:
+		var rtcMsg rtc.Message
+		if err = dec.Decode(&rtcMsg); err != nil {
+			return fmt.Errorf("failed to decode rtc.Message: %w", err)
+		}
+		cm.Data = rtcMsg
+	default:
+		data, err := dec.DecodeInterface()
+		if err != nil {
+			return fmt.Errorf("failed to decode msg.Data: %w", err)
+		}
+		cm.Data = data
+	}
+
+	return nil
+}
+
+func NewClientMessage(msgType string, data interface{}) *ClientMessage {
 	return &ClientMessage{
 		Type: msgType,
 		Data: data,
 	}
 }
 
-func (m *ClientMessage) Pack() ([]byte, error) {
-	return msgpack.Marshal(m)
+func (cm *ClientMessage) Pack() ([]byte, error) {
+	return msgpack.Marshal(&cm)
 }
 
-func (m *ClientMessage) Unpack(data []byte) error {
-	return msgpack.Unmarshal(data, &m)
+func (cm *ClientMessage) Unpack(data []byte) error {
+	return msgpack.Unmarshal(data, &cm)
 }

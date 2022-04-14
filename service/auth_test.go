@@ -29,7 +29,10 @@ func TestRegisterClient(t *testing.T) {
 	})
 
 	t.Run("bad request", func(t *testing.T) {
-		resp, err := http.Post(th.apiURL+"/register", "application/json", bytes.NewBuffer(nil))
+		req, err := http.NewRequest("POST", th.apiURL+"/register", bytes.NewBuffer(nil))
+		require.NoError(t, err)
+		req.SetBasicAuth("", th.srvc.cfg.API.Admin.SecretKey)
+		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		defer resp.Body.Close()
@@ -37,7 +40,10 @@ func TestRegisterClient(t *testing.T) {
 
 	t.Run("valid response", func(t *testing.T) {
 		buf := bytes.NewBuffer([]byte(`{"clientID": "clientA"}`))
-		resp, err := http.Post(th.apiURL+"/register", "application/json", buf)
+		req, err := http.NewRequest("POST", th.apiURL+"/register", buf)
+		require.NoError(t, err)
+		req.SetBasicAuth("", th.srvc.cfg.API.Admin.SecretKey)
+		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
 		defer resp.Body.Close()
@@ -76,7 +82,10 @@ func TestWSAuthHandler(t *testing.T) {
 	t.Run("valid auth", func(t *testing.T) {
 		clientID := "clientA"
 		buf := bytes.NewBuffer([]byte(fmt.Sprintf(`{"clientID": "%s"}`, clientID)))
-		resp, err := http.Post(th.apiURL+"/register", "application/json", buf)
+		req, err := http.NewRequest("POST", th.apiURL+"/register", buf)
+		require.NoError(t, err)
+		req.SetBasicAuth("", th.srvc.cfg.API.Admin.SecretKey)
+		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusCreated, resp.StatusCode)
 		defer resp.Body.Close()

@@ -53,7 +53,7 @@ func New(cfg Config, log mlog.LoggerIFace) (*Service, error) {
 	}
 	log.Info("initiated auth service")
 
-	s.apiServer, err = api.NewServer(cfg.API, log)
+	s.apiServer, err = api.NewServer(cfg.API.HTTP, log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create api server: %w", err)
 	}
@@ -75,6 +75,7 @@ func New(cfg Config, log mlog.LoggerIFace) (*Service, error) {
 
 	s.apiServer.RegisterHandleFunc("/version", s.getVersion)
 	s.apiServer.RegisterHandleFunc("/register", s.registerClient)
+	s.apiServer.RegisterHandleFunc("/unregister", s.unregisterClient)
 	s.apiServer.RegisterHandler("/ws", s.wsServer)
 
 	return s, nil
@@ -93,18 +94,33 @@ func (s *Service) Start() error {
 		for msg := range s.wsServer.ReceiveCh() {
 			switch msg.Type {
 			case ws.OpenMessage:
-				s.log.Debug("connect", mlog.String("connID", msg.ConnID))
+				s.log.Debug("connect", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
 			case ws.CloseMessage:
-				s.log.Debug("disconnect", mlog.String("connID", msg.ConnID))
+				s.log.Debug("disconnect", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
 			case ws.TextMessage:
-				s.log.Warn("unexpected text message", mlog.String("connID", msg.ConnID))
+				s.log.Warn("unexpected text message", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
 			case ws.BinaryMessage:
-				var clientMsg ClientMessage
-				if err := clientMsg.Unpack(msg.Data); err != nil {
-					s.log.Error("failed to unpack message", mlog.Err(err), mlog.String("connID", msg.ConnID))
+				if err := s.handleClientMsg(msg); err != nil {
+					s.log.Error("failed to handle message",
+						mlog.Err(err),
+						mlog.String("connID", msg.ConnID),
+						mlog.String("clientID", msg.ClientID))
 					continue
 				}
 			default:
+				s.log.Warn("unexpected ws message", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
+			}
+		}
+	}()
+
+	go func() {
+		for msg := range s.rtcServer.ReceiveCh() {
+			if err := s.handleRTCMsg(msg); err != nil {
+				s.log.Error("failed to handle message",
+					mlog.Err(err),
+					mlog.String("groupID", msg.GroupID),
+					mlog.String("sessionID", msg.SessionID))
+				continue
 			}
 		}
 	}()
@@ -125,6 +141,105 @@ func (s *Service) Stop() error {
 
 	if err := s.store.Close(); err != nil {
 		return fmt.Errorf("failed to close store: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) handleRTCMsg(msg rtc.Message) error {
+	var cm ClientMessage
+	switch msg.Type {
+	case rtc.SDPMessage, rtc.ICEMessage:
+		cm.Type = ClientMessageRTC
+	default:
+		return fmt.Errorf("unexpected rtc message type: %s", cm.Type)
+	}
+
+	cm.Data = msg
+
+	data, err := cm.Pack()
+	if err != nil {
+		return fmt.Errorf("failed to pack message: %w", err)
+	}
+
+	wsMsg := ws.Message{
+		ClientID: msg.GroupID,
+		Type:     ws.BinaryMessage,
+		Data:     data,
+	}
+
+	if err := s.wsServer.Send(wsMsg); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) handleClientMsg(msg ws.Message) error {
+	var cm ClientMessage
+	if err := cm.Unpack(msg.Data); err != nil {
+		return fmt.Errorf("failed to unpack data: %w", err)
+	}
+
+	var rtcMsg rtc.Message
+	switch cm.Type {
+	case ClientMessageJoin:
+		data, ok := cm.Data.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected data type: %T", cm.Data)
+		}
+		callID := data["callID"]
+		if callID == "" {
+			return fmt.Errorf("missing callID in client message")
+		}
+		userID := data["userID"]
+		if userID == "" {
+			return fmt.Errorf("missing userID in client message")
+		}
+		sessionID := data["sessionID"]
+		if sessionID == "" {
+			return fmt.Errorf("missing sessionID in client message")
+		}
+		cfg := rtc.SessionConfig{
+			GroupID:   msg.ClientID,
+			CallID:    callID,
+			UserID:    userID,
+			SessionID: sessionID,
+		}
+		s.log.Debug("join message", mlog.Any("sessionCfg", cfg))
+		go func() {
+			if err := s.rtcServer.InitSession(cfg); err != nil {
+				s.log.Error("failed to initialize rtc session", mlog.Err(err))
+			}
+		}()
+		return nil
+	case ClientMessageLeave:
+		data, ok := cm.Data.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected data type: %T", cm.Data)
+		}
+		sessionID := data["sessionID"]
+		if sessionID == "" {
+			return fmt.Errorf("missing sessionID in client message")
+		}
+		s.log.Debug("leave message", mlog.String("sessionID", sessionID))
+		if err := s.rtcServer.CloseSession(sessionID); err != nil {
+			return fmt.Errorf("failed to close session: %w", err)
+		}
+		return nil
+	case ClientMessageRTC:
+		var ok bool
+		rtcMsg, ok = cm.Data.(rtc.Message)
+		if !ok {
+			return fmt.Errorf("unexpected data type: %T", cm.Data)
+		}
+		s.log.Debug("rtc message", mlog.String("sessionID", rtcMsg.SessionID), mlog.Int("type", int(rtcMsg.Type)))
+	default:
+		return fmt.Errorf("unexpected client message type: %s", cm.Type)
+	}
+
+	if err := s.rtcServer.Send(rtcMsg); err != nil {
+		return err
 	}
 
 	return nil

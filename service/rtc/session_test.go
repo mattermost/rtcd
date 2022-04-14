@@ -48,7 +48,7 @@ func TestAddSession(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, us)
 
-		err = server.CloseSession(cfg)
+		err = server.CloseSession(cfg.SessionID)
 		require.NoError(t, err)
 	})
 }
