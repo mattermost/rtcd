@@ -8,12 +8,14 @@ import (
 	"os"
 	"testing"
 
+	"github.com/mattermost/rtcd/service"
+
 	"github.com/stretchr/testify/require"
 )
 
 func TestLoadConfig(t *testing.T) {
 	t.Run("non existant file", func(t *testing.T) {
-		var testCfg Config
+		var testCfg service.Config
 		testCfg.SetDefaults()
 		cfg, err := loadConfig("")
 		require.NoError(t, err)

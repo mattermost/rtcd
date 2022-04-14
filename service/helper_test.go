@@ -8,17 +8,16 @@ import (
 	"os"
 	"testing"
 
+	"github.com/mattermost/rtcd/logger"
 	"github.com/mattermost/rtcd/service/api"
 	"github.com/mattermost/rtcd/service/rtc"
 
-	"github.com/mattermost/mattermost-server/v6/shared/mlog"
 	"github.com/stretchr/testify/require"
 )
 
 type TestHelper struct {
 	srvc        *Service
 	adminClient *Client
-	log         *mlog.Logger
 	cfg         Config
 	tb          testing.TB
 	apiURL      string
@@ -49,15 +48,16 @@ func SetupTestHelper(tb testing.TB) *TestHelper {
 			Store: StoreConfig{
 				DataSource: dbDir,
 			},
+			Logger: logger.Config{
+				EnableConsole: true,
+				ConsoleLevel:  "ERROR",
+			},
 		},
 		tb:    tb,
 		dbDir: dbDir,
 	}
 
-	th.log, err = mlog.NewLogger()
-	require.NoError(th.tb, err)
-
-	th.srvc, err = New(th.cfg, th.log)
+	th.srvc, err = New(th.cfg)
 	require.NoError(th.tb, err)
 	require.NotNil(th.tb, th.srvc)
 
@@ -79,10 +79,7 @@ func SetupTestHelper(tb testing.TB) *TestHelper {
 }
 
 func (th *TestHelper) Teardown() {
-	err := th.log.Shutdown()
-	require.NoError(th.tb, err)
-
-	err = th.srvc.Stop()
+	err := th.srvc.Stop()
 	require.NoError(th.tb, err)
 
 	err = os.RemoveAll(th.dbDir)

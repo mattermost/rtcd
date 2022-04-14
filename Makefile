@@ -29,5 +29,9 @@ build:
 	mkdir -p dist
 	env GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o dist/rtcd -ldflags '$(LDFLAGS)' -mod=readonly -trimpath ./cmd/rtcd
 
+.PHONY: doc
+doc:
+	go run ./scripts/env_config.go ./docs/env_config.md
+
 clean:
 	rm -rf dist
