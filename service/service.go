@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/mattermost/rtcd/logger"
 	"github.com/mattermost/rtcd/service/api"
 	"github.com/mattermost/rtcd/service/auth"
 	"github.com/mattermost/rtcd/service/perf"
@@ -25,35 +26,40 @@ type Service struct {
 	store     store.Store
 	auth      *auth.Service
 	metrics   *perf.Metrics
-	log       mlog.LoggerIFace
+	log       *mlog.Logger
 }
 
-func New(cfg Config, log mlog.LoggerIFace) (*Service, error) {
+func New(cfg Config) (*Service, error) {
 	if err := cfg.IsValid(); err != nil {
 		return nil, err
 	}
 
 	s := &Service{
-		log:     log,
 		cfg:     cfg,
 		metrics: perf.NewMetrics("rtcd", nil),
 	}
 
 	var err error
+	s.log, err = logger.New(cfg.Logger)
+	if err != nil {
+		return nil, fmt.Errorf("rtcd: failed to init logger: %w", err)
+	}
+
+	s.log.Info("rtcd: starting up")
 
 	s.store, err = store.New(cfg.Store.DataSource)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
 	}
-	log.Info("initiated data store", mlog.String("DataSource", cfg.Store.DataSource))
+	s.log.Info("initiated data store", mlog.String("DataSource", cfg.Store.DataSource))
 
 	s.auth, err = auth.NewService(s.store)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create auth service: %w", err)
 	}
-	log.Info("initiated auth service")
+	s.log.Info("initiated auth service")
 
-	s.apiServer, err = api.NewServer(cfg.API.HTTP, log)
+	s.apiServer, err = api.NewServer(cfg.API.HTTP, s.log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create api server: %w", err)
 	}
@@ -63,12 +69,12 @@ func New(cfg Config, log mlog.LoggerIFace) (*Service, error) {
 		WriteBufferSize: 1024,
 		PingInterval:    10 * time.Second,
 	}
-	s.wsServer, err = ws.NewServer(wsConfig, log, ws.WithAuthCb(s.wsAuthHandler))
+	s.wsServer, err = ws.NewServer(wsConfig, s.log, ws.WithAuthCb(s.wsAuthHandler))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ws server: %w", err)
 	}
 
-	s.rtcServer, err = rtc.NewServer(cfg.RTC, log, s.metrics)
+	s.rtcServer, err = rtc.NewServer(cfg.RTC, s.log, s.metrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rtc server: %w", err)
 	}
@@ -129,6 +135,8 @@ func (s *Service) Start() error {
 }
 
 func (s *Service) Stop() error {
+	s.log.Info("rtcd: shutting down")
+
 	if err := s.rtcServer.Stop(); err != nil {
 		return fmt.Errorf("failed to stop rtc server: %w", err)
 	}
@@ -141,6 +149,10 @@ func (s *Service) Stop() error {
 
 	if err := s.store.Close(); err != nil {
 		return fmt.Errorf("failed to close store: %w", err)
+	}
+
+	if err := s.log.Shutdown(); err != nil {
+		return fmt.Errorf("failed to shutdown logger: %w", err)
 	}
 
 	return nil

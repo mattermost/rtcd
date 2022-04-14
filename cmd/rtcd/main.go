@@ -10,8 +10,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/mattermost/mattermost-server/v6/shared/mlog"
-	"github.com/mattermost/rtcd/logger"
 	"github.com/mattermost/rtcd/service"
 )
 
@@ -29,37 +27,20 @@ func main() {
 		log.Fatalf("rtcd: failed to validate config: %s", err.Error())
 	}
 
-	logger, err := logger.New(cfg.Logger)
+	service, err := service.New(cfg)
 	if err != nil {
-		log.Fatalf("rtcd: failed to init logger: %s", err.Error())
-	}
-	defer func() {
-		if err := logger.Shutdown(); err != nil {
-			log.Printf("rtcd: failed to shutdown logger: %s", err.Error())
-		}
-	}()
-
-	logger.Info("rtcd: starting up")
-
-	service, err := service.New(cfg.Service, logger)
-	if err != nil {
-		logger.Error("rtcd: failed to create service", mlog.Err(err))
-		return
+		log.Fatalf("rtcd: failed to create service: %s", err.Error())
 	}
 
 	if err := service.Start(); err != nil {
-		logger.Error("rtcd: failed to start service", mlog.Err(err))
-		return
+		log.Fatalf("rtcd: failed to start service: %s", err.Error())
 	}
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
 
-	logger.Info("rtcd: shutting down")
-
 	if err := service.Stop(); err != nil {
-		logger.Error("rtcd: failed to stop service", mlog.Err(err))
-		return
+		log.Fatalf("rtcd: failed to stop service: %s", err.Error())
 	}
 }

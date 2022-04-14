@@ -1,4 +1,4 @@
-[service.api]
+[api]
 http.listen_address = ":8045"
 http.tls.enable = false
 http.tls.cert_file = ""
@@ -6,11 +6,11 @@ http.tls.cert_key = ""
 admin.enable = false
 admin.secret_key = "admin_secret_key"
 
-[service.rtc]
+[rtc]
 ice_port_udp = 8443
 ice_host_override = ""
 
-[service.store]
+[store]
 data_source = "/tmp/rtcd_db"
 
 [logger]

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/mattermost/rtcd/logger"
 	"github.com/mattermost/rtcd/service/api"
 	"github.com/mattermost/rtcd/service/rtc"
 )
@@ -36,9 +37,10 @@ type APIConfig struct {
 }
 
 type Config struct {
-	API   APIConfig
-	RTC   rtc.ServerConfig
-	Store StoreConfig
+	API    APIConfig
+	RTC    rtc.ServerConfig
+	Store  StoreConfig
+	Logger logger.Config
 }
 
 func (c APIConfig) IsValid() error {
@@ -62,7 +64,25 @@ func (c Config) IsValid() error {
 		return err
 	}
 
+	if err := c.Logger.IsValid(); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+func (c *Config) SetDefaults() {
+	c.API.HTTP.ListenAddress = ":8045"
+	c.RTC.ICEPortUDP = 8443
+	c.Store.DataSource = "/tmp/rtcd_db"
+	c.Logger.EnableConsole = true
+	c.Logger.ConsoleJSON = false
+	c.Logger.ConsoleLevel = "INFO"
+	c.Logger.EnableFile = true
+	c.Logger.FileJSON = true
+	c.Logger.FileLocation = "rtcd.log"
+	c.Logger.FileLevel = "DEBUG"
+	c.Logger.EnableColor = false
 }
 
 type StoreConfig struct {
