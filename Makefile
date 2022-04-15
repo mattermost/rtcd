@@ -3,12 +3,11 @@ BUILD_HASH = $(shell git rev-parse HEAD)
 LDFLAGS += -X "github.com/mattermost/rtcd/service.buildHash=$(BUILD_HASH)"
 
 ## Check go mod files consistency
-.PHONY: gomod-check
+.PHONY: gomod-check check-style golangci-lint test build clean
 gomod-check:
 	@echo Checking go mod files consistency
 	go mod tidy -v && git --no-pager diff --exit-code go.mod go.sum || (echo "Please run \"go mod tidy\" and commit the changes in go.mod and go.sum." && exit 1)
 
-.PHONY: check-style
 check-style: golangci-lint gomod-check
 	@echo Checking for style guide compliance
 
