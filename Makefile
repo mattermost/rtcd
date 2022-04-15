@@ -3,7 +3,7 @@ BUILD_HASH = $(shell git rev-parse HEAD)
 LDFLAGS += -X "github.com/mattermost/rtcd/service.buildHash=$(BUILD_HASH)"
 
 ## Check go mod files consistency
-.PHONY: gomod-check check-style golangci-lint test build clean
+.PHONY: gomod-check check-style golangci-lint test build docker-build clean
 gomod-check:
 	@echo Checking go mod files consistency
 	go mod tidy -v && git --no-pager diff --exit-code go.mod go.sum || (echo "Please run \"go mod tidy\" and commit the changes in go.mod and go.sum." && exit 1)
@@ -27,6 +27,16 @@ test:
 build:
 	mkdir -p dist
 	env GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o dist/rtcd -ldflags '$(LDFLAGS)' -mod=readonly -trimpath ./cmd/rtcd
+
+docker-build:
+	@if ! [ -x "$$(command -v docker)" ]; then \
+		echo "Docker is not installed. Please see https://docs.docker.com/get-docker for installation instructions."; \
+		exit 127; \
+	fi; \
+
+	@[ "${tag}" ] || ( echo "docker-build requires a tag. Set a tag with: \"make docker-build tag=rtcd:my_tag\""; exit 128 )
+
+	docker build -f build/Dockerfile . -t $(tag)
 
 .PHONY: doc
 doc:
