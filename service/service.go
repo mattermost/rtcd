@@ -233,11 +233,9 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 			SessionID: sessionID,
 		}
 		s.log.Debug("join message", mlog.Any("sessionCfg", cfg))
-		go func() {
-			if err := s.rtcServer.InitSession(cfg); err != nil {
-				s.log.Error("failed to initialize rtc session", mlog.Err(err))
-			}
-		}()
+		if err := s.rtcServer.InitSession(cfg); err != nil {
+			return fmt.Errorf("failed to initialize rtc session: %w", err)
+		}
 		return nil
 	case ClientMessageLeave:
 		data, ok := cm.Data.(map[string]string)
