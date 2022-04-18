@@ -5,6 +5,7 @@ package service
 
 import (
 	"fmt"
+	"net/http/pprof"
 	"time"
 
 	"github.com/mattermost/rtcd/logger"
@@ -84,6 +85,13 @@ func New(cfg Config) (*Service, error) {
 	s.apiServer.RegisterHandleFunc("/unregister", s.unregisterClient)
 	s.apiServer.RegisterHandler("/ws", s.wsServer)
 
+	s.apiServer.RegisterHandler("/metrics", s.metrics.Handler())
+	s.apiServer.RegisterHandler("/debug/pprof/heap", pprof.Handler("heap"))
+	s.apiServer.RegisterHandler("/debug/pprof/goroutine", pprof.Handler("goroutine"))
+	s.apiServer.RegisterHandler("/debug/pprof/mutex", pprof.Handler("mutex"))
+	s.apiServer.RegisterHandleFunc("/debug/pprof/profile", pprof.Profile)
+	s.apiServer.RegisterHandleFunc("/debug/pprof/trace", pprof.Trace)
+
 	return s, nil
 }
 
@@ -101,8 +109,10 @@ func (s *Service) Start() error {
 			switch msg.Type {
 			case ws.OpenMessage:
 				s.log.Debug("connect", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
+				s.metrics.IncWSConnections(msg.ClientID)
 			case ws.CloseMessage:
 				s.log.Debug("disconnect", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
+				s.metrics.DecWSConnections(msg.ClientID)
 			case ws.TextMessage:
 				s.log.Warn("unexpected text message", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
 			case ws.BinaryMessage:
@@ -184,6 +194,8 @@ func (s *Service) handleRTCMsg(msg rtc.Message) error {
 		return err
 	}
 
+	s.metrics.IncWSMessages(msg.GroupID, cm.Type, "out")
+
 	return nil
 }
 
@@ -192,6 +204,8 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 	if err := cm.Unpack(msg.Data); err != nil {
 		return fmt.Errorf("failed to unpack data: %w", err)
 	}
+
+	s.metrics.IncWSMessages(msg.ClientID, cm.Type, "in")
 
 	var rtcMsg rtc.Message
 	switch cm.Type {
