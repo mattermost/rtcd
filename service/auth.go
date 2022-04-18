@@ -11,24 +11,20 @@ import (
 	"github.com/mattermost/mattermost-server/v6/shared/mlog"
 )
 
-func (s *Service) authHandler(w http.ResponseWriter, r *http.Request, adminAuth bool) (string, error) {
+func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) (string, error) {
 	clientID, authKey, ok := r.BasicAuth()
 	if !ok {
 		w.WriteHeader(http.StatusUnauthorized)
 		return "", fmt.Errorf("authentication failed: invalid auth header")
 	}
 
-	if adminAuth && s.cfg.API.Admin.Enable {
-		if authKey == s.cfg.API.Admin.SecretKey {
-			return "", nil
-		}
-		w.WriteHeader(http.StatusUnauthorized)
-		return "", fmt.Errorf("unauthorized")
+	if s.cfg.API.Security.EnableAdmin && authKey == s.cfg.API.Security.AdminSecretKey {
+		return "", nil
 	}
 
 	if clientID == "" {
 		w.WriteHeader(http.StatusUnauthorized)
-		return "", fmt.Errorf("authentication failed: client id should not be empty")
+		return "", fmt.Errorf("authentication failed: unauthorized")
 	}
 
 	if err := s.auth.Authenticate(clientID, authKey); err != nil {
@@ -38,14 +34,6 @@ func (s *Service) authHandler(w http.ResponseWriter, r *http.Request, adminAuth 
 	}
 
 	return clientID, nil
-}
-
-func (s *Service) httpAuthHandler(w http.ResponseWriter, r *http.Request) (string, error) {
-	return s.authHandler(w, r, true)
-}
-
-func (s *Service) wsAuthHandler(w http.ResponseWriter, r *http.Request) (string, error) {
-	return s.authHandler(w, r, false)
 }
 
 func (s *Service) registerClient(w http.ResponseWriter, req *http.Request) {
@@ -63,10 +51,12 @@ func (s *Service) registerClient(w http.ResponseWriter, req *http.Request) {
 		}
 	}()
 
-	_, err := s.httpAuthHandler(w, req)
-	if err != nil {
-		response["error"] = err.Error()
-		return
+	if !s.cfg.API.Security.AllowSelfRegistration {
+		_, err := s.authHandler(w, req)
+		if err != nil {
+			response["error"] = err.Error()
+			return
+		}
 	}
 
 	request := map[string]string{}
@@ -107,7 +97,7 @@ func (s *Service) unregisterClient(w http.ResponseWriter, req *http.Request) {
 		}
 	}()
 
-	_, err := s.httpAuthHandler(w, req)
+	_, err := s.authHandler(w, req)
 	if err != nil {
 		response["error"] = err.Error()
 		return

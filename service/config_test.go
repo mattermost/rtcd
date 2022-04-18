@@ -9,25 +9,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAdminConfigIsValid(t *testing.T) {
+func TestSecurityConfigIsValid(t *testing.T) {
 	t.Run("empty struct", func(t *testing.T) {
-		var cfg AdminConfig
+		var cfg SecurityConfig
 		err := cfg.IsValid()
 		require.NoError(t, err)
 	})
 
 	t.Run("empty key", func(t *testing.T) {
-		var cfg AdminConfig
-		cfg.Enable = true
+		var cfg SecurityConfig
+		cfg.EnableAdmin = true
 		err := cfg.IsValid()
 		require.Error(t, err)
-		require.Equal(t, "invalid SecretKey value: should not be empty", err.Error())
+		require.Equal(t, "invalid AdminSecretKey value: should not be empty", err.Error())
 	})
 
 	t.Run("valid", func(t *testing.T) {
-		var cfg AdminConfig
-		cfg.Enable = true
-		cfg.SecretKey = "secret_key"
+		var cfg SecurityConfig
+		cfg.EnableAdmin = true
+		cfg.AdminSecretKey = "secret_key"
 		err := cfg.IsValid()
 		require.NoError(t, err)
 	})

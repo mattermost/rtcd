@@ -69,7 +69,7 @@ func New(cfg Config) (*Service, error) {
 		WriteBufferSize: 1024,
 		PingInterval:    10 * time.Second,
 	}
-	s.wsServer, err = ws.NewServer(wsConfig, s.log, ws.WithAuthCb(s.wsAuthHandler))
+	s.wsServer, err = ws.NewServer(wsConfig, s.log, ws.WithAuthCb(s.authHandler))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ws server: %w", err)
 	}

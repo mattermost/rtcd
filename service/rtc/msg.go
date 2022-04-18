@@ -23,6 +23,7 @@ const (
 
 type Message struct {
 	GroupID   string      `msgpack:"group_id"`
+	UserID    string      `msgpack:"user_id"`
 	SessionID string      `msgpack:"session_id"`
 	Type      MessageType `msgpack:"type"`
 	Data      []byte      `msgpack:"data,omitempty"`
@@ -42,6 +43,7 @@ func (m *Message) IsValid() error {
 func newMessage(s *session, msgType MessageType, data []byte) Message {
 	return Message{
 		GroupID:   s.cfg.GroupID,
+		UserID:    s.cfg.UserID,
 		SessionID: s.cfg.SessionID,
 		Type:      ICEMessage,
 		Data:      data,

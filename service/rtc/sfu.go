@@ -231,7 +231,7 @@ func (s *Server) InitSession(cfg SessionConfig) error {
 			for {
 				rtp, _, readErr := remoteTrack.ReadRTP()
 				if readErr != nil {
-					s.log.Error("failed to read RTP packet", mlog.Err(err))
+					s.log.Error("failed to read RTP packet", mlog.Err(readErr))
 					return
 				}
 
@@ -293,7 +293,7 @@ func (s *Server) InitSession(cfg SessionConfig) error {
 			for {
 				rtp, _, readErr := remoteTrack.ReadRTP()
 				if readErr != nil {
-					s.log.Error("failed to read RTP packet", mlog.Err(err))
+					s.log.Error("failed to read RTP packet", mlog.Err(readErr))
 					return
 				}
 

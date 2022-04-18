@@ -6,22 +6,24 @@ package store
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"git.mills.io/prologic/bitcask"
 )
 
 type bitcaskStore struct {
-	db *bitcask.Bitcask
+	db  *bitcask.Bitcask
+	mut sync.RWMutex
 }
 
 func newBitcaskStore(path string) (*bitcaskStore, error) {
 	db, err := bitcask.Open(path,
-		bitcask.WithSync(true),
 		bitcask.WithDirFileModeBeforeUmask(0700),
 		bitcask.WithFileFileModeBeforeUmask(0600))
 	if err != nil {
 		return nil, err
 	}
+
 	return &bitcaskStore{
 		db: db,
 	}, nil
@@ -31,10 +33,39 @@ func (s *bitcaskStore) Set(key, value string) error {
 	if key == "" {
 		return ErrEmptyKey
 	}
+
 	err := s.db.Put([]byte(key), []byte(value))
 	if err != nil {
 		return fmt.Errorf("failed to set key: %w", err)
 	}
+
+	if err := s.db.Sync(); err != nil {
+		return fmt.Errorf("failed to sync db: %w", err)
+	}
+
+	return nil
+}
+
+func (s *bitcaskStore) Put(key, value string) error {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	if key == "" {
+		return ErrEmptyKey
+	}
+
+	if s.db.Has([]byte(key)) {
+		return ErrConflict
+	}
+
+	err := s.db.Put([]byte(key), []byte(value))
+	if err != nil {
+		return fmt.Errorf("failed to set key: %w", err)
+	}
+
+	if err := s.db.Sync(); err != nil {
+		return fmt.Errorf("failed to sync db: %w", err)
+	}
+
 	return nil
 }
 
@@ -55,10 +86,16 @@ func (s *bitcaskStore) Delete(key string) error {
 	if key == "" {
 		return ErrEmptyKey
 	}
+
 	err := s.db.Delete([]byte(key))
 	if err != nil {
 		return fmt.Errorf("failed to delete key: %w", err)
 	}
+
+	if err := s.db.Sync(); err != nil {
+		return fmt.Errorf("failed to sync db: %w", err)
+	}
+
 	return nil
 }
 
