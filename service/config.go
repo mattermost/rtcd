@@ -12,28 +12,30 @@ import (
 	"github.com/mattermost/rtcd/service/rtc"
 )
 
-type AdminConfig struct {
+type SecurityConfig struct {
 	// Whether or not to enable admin API access.
-	Enable bool `toml:"enable"`
+	EnableAdmin bool `toml:"enable_admin"`
 	// The secret key used to authenticate admin requests.
-	SecretKey string `toml:"secret_key"`
+	AdminSecretKey string `toml:"admin_secret_key"`
+	// Whether or not to allow clients to self-register.
+	AllowSelfRegistration bool `toml:"allow_self_registration"`
 }
 
-func (c AdminConfig) IsValid() error {
-	if !c.Enable {
+func (c SecurityConfig) IsValid() error {
+	if !c.EnableAdmin {
 		return nil
 	}
 
-	if c.SecretKey == "" {
-		return fmt.Errorf("invalid SecretKey value: should not be empty")
+	if c.AdminSecretKey == "" {
+		return fmt.Errorf("invalid AdminSecretKey value: should not be empty")
 	}
 
 	return nil
 }
 
 type APIConfig struct {
-	HTTP  api.Config  `toml:"http"`
-	Admin AdminConfig `toml:"admin"`
+	HTTP     api.Config     `toml:"http"`
+	Security SecurityConfig `toml:"security"`
 }
 
 type Config struct {
@@ -44,7 +46,7 @@ type Config struct {
 }
 
 func (c APIConfig) IsValid() error {
-	if err := c.Admin.IsValid(); err != nil {
+	if err := c.Security.IsValid(); err != nil {
 		return fmt.Errorf("failed to validate admin config: %w", err)
 	}
 

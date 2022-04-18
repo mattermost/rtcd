@@ -3,8 +3,9 @@ http.listen_address = ":8045"
 http.tls.enable = false
 http.tls.cert_file = ""
 http.tls.cert_key = ""
-admin.enable = false
-admin.secret_key = "admin_secret_key"
+security.allow_self_registration = false
+security.enable_admin = false
+security.admin_secret_key = ""
 
 [rtc]
 ice_port_udp = 8443

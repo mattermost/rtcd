@@ -61,7 +61,7 @@ func TestClientRegister(t *testing.T) {
 
 	c, err := NewClient(ClientConfig{
 		URL:     th.apiURL,
-		AuthKey: th.srvc.cfg.API.Admin.SecretKey,
+		AuthKey: th.srvc.cfg.API.Security.AdminSecretKey,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, c)
@@ -90,7 +90,7 @@ func TestClientRegister(t *testing.T) {
 	t.Run("unauthorized", func(t *testing.T) {
 		c, err := NewClient(ClientConfig{
 			URL:     th.apiURL,
-			AuthKey: th.srvc.cfg.API.Admin.SecretKey + "_",
+			AuthKey: th.srvc.cfg.API.Security.AdminSecretKey + "_",
 		})
 		require.NoError(t, err)
 		require.NotNil(t, c)
@@ -99,9 +99,27 @@ func TestClientRegister(t *testing.T) {
 		authToken, err := c.Register("")
 		require.Error(t, err)
 		require.Empty(t, authToken)
-		require.Equal(t, "request failed: unauthorized", err.Error())
+		require.Equal(t, "request failed: authentication failed: unauthorized", err.Error())
 	})
 
+	t.Run("self registering", func(t *testing.T) {
+		c, err := NewClient(ClientConfig{
+			URL: th.apiURL,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, c)
+		defer c.Close()
+
+		authToken, err := c.Register("clientB")
+		require.Error(t, err)
+		require.Empty(t, authToken)
+		require.Equal(t, "request failed: authentication failed: unauthorized", err.Error())
+
+		th.srvc.cfg.API.Security.AllowSelfRegistration = true
+		authToken, err = c.Register("clientB")
+		require.NoError(t, err)
+		require.NotEmpty(t, authToken)
+	})
 }
 
 func TestClientUnregister(t *testing.T) {
@@ -110,7 +128,7 @@ func TestClientUnregister(t *testing.T) {
 
 	c, err := NewClient(ClientConfig{
 		URL:     th.apiURL,
-		AuthKey: th.srvc.cfg.API.Admin.SecretKey,
+		AuthKey: th.srvc.cfg.API.Security.AdminSecretKey,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, c)
@@ -140,7 +158,7 @@ func TestClientUnregister(t *testing.T) {
 	t.Run("unauthorized", func(t *testing.T) {
 		c, err := NewClient(ClientConfig{
 			URL:     th.apiURL,
-			AuthKey: th.srvc.cfg.API.Admin.SecretKey + "_",
+			AuthKey: th.srvc.cfg.API.Security.AdminSecretKey + "_",
 		})
 		require.NoError(t, err)
 		require.NotNil(t, c)
@@ -148,7 +166,7 @@ func TestClientUnregister(t *testing.T) {
 
 		err = c.Unregister("clientA")
 		require.Error(t, err)
-		require.Equal(t, "request failed: unauthorized", err.Error())
+		require.Equal(t, "request failed: authentication failed: unauthorized", err.Error())
 	})
 }
 

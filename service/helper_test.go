@@ -37,9 +37,9 @@ func SetupTestHelper(tb testing.TB) *TestHelper {
 				HTTP: api.Config{
 					ListenAddress: ":0",
 				},
-				Admin: AdminConfig{
-					Enable:    true,
-					SecretKey: "admin_secret_key",
+				Security: SecurityConfig{
+					EnableAdmin:    true,
+					AdminSecretKey: "admin_secret_key",
 				},
 			},
 			RTC: rtc.ServerConfig{
@@ -70,7 +70,7 @@ func SetupTestHelper(tb testing.TB) *TestHelper {
 
 	th.adminClient, err = NewClient(ClientConfig{
 		URL:     th.apiURL,
-		AuthKey: th.srvc.cfg.API.Admin.SecretKey,
+		AuthKey: th.srvc.cfg.API.Security.AdminSecretKey,
 	})
 	require.NoError(th.tb, err)
 	require.NotNil(th.tb, th.adminClient)
