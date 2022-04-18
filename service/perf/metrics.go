@@ -4,12 +4,16 @@
 package perf
 
 import (
+	"net/http"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
 	metricsSubSystemRTC = "rtc"
+	metricsSubSystemWS  = "websocket"
 )
 
 type Metrics struct {
@@ -19,6 +23,9 @@ type Metrics struct {
 	RTPPacketBytesCounters *prometheus.CounterVec
 	RTCSessions            *prometheus.GaugeVec
 	RTCConnStateCounters   *prometheus.CounterVec
+
+	WSConnections     *prometheus.GaugeVec
+	WSMessageCounters *prometheus.CounterVec
 }
 
 func NewMetrics(namespace string, registry *prometheus.Registry) *Metrics {
@@ -78,6 +85,28 @@ func NewMetrics(namespace string, registry *prometheus.Registry) *Metrics {
 	)
 	m.registry.MustRegister(m.RTCConnStateCounters)
 
+	m.WSConnections = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: metricsSubSystemWS,
+			Name:      "connections_total",
+			Help:      "Total number of active WebSocket sessions",
+		},
+		[]string{"clientID"},
+	)
+	m.registry.MustRegister(m.WSConnections)
+
+	m.WSMessageCounters = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: metricsSubSystemWS,
+			Name:      "messages_total",
+			Help:      "Total number of sent/received WebSocket messages",
+		},
+		[]string{"clientID", "type", "direction"},
+	)
+	m.registry.MustRegister(m.WSMessageCounters)
+
 	return &m
 }
 
@@ -99,4 +128,20 @@ func (m *Metrics) IncRTPPackets(direction, trackType string) {
 
 func (m *Metrics) AddRTPPacketBytes(direction, trackType string, value int) {
 	m.RTPPacketBytesCounters.With(prometheus.Labels{"direction": direction, "type": trackType}).Add(float64(value))
+}
+
+func (m *Metrics) IncWSConnections(clientID string) {
+	m.WSConnections.With(prometheus.Labels{"clientID": clientID}).Inc()
+}
+
+func (m *Metrics) DecWSConnections(clientID string) {
+	m.WSConnections.With(prometheus.Labels{"clientID": clientID}).Dec()
+}
+
+func (m *Metrics) IncWSMessages(clientID, msgType, direction string) {
+	m.WSMessageCounters.With(prometheus.Labels{"clientID": clientID, "type": msgType, "direction": direction}).Inc()
+}
+
+func (m *Metrics) Handler() http.Handler {
+	return promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{})
 }
