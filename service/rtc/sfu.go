@@ -316,31 +316,36 @@ func (s *Server) InitSession(cfg SessionConfig) error {
 		}
 	})
 
-	select {
-	case msg, ok := <-us.sdpInCh:
-		if !ok {
-			return nil
-		}
-		sdp, err := us.signaling(msg)
-		if err != nil {
-			return fmt.Errorf("failed to signal: %w", err)
-		}
-
-		select {
-		case s.receiveCh <- newMessage(us, SDPMessage, sdp):
-		default:
-			s.log.Error("failed to send SDP message: channel is full")
-		}
-	case <-time.After(signalingTimeout):
-		return fmt.Errorf("timed out signaling")
-	}
-
-	go us.handleICE(s.log)
-
 	go func() {
-		if err := s.handleTracks(call, us); err != nil {
-			s.log.Error("handleTracks failed", mlog.Err(err))
+		select {
+		case msg, ok := <-us.sdpInCh:
+			if !ok {
+				return
+			}
+			sdp, err := us.signaling(msg)
+			if err != nil {
+				s.log.Error("failed to signal", mlog.Err(err), mlog.Any("sessionCfg", us.cfg))
+				return
+			}
+
+			select {
+			case s.receiveCh <- newMessage(us, SDPMessage, sdp):
+			default:
+				s.log.Error("failed to send SDP message: channel is full")
+				return
+			}
+		case <-time.After(signalingTimeout):
+			s.log.Error("timed out signaling", mlog.Any("sessionCfg", us.cfg))
+			return
 		}
+
+		go us.handleICE(s.log)
+
+		go func() {
+			if err := s.handleTracks(call, us); err != nil {
+				s.log.Error("handleTracks failed", mlog.Err(err))
+			}
+		}()
 	}()
 
 	return nil

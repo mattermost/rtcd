@@ -6,6 +6,7 @@ package service
 import (
 	"fmt"
 	"net/http/pprof"
+	"sync"
 	"time"
 
 	"github.com/mattermost/rtcd/logger"
@@ -28,6 +29,13 @@ type Service struct {
 	auth      *auth.Service
 	metrics   *perf.Metrics
 	log       *mlog.Logger
+
+	// connMap maps user sessions to the websocket connection they originated
+	// from. This is needed to keep track of the MM instance end users are
+	// connected to in order to route any message to it and avoid the additional
+	// intra-cluster messaging layer that can introduce race conditions.
+	connMap map[string]string
+	mut     sync.RWMutex
 }
 
 func New(cfg Config) (*Service, error) {
@@ -38,6 +46,7 @@ func New(cfg Config) (*Service, error) {
 	s := &Service{
 		cfg:     cfg,
 		metrics: perf.NewMetrics("rtcd", nil),
+		connMap: map[string]string{},
 	}
 
 	var err error
@@ -177,6 +186,13 @@ func (s *Service) handleRTCMsg(msg rtc.Message) error {
 		return fmt.Errorf("unexpected rtc message type: %s", cm.Type)
 	}
 
+	s.mut.RLock()
+	connID := s.connMap[msg.SessionID]
+	s.mut.RUnlock()
+	if connID == "" {
+		return fmt.Errorf("unexpected empty connID")
+	}
+
 	cm.Data = msg
 
 	data, err := cm.Pack()
@@ -185,6 +201,7 @@ func (s *Service) handleRTCMsg(msg rtc.Message) error {
 	}
 
 	wsMsg := ws.Message{
+		ConnID:   connID,
 		ClientID: msg.GroupID,
 		Type:     ws.BinaryMessage,
 		Data:     data,
@@ -226,6 +243,7 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 		if sessionID == "" {
 			return fmt.Errorf("missing sessionID in client message")
 		}
+
 		cfg := rtc.SessionConfig{
 			GroupID:   msg.ClientID,
 			CallID:    callID,
@@ -233,11 +251,14 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 			SessionID: sessionID,
 		}
 		s.log.Debug("join message", mlog.Any("sessionCfg", cfg))
-		go func() {
-			if err := s.rtcServer.InitSession(cfg); err != nil {
-				s.log.Error("failed to initialize rtc session", mlog.Err(err))
-			}
-		}()
+		if err := s.rtcServer.InitSession(cfg); err != nil {
+			return fmt.Errorf("failed to initialize rtc session: %w", err)
+		}
+
+		s.mut.Lock()
+		s.connMap[sessionID] = msg.ConnID
+		s.mut.Unlock()
+
 		return nil
 	case ClientMessageLeave:
 		data, ok := cm.Data.(map[string]string)
@@ -248,6 +269,11 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 		if sessionID == "" {
 			return fmt.Errorf("missing sessionID in client message")
 		}
+
+		s.mut.Lock()
+		delete(s.connMap, sessionID)
+		s.mut.Unlock()
+
 		s.log.Debug("leave message", mlog.String("sessionID", sessionID))
 		if err := s.rtcServer.CloseSession(sessionID); err != nil {
 			return fmt.Errorf("failed to close session: %w", err)

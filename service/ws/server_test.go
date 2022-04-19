@@ -221,7 +221,7 @@ func TestGetConn(t *testing.T) {
 	require.Empty(t, s.conns)
 
 	t.Run("missing", func(t *testing.T) {
-		c := s.getConn(random.NewID(), "")
+		c := s.getConn(random.NewID())
 		require.Nil(t, c)
 	})
 
@@ -233,38 +233,17 @@ func TestGetConn(t *testing.T) {
 		require.NotNil(t, s.conns[conn.id])
 		require.Equal(t, conn, s.conns[conn.id])
 
-		c := s.getConn(conn.id, "")
+		c := s.getConn(conn.id)
 		require.NotNil(t, c)
 		require.Equal(t, conn, c)
 
 		ok = s.removeConn(c.id)
 		require.True(t, ok)
 		require.Empty(t, s.conns)
-	})
-
-	t.Run("by client id", func(t *testing.T) {
-		clientID := random.NewID()
-		conn := newConn(random.NewID(), clientID, &websocket.Conn{})
-		ok := s.addConn(conn)
-		require.True(t, ok)
-		require.Len(t, s.conns, 1)
-		require.NotNil(t, s.conns[conn.id])
-		require.Equal(t, conn, s.conns[conn.id])
-
-		c := s.getConn("", clientID)
-		require.NotNil(t, c)
-		require.Equal(t, conn, c)
-
-		ok = s.removeConn(c.id)
-		require.True(t, ok)
-		require.Empty(t, s.conns)
-
-		c = s.getConn("", clientID)
-		require.Nil(t, c)
 	})
 
 	t.Run("removed", func(t *testing.T) {
-		c := s.getConn(random.NewID(), "")
+		c := s.getConn(random.NewID())
 		require.Nil(t, c)
 
 		conn := newConn(random.NewID(), random.NewID(), &websocket.Conn{})
@@ -278,7 +257,7 @@ func TestGetConn(t *testing.T) {
 		require.True(t, ok)
 		require.Empty(t, s.conns)
 
-		c = s.getConn(random.NewID(), "")
+		c = s.getConn(random.NewID())
 		require.Nil(t, c)
 	})
 }
@@ -322,51 +301,6 @@ func TestGetConns(t *testing.T) {
 	conns = s.getConns()
 	require.Equal(t, len(s.conns), len(conns))
 	require.ElementsMatch(t, []*conn{conn1, conn2, conn3}, conns)
-}
-
-func TestGetClientConns(t *testing.T) {
-	s, _, shutdown := setupServer(t)
-	defer shutdown()
-	defer func() {
-		// cleanup
-		s.mut.Lock()
-		defer s.mut.Unlock()
-		for id := range s.conns {
-			delete(s.conns, id)
-		}
-	}()
-
-	clientID := random.NewID()
-	conns := s.getClientConns(clientID)
-	require.Empty(t, conns)
-
-	conn1 := newConn(random.NewID(), random.NewID(), &websocket.Conn{})
-	ok := s.addConn(conn1)
-	require.True(t, ok)
-
-	conns = s.getClientConns(clientID)
-	require.Empty(t, conns)
-
-	conn2 := newConn(random.NewID(), clientID, &websocket.Conn{})
-	ok = s.addConn(conn2)
-	require.True(t, ok)
-
-	conns = s.getClientConns(clientID)
-	require.NotEmpty(t, conns)
-	require.Equal(t, conn2, conns[0])
-
-	conn3 := newConn(random.NewID(), clientID, &websocket.Conn{})
-	ok = s.addConn(conn3)
-	require.True(t, ok)
-
-	conns = s.getClientConns(clientID)
-	require.Contains(t, conns, conn2, conn3)
-
-	ok = s.removeConn(conn3.id)
-	require.True(t, ok)
-
-	conns = s.getClientConns(clientID)
-	require.Equal(t, conn2, conns[0])
 }
 
 func TestWithAuthCb(t *testing.T) {
