@@ -190,7 +190,7 @@ func (s *Server) connWriter() {
 				return
 			}
 
-			conn := s.getConn(msg.ConnID, msg.ClientID)
+			conn := s.getConn(msg.ConnID)
 			if conn == nil {
 				s.log.Error("failed to get conn for sending", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
 				continue
