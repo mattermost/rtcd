@@ -21,5 +21,3 @@ RTCD_LOGGER_FILELEVEL                      String
 RTCD_LOGGER_FILELOCATION                   String
 RTCD_LOGGER_ENABLECOLOR                    True or False
 ```
-                    True or False
-```
