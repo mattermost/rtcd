@@ -6,7 +6,6 @@ package rtc
 import (
 	"context"
 	"net"
-	// "sync"
 	"syscall"
 	"testing"
 
