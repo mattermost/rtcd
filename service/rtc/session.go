@@ -41,11 +41,12 @@ type session struct {
 	sdpInCh              chan []byte
 
 	closeCh chan struct{}
+	closeCb func() error
 
 	mut sync.RWMutex
 }
 
-func (s *Server) addSession(cfg SessionConfig, peerConn *webrtc.PeerConnection) (*session, error) {
+func (s *Server) addSession(cfg SessionConfig, peerConn *webrtc.PeerConnection, closeCb func() error) (*session, error) {
 	if err := cfg.IsValid(); err != nil {
 		return nil, err
 	}
@@ -78,7 +79,7 @@ func (s *Server) addSession(cfg SessionConfig, peerConn *webrtc.PeerConnection) 
 	}
 	g.mut.Unlock()
 
-	us, ok := c.addSession(cfg, peerConn)
+	us, ok := c.addSession(cfg, peerConn, closeCb)
 	if !ok {
 		return nil, fmt.Errorf("user session already exists")
 	}

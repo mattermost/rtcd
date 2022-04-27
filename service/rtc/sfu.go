@@ -87,7 +87,7 @@ func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, error) {
 	return &i, nil
 }
 
-func (s *Server) InitSession(cfg SessionConfig) error {
+func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 	s.metrics.IncRTCSessions(cfg.GroupID, cfg.CallID)
 
 	peerConnConfig := webrtc.Configuration{
@@ -126,7 +126,7 @@ func (s *Server) InitSession(cfg SessionConfig) error {
 		return fmt.Errorf("failed to create peer connection: %w", err)
 	}
 
-	us, err := s.addSession(cfg, peerConn)
+	us, err := s.addSession(cfg, peerConn, closeCb)
 	if err != nil {
 		// TODO: handle case session exists
 		return fmt.Errorf("failed to add session: %w", err)
@@ -169,6 +169,12 @@ func (s *Server) InitSession(cfg SessionConfig) error {
 		} else if state == webrtc.PeerConnectionStateClosed {
 			s.log.Debug("peer connection closed", mlog.String("sessionID", cfg.SessionID))
 			s.metrics.IncRTCConnState("closed")
+		}
+		switch state {
+		case webrtc.PeerConnectionStateClosed, webrtc.PeerConnectionStateFailed:
+			if err := s.CloseSession(cfg.SessionID); err != nil {
+				s.log.Error("failed to close RTC session", mlog.Err(err), mlog.Any("sessionCfg", cfg))
+			}
 		}
 	})
 
@@ -354,12 +360,11 @@ func (s *Server) InitSession(cfg SessionConfig) error {
 func (s *Server) CloseSession(sessionID string) error {
 	s.mut.Lock()
 	cfg, ok := s.sessions[sessionID]
-	if !ok {
-		s.mut.Unlock()
-		return fmt.Errorf("session does not exist: %q", sessionID)
-	}
 	delete(s.sessions, sessionID)
 	s.mut.Unlock()
+	if !ok {
+		return nil
+	}
 
 	s.metrics.DecRTCSessions(cfg.GroupID, cfg.CallID)
 
@@ -395,6 +400,10 @@ func (s *Server) CloseSession(sessionID string) error {
 
 	session.rtcConn.Close()
 	close(session.closeCh)
+
+	if session.closeCb != nil {
+		return session.closeCb()
+	}
 
 	return nil
 }

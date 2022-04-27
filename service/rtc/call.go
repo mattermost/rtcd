@@ -23,7 +23,7 @@ func (c *call) getSession(sessionID string) *session {
 	return c.sessions[sessionID]
 }
 
-func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection) (*session, bool) {
+func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection, closeCb func() error) (*session, bool) {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 	if s := c.sessions[cfg.SessionID]; s != nil {
@@ -36,6 +36,7 @@ func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection) (*s
 		iceInCh:       make(chan []byte, signalChSize*2),
 		sdpInCh:       make(chan []byte, signalChSize),
 		closeCh:       make(chan struct{}),
+		closeCb:       closeCb,
 		tracksCh:      make(chan *webrtc.TrackLocalStaticRTP, tracksChSize),
 		trackEnableCh: make(chan bool, tracksChSize),
 		rtpSendersMap: make(map[*webrtc.TrackLocalStaticRTP]*webrtc.RTPSender),
