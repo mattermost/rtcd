@@ -13,7 +13,7 @@ import (
 
 const (
 	metricsSubSystemRTC = "rtc"
-	metricsSubSystemWS  = "websocket"
+	metricsSubSystemWS  = "ws"
 )
 
 type Metrics struct {
