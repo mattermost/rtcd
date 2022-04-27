@@ -4,12 +4,16 @@
 package rtc
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/pion/ice/v2"
 	"github.com/pion/webrtc/v3"
@@ -18,7 +22,7 @@ import (
 )
 
 const (
-	udpSocketBufferSize = 1024 * 1024 * 8 // 8MB
+	udpSocketBufferSize = 1024 * 1024 * 16 // 16MB
 	msgChSize           = 256
 	signalingTimeout    = 10 * time.Second
 )
@@ -31,7 +35,7 @@ type Server struct {
 	groups   map[string]*group
 	sessions map[string]SessionConfig
 
-	udpConn *net.UDPConn
+	udpConn net.PacketConn
 	udpMux  ice.UDPMux
 
 	sendCh    chan Message
@@ -78,49 +82,71 @@ func (s *Server) ReceiveCh() <-chan Message {
 }
 
 func (s *Server) Start() error {
-	var err error
-
-	s.udpConn, err = net.ListenUDP("udp4", &net.UDPAddr{
-		Port: s.cfg.ICEPortUDP,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to listen on udp: %w", err)
-	}
-
-	s.log.Info(fmt.Sprintf("rtc: server is listening on udp %d", s.cfg.ICEPortUDP))
-
-	if err := s.udpConn.SetWriteBuffer(udpSocketBufferSize); err != nil {
-		return fmt.Errorf("failed to set udp send buffer: %w", err)
-	}
-
-	if err := s.udpConn.SetReadBuffer(udpSocketBufferSize); err != nil {
-		return fmt.Errorf("failed to set udp receive buffer: %w", err)
-	}
-	connFile, err := s.udpConn.File()
-	if err != nil {
-		return fmt.Errorf("failed to get udp conn file: %w", err)
-	}
-	defer connFile.Close()
-
-	sysConn, err := connFile.SyscallConn()
-	if err != nil {
-		return fmt.Errorf("failed to get syscall conn: %w", err)
-	}
-	err = sysConn.Control(func(fd uintptr) {
-		writeBufSize, err := syscall.GetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_SNDBUF)
-		if err != nil {
-			s.log.Error("failed to get buffer size", mlog.Err(err))
-			return
+	var conns []net.PacketConn
+	for i := 0; i < runtime.NumCPU(); i++ {
+		listenConfig := net.ListenConfig{
+			Control: func(network, address string, c syscall.RawConn) error {
+				return c.Control(func(fd uintptr) {
+					err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEADDR, 1)
+					if err != nil {
+						s.log.Error("failed to set reuseaddr option", mlog.Err(err))
+						return
+					}
+					err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1)
+					if err != nil {
+						s.log.Error("failed to set reuseport option", mlog.Err(err))
+						return
+					}
+				})
+			},
 		}
-		readBufSize, err := syscall.GetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_RCVBUF)
+
+		udpConn, err := listenConfig.ListenPacket(context.Background(), "udp4", fmt.Sprintf(":%d", s.cfg.ICEPortUDP))
 		if err != nil {
-			s.log.Error("failed to get buffer size", mlog.Err(err))
-			return
+			return fmt.Errorf("failed to listen on udp: %w", err)
 		}
-		s.log.Debug("rtc: udp buffers", mlog.Int("writeBufSize", writeBufSize), mlog.Int("readBufSize", readBufSize))
-	})
-	if err != nil {
-		return fmt.Errorf("Control call failed: %w", err)
+
+		s.log.Info(fmt.Sprintf("rtc: server is listening on udp %d", s.cfg.ICEPortUDP))
+
+		if err := udpConn.(*net.UDPConn).SetWriteBuffer(udpSocketBufferSize); err != nil {
+			return fmt.Errorf("failed to set udp send buffer: %w", err)
+		}
+
+		if err := udpConn.(*net.UDPConn).SetReadBuffer(udpSocketBufferSize); err != nil {
+			return fmt.Errorf("failed to set udp receive buffer: %w", err)
+		}
+		connFile, err := udpConn.(*net.UDPConn).File()
+		if err != nil {
+			return fmt.Errorf("failed to get udp conn file: %w", err)
+		}
+		defer connFile.Close()
+
+		sysConn, err := connFile.SyscallConn()
+		if err != nil {
+			return fmt.Errorf("failed to get syscall conn: %w", err)
+		}
+		err = sysConn.Control(func(fd uintptr) {
+			writeBufSize, err := syscall.GetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_SNDBUF)
+			if err != nil {
+				s.log.Error("failed to get buffer size", mlog.Err(err))
+				return
+			}
+			readBufSize, err := syscall.GetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_RCVBUF)
+			if err != nil {
+				s.log.Error("failed to get buffer size", mlog.Err(err))
+				return
+			}
+			s.log.Debug("rtc: udp buffers", mlog.Int("writeBufSize", writeBufSize), mlog.Int("readBufSize", readBufSize))
+		})
+		if err != nil {
+			return fmt.Errorf("Control call failed: %w", err)
+		}
+
+		conns = append(conns, udpConn)
+		s.udpConn, err = newMultiConn(conns)
+		if err != nil {
+			return fmt.Errorf("failed to create multiconn: %w", err)
+		}
 	}
 
 	s.udpMux = webrtc.NewICEUDPMux(nil, s.udpConn)
