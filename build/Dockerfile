@@ -6,7 +6,10 @@ FROM golang:1.17.9-alpine@sha256:5c2fcfeb58ad9d4948d94e7b2d0432a9bc38bee0f8dfb41
 # Setup directories structure and compile
 COPY . /src
 WORKDIR /src
-RUN apk add make=4.3-r0 --no-cache \
+RUN apk add \
+    make=4.3-r0 \
+    git=2.34.2-r0 \
+    --no-cache \
     && make build
 
 # Shrink final image since we only need the rtcd binary
