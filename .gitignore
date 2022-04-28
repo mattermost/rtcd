@@ -1,4 +1,17 @@
-config/config.toml
+# Binaries
 dist/
-*.log
+
+# Editors/IDEs
+*.swp
+*.swo
 *.vim
+.vscode/
+~
+
+# Helm
+Chart.lock
+*.tgz
+
+# App Specific
+config/config.toml
+*.log
