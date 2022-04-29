@@ -11,120 +11,123 @@ import (
 	"github.com/mattermost/mattermost-server/v6/shared/mlog"
 )
 
-func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) (string, error) {
+func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) (clientID string, code int, err error) {
+	defer func() {
+		data := &httpData{
+			reqData: map[string]string{},
+			resData: map[string]string{},
+		}
+
+		data.code = code
+		if err != nil {
+			data.err = err.Error()
+		}
+		data.reqData["clientID"] = clientID
+
+		s.httpAudit("authHandler", data, nil, r)
+	}()
+
 	clientID, authKey, ok := r.BasicAuth()
 	if !ok {
-		w.WriteHeader(http.StatusUnauthorized)
-		return "", fmt.Errorf("authentication failed: invalid auth header")
+		return "", http.StatusUnauthorized, fmt.Errorf("authentication failed: invalid auth header")
 	}
 
 	if s.cfg.API.Security.EnableAdmin && authKey == s.cfg.API.Security.AdminSecretKey {
-		return "", nil
+		return "", http.StatusOK, nil
 	}
 
 	if clientID == "" {
-		w.WriteHeader(http.StatusUnauthorized)
-		return "", fmt.Errorf("authentication failed: unauthorized")
+		return "", http.StatusUnauthorized, fmt.Errorf("authentication failed: unauthorized")
 	}
 
 	if err := s.auth.Authenticate(clientID, authKey); err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
 		s.log.Error("authentication failed", mlog.Err(err))
-		return "", fmt.Errorf("authentication failed")
+		return "", http.StatusUnauthorized, fmt.Errorf("authentication failed")
 	}
 
-	return clientID, nil
+	return clientID, http.StatusOK, nil
 }
 
-func (s *Service) registerClient(w http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodPost {
-		http.NotFound(w, req)
+func (s *Service) registerClient(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.NotFound(w, r)
 		return
 	}
 
-	response := map[string]string{}
-
-	defer func() {
-		w.Header().Add("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			s.log.Error("failed to encode data", mlog.Err(err))
-		}
-	}()
+	data := &httpData{
+		reqData: map[string]string{},
+		resData: map[string]string{},
+	}
+	defer s.httpAudit("registerClient", data, w, r)
 
 	if !s.cfg.API.Security.AllowSelfRegistration {
-		_, err := s.authHandler(w, req)
+		_, code, err := s.authHandler(w, r)
 		if err != nil {
-			response["error"] = err.Error()
+			data.err = err.Error()
+			data.code = code
 			return
 		}
 	}
 
-	request := map[string]string{}
-	if err := json.NewDecoder(req.Body).Decode(&request); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		response["error"] = err.Error()
+	if err := json.NewDecoder(r.Body).Decode(&data.reqData); err != nil {
+		data.err = err.Error()
+		data.code = http.StatusBadRequest
 		return
 	}
 
-	clientID := request["clientID"]
+	clientID := data.reqData["clientID"]
 	authKey, err := s.auth.Register(clientID)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		response["error"] = err.Error()
+		data.err = err.Error()
+		data.code = http.StatusBadRequest
 	} else {
 		s.log.Debug("registered new client", mlog.String("clientID", clientID))
-		w.WriteHeader(http.StatusCreated)
-		response["clientID"] = clientID
-		response["authKey"] = authKey
+		data.code = http.StatusCreated
+		data.resData["clientID"] = clientID
+		data.resData["authKey"] = authKey
 	}
 }
 
-func (s *Service) unregisterClient(w http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodPost {
-		http.NotFound(w, req)
+func (s *Service) unregisterClient(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.NotFound(w, r)
 		return
 	}
 
-	response := map[string]string{}
+	data := &httpData{
+		reqData: map[string]string{},
+		resData: map[string]string{},
+	}
+	defer s.httpAudit("unregisterClient", data, w, r)
 
-	defer func() {
-		if len(response) == 0 {
-			return
-		}
-		w.Header().Add("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			s.log.Error("failed to encode data", mlog.Err(err))
-		}
-	}()
-
-	_, err := s.authHandler(w, req)
+	_, code, err := s.authHandler(w, r)
 	if err != nil {
-		response["error"] = err.Error()
+		data.err = err.Error()
+		data.code = code
 		return
 	}
 
-	request := map[string]string{}
-	if err := json.NewDecoder(req.Body).Decode(&request); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		response["error"] = err.Error()
+	if err := json.NewDecoder(r.Body).Decode(&data.reqData); err != nil {
+		data.err = err.Error()
+		data.code = http.StatusBadRequest
 		return
 	}
 
-	clientID := request["clientID"]
+	clientID := data.reqData["clientID"]
 	if clientID == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		response["error"] = "client id should not be empty"
+		data.err = "client id should not be empty"
+		data.code = http.StatusBadRequest
 		return
 	}
 
 	err = s.auth.Unregister(clientID)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		response["error"] = err.Error()
+		data.err = err.Error()
+		data.code = http.StatusBadRequest
 		return
 	}
 
 	s.log.Debug("unregistered client", mlog.String("clientID", clientID))
 
-	w.WriteHeader(http.StatusOK)
+	data.code = http.StatusOK
 }

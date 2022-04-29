@@ -59,14 +59,14 @@ func TestNewClientWithAuth(t *testing.T) {
 	authToken := random.NewID()
 	clientID := random.NewID()
 
-	authCb := func(w http.ResponseWriter, r *http.Request) (string, error) {
+	authCb := func(w http.ResponseWriter, r *http.Request) (string, int, error) {
 		authHeader := r.Header.Get("Authorization")
 		require.NotEmpty(t, authHeader)
 		if fields := strings.Fields(authHeader); len(fields) > 1 && fields[1] == authToken {
-			return clientID, nil
+			return clientID, 200, nil
 		}
 
-		return "", fmt.Errorf("auth check failed")
+		return "", 401, fmt.Errorf("auth check failed")
 	}
 
 	server, addr, shutdown := setupServer(t, WithAuthCb(authCb))
