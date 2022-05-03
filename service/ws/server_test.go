@@ -116,9 +116,9 @@ func TestNewServer(t *testing.T) {
 func TestServeHTTP(t *testing.T) {
 	upgradeRan := false
 
-	authCb := func(w http.ResponseWriter, r *http.Request) (string, error) {
+	authCb := func(w http.ResponseWriter, r *http.Request) (string, int, error) {
 		upgradeRan = true
-		return "", nil
+		return "", 0, nil
 	}
 
 	_, addr, shutdown := setupServer(t, WithAuthCb(authCb))
@@ -308,8 +308,8 @@ func TestWithAuthCb(t *testing.T) {
 	defer shutdown()
 	require.Nil(t, s.authCb)
 
-	authCb := func(w http.ResponseWriter, r *http.Request) (string, error) {
-		return "", nil
+	authCb := func(w http.ResponseWriter, r *http.Request) (string, int, error) {
+		return "", 0, nil
 	}
 
 	s2, _, shutdown2 := setupServer(t, WithAuthCb(authCb))

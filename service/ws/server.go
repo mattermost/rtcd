@@ -21,7 +21,7 @@ const (
 	writeWaitTime = 10 * time.Second
 )
 
-type AuthCb func(w http.ResponseWriter, r *http.Request) (string, error)
+type AuthCb func(w http.ResponseWriter, r *http.Request) (string, int, error)
 
 type Server struct {
 	cfg       ServerConfig
@@ -111,7 +111,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var clientID string
 	if s.authCb != nil {
-		clientID, err = s.authCb(w, r)
+		clientID, _, err = s.authCb(w, r)
 		if err != nil {
 			s.log.Error("authCb failed", mlog.Err(err))
 			return
