@@ -109,12 +109,13 @@ func (s *Server) Start() error {
 		s.log.Info(fmt.Sprintf("rtc: server is listening on udp %d", s.cfg.ICEPortUDP))
 
 		if err := udpConn.(*net.UDPConn).SetWriteBuffer(udpSocketBufferSize); err != nil {
-			return fmt.Errorf("failed to set udp send buffer: %w", err)
+			s.log.Warn("rtc: failed to set udp send buffer", mlog.Err(err))
 		}
 
 		if err := udpConn.(*net.UDPConn).SetReadBuffer(udpSocketBufferSize); err != nil {
-			return fmt.Errorf("failed to set udp receive buffer: %w", err)
+			s.log.Warn("rtc: failed to set udp receive buffer", mlog.Err(err))
 		}
+
 		connFile, err := udpConn.(*net.UDPConn).File()
 		if err != nil {
 			return fmt.Errorf("failed to get udp conn file: %w", err)
