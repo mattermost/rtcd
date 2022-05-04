@@ -84,7 +84,4 @@ func (th *TestHelper) Teardown() {
 
 	err = os.RemoveAll(th.dbDir)
 	require.NoError(th.tb, err)
-
-	err = th.adminClient.Close()
-	require.NoError(th.tb, err)
 }

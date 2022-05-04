@@ -4,8 +4,11 @@
 package service
 
 import (
+	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/mattermost/rtcd/service/ws"
 
@@ -201,6 +204,10 @@ func TestClientConnect(t *testing.T) {
 
 		err = c.Close()
 		require.NoError(t, err)
+
+		err = c.Connect()
+		require.Error(t, err)
+		require.Equal(t, "ws client is closed", err.Error())
 	})
 }
 
@@ -260,6 +267,10 @@ func TestClientSend(t *testing.T) {
 		err = c.Close()
 		require.NoError(t, err)
 		wg.Wait()
+
+		err = c.Send(ClientMessage{})
+		require.Error(t, err)
+		require.Equal(t, "ws client is closed", err.Error())
 	})
 }
 
@@ -283,6 +294,12 @@ func TestClientReceive(t *testing.T) {
 	err = c.Connect()
 	require.NoError(t, err)
 
+	msg, ok := <-c.ReceiveCh()
+	require.True(t, ok)
+	require.Equal(t, ClientMessageHello, msg.Type)
+	msgData, ok := msg.Data.(map[string]string)
+	require.True(t, ok)
+
 	var wg sync.WaitGroup
 	wg.Add(2)
 
@@ -300,21 +317,226 @@ func TestClientReceive(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
+		defer c.Close()
 		i := 0
 		for msg := range c.ReceiveCh() {
 			require.Equal(t, msgs[i], msg)
 			i++
+			if i == len(msgs) {
+				break
+			}
 		}
 	}()
 
 	for _, msg := range msgs {
 		data, err := msg.Pack()
 		require.NoError(t, err)
-		err = th.srvc.wsServer.Send(ws.Message{Type: ws.BinaryMessage, Data: data})
+		err = th.srvc.wsServer.Send(ws.Message{Type: ws.BinaryMessage, Data: data, ConnID: msgData["connID"], ClientID: clientID})
 		require.NoError(t, err)
 	}
 
-	err = c.Close()
-	require.NoError(t, err)
 	wg.Wait()
+}
+
+func TestClientReconnect(t *testing.T) {
+	th := SetupTestHelper(t)
+	defer th.Teardown()
+
+	clientID := "clientA"
+	authKey, err := th.adminClient.Register(clientID)
+	require.NoError(t, err)
+	require.NotEmpty(t, authKey)
+
+	t.Run("success", func(t *testing.T) {
+		var cbCalled bool
+		c, err := NewClient(ClientConfig{
+			URL:      th.apiURL,
+			ClientID: clientID,
+			AuthKey:  authKey,
+		}, WithClientReconnectCb(func(_ *Client, n int) error {
+			require.Equal(t, 1, n)
+			cbCalled = true
+			return nil
+		}))
+		require.NoError(t, err)
+		require.NotNil(t, c)
+
+		err = c.Connect()
+		require.NoError(t, err)
+
+		msg, ok := <-c.ReceiveCh()
+		require.True(t, ok)
+		require.Equal(t, ClientMessageHello, msg.Type)
+
+		msgData, ok := msg.Data.(map[string]string)
+		require.True(t, ok)
+
+		serverMsg := ClientMessage{Type: "test"}
+
+		data, err := serverMsg.Pack()
+		require.NoError(t, err)
+		err = th.srvc.wsServer.Send(ws.Message{Type: ws.BinaryMessage, ClientID: clientID, ConnID: msgData["connID"], Data: data})
+		require.NoError(t, err)
+
+		msg, ok = <-c.ReceiveCh()
+		require.True(t, ok)
+		require.Equal(t, serverMsg, msg)
+
+		err = th.srvc.wsServer.Send(ws.Message{Type: ws.CloseMessage, ClientID: clientID, ConnID: msgData["connID"]})
+		require.NoError(t, err)
+
+		msg, ok = <-c.ReceiveCh()
+		require.True(t, ok)
+		require.Equal(t, ClientMessageHello, msg.Type)
+
+		require.True(t, cbCalled)
+
+		err = c.Close()
+		require.NoError(t, err)
+	})
+
+	t.Run("callback error", func(t *testing.T) {
+		var cbCalled bool
+		c, err := NewClient(ClientConfig{
+			URL:      th.apiURL,
+			ClientID: clientID,
+			AuthKey:  authKey,
+		}, WithClientReconnectCb(func(_ *Client, n int) error {
+			require.Equal(t, 1, n)
+			cbCalled = true
+			return errors.New("cb error")
+		}))
+		require.NoError(t, err)
+		require.NotNil(t, c)
+
+		err = c.Connect()
+		require.NoError(t, err)
+
+		msg, ok := <-c.ReceiveCh()
+		require.True(t, ok)
+		require.Equal(t, ClientMessageHello, msg.Type)
+
+		msgData, ok := msg.Data.(map[string]string)
+		require.True(t, ok)
+
+		serverMsg := ClientMessage{Type: "test"}
+
+		data, err := serverMsg.Pack()
+		require.NoError(t, err)
+		err = th.srvc.wsServer.Send(ws.Message{Type: ws.BinaryMessage, ClientID: clientID, ConnID: msgData["connID"], Data: data})
+		require.NoError(t, err)
+
+		msg, ok = <-c.ReceiveCh()
+		require.True(t, ok)
+		require.Equal(t, serverMsg, msg)
+
+		err = th.srvc.wsServer.Send(ws.Message{Type: ws.CloseMessage, ClientID: clientID, ConnID: msgData["connID"]})
+		require.NoError(t, err)
+
+		msg, ok = <-c.ReceiveCh()
+		require.False(t, ok)
+		require.True(t, cbCalled)
+
+		err = c.Close()
+		require.Error(t, err)
+		require.Equal(t, "ws client is closed", err.Error())
+	})
+}
+
+func TestClientCloseReconnectRace(t *testing.T) {
+	th := SetupTestHelper(t)
+	defer th.Teardown()
+
+	clientID := "clientA"
+	authKey, err := th.adminClient.Register(clientID)
+	require.NoError(t, err)
+	require.NotEmpty(t, authKey)
+
+	c, err := NewClient(ClientConfig{
+		URL:      th.apiURL,
+		ClientID: clientID,
+		AuthKey:  authKey,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, c)
+
+	err = c.Connect()
+	require.NoError(t, err)
+
+	msg, ok := <-c.ReceiveCh()
+	require.True(t, ok)
+	require.Equal(t, ClientMessageHello, msg.Type)
+	msgData, ok := msg.Data.(map[string]string)
+	require.True(t, ok)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		err := th.srvc.wsServer.Send(ws.Message{Type: ws.CloseMessage, ClientID: clientID, ConnID: msgData["connID"]})
+		require.NoError(t, err)
+	}()
+
+	go func() {
+		defer wg.Done()
+		time.Sleep(time.Millisecond)
+		_ = c.Close()
+	}()
+
+	wg.Wait()
+}
+
+func TestClientConcurrency(t *testing.T) {
+	th := SetupTestHelper(t)
+	defer th.Teardown()
+
+	clientID := "clientA"
+	authKey, err := th.adminClient.Register(clientID)
+	require.NoError(t, err)
+	require.NotEmpty(t, authKey)
+
+	c, err := NewClient(ClientConfig{
+		URL:      th.apiURL,
+		ClientID: clientID,
+		AuthKey:  authKey,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, c)
+
+	n := 10
+	var nErrors int32
+	var wg sync.WaitGroup
+
+	t.Run("Connect", func(t *testing.T) {
+		wg.Add(n)
+		for i := 0; i < n; i++ {
+			go func() {
+				defer wg.Done()
+				err := c.Connect()
+				if err != nil {
+					atomic.AddInt32(&nErrors, 1)
+				}
+			}()
+		}
+		wg.Wait()
+
+		require.Equal(t, n-1, int(nErrors))
+	})
+
+	t.Run("Close", func(t *testing.T) {
+		nErrors = 0
+		wg.Add(n)
+		for i := 0; i < n; i++ {
+			go func() {
+				defer wg.Done()
+				err := c.Close()
+				if err != nil {
+					atomic.AddInt32(&nErrors, 1)
+				}
+			}()
+		}
+		wg.Wait()
+
+		require.Equal(t, n-1, int(nErrors))
+	})
 }
