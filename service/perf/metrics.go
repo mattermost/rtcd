@@ -23,6 +23,7 @@ type Metrics struct {
 	RTPPacketBytesCounters *prometheus.CounterVec
 	RTCSessions            *prometheus.GaugeVec
 	RTCConnStateCounters   *prometheus.CounterVec
+	RTCErrors              *prometheus.CounterVec
 
 	WSConnections     *prometheus.GaugeVec
 	WSMessageCounters *prometheus.CounterVec
@@ -85,6 +86,17 @@ func NewMetrics(namespace string, registry *prometheus.Registry) *Metrics {
 	)
 	m.registry.MustRegister(m.RTCConnStateCounters)
 
+	m.RTCErrors = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: metricsSubSystemRTC,
+			Name:      "errors_total",
+			Help:      "Total number of RTC related errors",
+		},
+		[]string{"groupID", "type"},
+	)
+	m.registry.MustRegister(m.RTCErrors)
+
 	m.WSConnections = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: namespace,
@@ -120,6 +132,10 @@ func (m *Metrics) DecRTCSessions(groupID string, callID string) {
 
 func (m *Metrics) IncRTCConnState(state string) {
 	m.RTCConnStateCounters.With(prometheus.Labels{"type": state}).Inc()
+}
+
+func (m *Metrics) IncRTCErrors(groupID string, errType string) {
+	m.RTCErrors.With(prometheus.Labels{"type": errType, "groupID": groupID}).Inc()
 }
 
 func (m *Metrics) IncRTPPackets(direction, trackType string) {

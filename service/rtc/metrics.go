@@ -9,4 +9,5 @@ type Metrics interface {
 	IncRTCConnState(state string)
 	IncRTPPackets(direction, trackType string)
 	AddRTPPacketBytes(direction, trackType string, value int)
+	IncRTCErrors(groupID string, errType string)
 }

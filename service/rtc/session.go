@@ -103,7 +103,7 @@ func (s *session) getRemoteScreenTrack() *webrtc.TrackRemote {
 }
 
 // handleICE deals with trickle ICE candidates.
-func (s *session) handleICE(log mlog.LoggerIFace) {
+func (s *session) handleICE(log mlog.LoggerIFace, m Metrics) {
 	for {
 		select {
 		case data, ok := <-s.iceInCh:
@@ -125,6 +125,7 @@ func (s *session) handleICE(log mlog.LoggerIFace) {
 
 			if err := s.rtcConn.AddICECandidate(candidate); err != nil {
 				log.Error("failed to add ice candidate", mlog.Err(err))
+				m.IncRTCErrors(s.cfg.GroupID, "ice")
 				continue
 			}
 		case <-s.closeCh:
