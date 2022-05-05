@@ -18,9 +18,13 @@ DOCKER_OPTS             += --rm -i -u $$(id -u):$$(id -g) --platform "linux/amd6
 # Registry to upload images
 DOCKER_REGISTRY         += docker.io
 DOCKER_REGISTRY_REPO    += mattermost
+# Registry credentials
+DOCKER_USER             ?= user
+DOCKER_PASSWORD         ?= password
 ## Docker Images
 DOCKER_IMAGE_GOLINT     += "golangci/golangci-lint:v1.45.2@sha256:e84b639c061c8888be91939c78dae9b1525359954e405ab0d9868a46861bd21b"
 DOCKER_IMAGE_DOCKERLINT += "hadolint/hadolint:v2.9.2@sha256:d355bd7df747a0f124f3b5e7b21e9dafd0cb19732a276f901f0fdee243ec1f3b"
+
 
 ## Go Variables
 # Go executable
@@ -126,6 +130,12 @@ docker-lint: ## to lint the Dockerfile
 	${DOCKER_IMAGE_DOCKERLINT} \
 	< ${DOCKER_FILE}
 	@$(OK) Dockerfile linting
+
+.PHONY: docker-login
+docker-login: ## to login to a container registry
+	@$(INFO) Dockerd login to container registry ${DOCKER_REGISTRY}...
+	@echo -n "${DOCKER_PASSWORD}" | $(DOCKER) login --password-stdin -u ${DOCKER_USER} $(DOCKER_REGISTRY) || ${FAIL}
+	@$(OK) Dockerd login to container registry ${DOCKER_REGISTRY}...
 
 go-build: $(GO_BUILD_PLATFORMS_ARTIFACTS) ## to build binaries
 
