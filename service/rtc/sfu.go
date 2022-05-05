@@ -238,6 +238,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				rtp, _, readErr := remoteTrack.ReadRTP()
 				if readErr != nil {
 					s.log.Error("failed to read RTP packet", mlog.Err(readErr))
+					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
 
@@ -255,6 +256,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 				if err := outAudioTrack.WriteRTP(rtp); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 					s.log.Error("failed to write RTP packet", mlog.Err(err))
+					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
 
@@ -300,6 +302,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				rtp, _, readErr := remoteTrack.ReadRTP()
 				if readErr != nil {
 					s.log.Error("failed to read RTP packet", mlog.Err(readErr))
+					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
 
@@ -308,6 +311,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 				if err := outScreenTrack.WriteRTP(rtp); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 					s.log.Error("failed to write RTP packet", mlog.Err(err))
+					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
 
@@ -330,6 +334,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			}
 			sdp, err := us.signaling(msg)
 			if err != nil {
+				s.metrics.IncRTCErrors(cfg.GroupID, "signaling")
 				s.log.Error("failed to signal", mlog.Err(err), mlog.Any("sessionCfg", us.cfg))
 				return
 			}
@@ -342,10 +347,11 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			}
 		case <-time.After(signalingTimeout):
 			s.log.Error("timed out signaling", mlog.Any("sessionCfg", us.cfg))
+			s.metrics.IncRTCErrors(cfg.GroupID, "signaling")
 			return
 		}
 
-		go us.handleICE(s.log)
+		go us.handleICE(s.log, s.metrics)
 
 		go func() {
 			if err := s.handleTracks(call, us); err != nil {
@@ -426,16 +432,19 @@ func (s *Server) handleTracks(call *call, us *session) error {
 
 		if outVoiceTrack != nil {
 			if err := us.addTrack(s.log, call, s.receiveCh, outVoiceTrack, isEnabled); err != nil {
+				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 				s.log.Error("failed to add voice track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 			}
 		}
 		if outScreenTrack != nil {
 			if err := us.addTrack(s.log, call, s.receiveCh, outScreenTrack, true); err != nil {
+				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 				s.log.Error("failed to add screen track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 			}
 		}
 		if outScreenAudioTrack != nil {
 			if err := us.addTrack(s.log, call, s.receiveCh, outScreenAudioTrack, true); err != nil {
+				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 				s.log.Error("failed to add screen audio track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 			}
 		}
@@ -449,6 +458,7 @@ func (s *Server) handleTracks(call *call, us *session) error {
 				return nil
 			}
 			if err := us.addTrack(s.log, call, s.receiveCh, track, true); err != nil {
+				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 				s.log.Error("failed to add track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 				continue
 			}
@@ -459,6 +469,7 @@ func (s *Server) handleTracks(call *call, us *session) error {
 
 			sdp, err := us.signaling(msg)
 			if err != nil {
+				s.metrics.IncRTCErrors(us.cfg.GroupID, "signaling")
 				s.log.Error("failed to signal", mlog.Err(err))
 				continue
 			}
