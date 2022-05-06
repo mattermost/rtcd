@@ -204,6 +204,12 @@ go-lint: ## to lint go code
 	golangci-lint run ./... || ${FAIL}
 	@$(OK) App linting
 
+.PHONY: go-fmt
+go-fmt: ## to perform formatting
+	@$(INFO) App code formatting...
+	$(AT)go fmt ./... || ${FAIL}
+	@$(OK) App code formatting...
+
 .PHONY: go-doc
 go-doc: ## to generate documentation
 	@$(INFO) Generating Documentation...
