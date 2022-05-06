@@ -6,6 +6,7 @@ package service
 import (
 	"fmt"
 	"net/url"
+	"time"
 
 	"github.com/mattermost/rtcd/logger"
 	"github.com/mattermost/rtcd/service/api"
@@ -102,9 +103,10 @@ type ClientConfig struct {
 	httpURL string
 	wsURL   string
 
-	ClientID string
-	AuthKey  string
-	URL      string
+	ClientID          string
+	AuthKey           string
+	URL               string
+	ReconnectInterval time.Duration
 }
 
 func (c *ClientConfig) Parse() error {
@@ -134,6 +136,10 @@ func (c *ClientConfig) Parse() error {
 		c.wsURL = u.String()
 	default:
 		return fmt.Errorf("invalid url scheme: %q is not valid", u.Scheme)
+	}
+
+	if c.ReconnectInterval <= 0 {
+		c.ReconnectInterval = defaultReconnectInterval
 	}
 
 	return nil

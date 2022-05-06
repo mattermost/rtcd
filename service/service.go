@@ -119,6 +119,29 @@ func (s *Service) Start() error {
 			case ws.OpenMessage:
 				s.log.Debug("connect", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
 				s.metrics.IncWSConnections(msg.ClientID)
+
+				cm := NewClientMessage(ClientMessageHello, map[string]string{
+					"clientID": msg.ClientID,
+					"connID":   msg.ConnID,
+				})
+
+				data, err := cm.Pack()
+				if err != nil {
+					s.log.Error("failed to pack hello message", mlog.Err(err))
+					continue
+				}
+
+				wsMsg := ws.Message{
+					ConnID:   msg.ConnID,
+					ClientID: msg.ClientID,
+					Type:     ws.BinaryMessage,
+					Data:     data,
+				}
+
+				if err := s.wsServer.Send(wsMsg); err != nil {
+					s.log.Error("failed to send hello message", mlog.Err(err))
+					continue
+				}
 			case ws.CloseMessage:
 				s.log.Debug("disconnect", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
 				s.metrics.DecWSConnections(msg.ClientID)

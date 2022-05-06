@@ -18,25 +18,35 @@ import (
 )
 
 const (
-	msgChSize = 64
+	msgChSize                = 64
+	maxReconnectInterval     = 30 * time.Second
+	defaultReconnectInterval = 2 * time.Second
 )
 
 type Client struct {
-	cfg *ClientConfig
+	cfg    *ClientConfig
+	connID string
 
-	httpClient *http.Client
-	wsClient   *ws.Client
-	receiveCh  chan ClientMessage
-	errorCh    chan error
+	httpClient  *http.Client
+	wsClient    *ws.Client
+	receiveCh   chan ClientMessage
+	errorCh     chan error
+	reconnectCb ClientReconnectCb
+	closed      bool
+
+	mut sync.RWMutex
+	wg  sync.WaitGroup
 }
 
-func NewClient(cfg ClientConfig) (*Client, error) {
+func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
 	var c Client
 
 	if err := cfg.Parse(); err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 	c.cfg = &cfg
+	c.receiveCh = make(chan ClientMessage, msgChSize)
+	c.errorCh = make(chan error)
 
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
@@ -55,6 +65,12 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	}
 
 	c.httpClient = &http.Client{Transport: transport}
+
+	for _, opt := range opts {
+		if err := opt(&c); err != nil {
+			return nil, fmt.Errorf("failed to apply option: %w", err)
+		}
+	}
 
 	return &c, nil
 }
@@ -77,7 +93,7 @@ func (c *Client) Register(clientID string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to build request: %w", err)
 	}
-	req.SetBasicAuth(c.cfg.ClientID, c.cfg.AuthKey)
+	req.SetBasicAuth(c.cfg.ClientID, c.authKey())
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -123,7 +139,7 @@ func (c *Client) Unregister(clientID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to build request: %w", err)
 	}
-	req.SetBasicAuth(c.cfg.ClientID, c.cfg.AuthKey)
+	req.SetBasicAuth(c.cfg.ClientID, c.authKey())
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -147,6 +163,13 @@ func (c *Client) Unregister(clientID string) error {
 }
 
 func (c *Client) Connect() error {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
+	if c.closed {
+		return fmt.Errorf("ws client is closed")
+	}
+
 	if c.wsClient != nil {
 		return fmt.Errorf("ws client is already initialized")
 	}
@@ -160,28 +183,40 @@ func (c *Client) Connect() error {
 	}
 
 	c.wsClient = wsClient
-	c.receiveCh = make(chan ClientMessage, msgChSize)
-	c.errorCh = make(chan error)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
+	c.wg.Add(2)
+
 	go func() {
-		defer wg.Done()
-		c.msgReader()
+		defer c.wg.Done()
+		c.msgReader(wsClient)
+		c.mut.Lock()
+		if c.wsClient != nil {
+			c.wsClient = nil
+			c.mut.Unlock()
+			c.reconnectHandler()
+			return
+		}
+		c.mut.Unlock()
 	}()
 
 	go func() {
-		for err := range c.wsClient.ErrorCh() {
+		defer c.wg.Done()
+		for err := range wsClient.ErrorCh() {
 			c.sendError(err)
 		}
-		wg.Wait()
-		close(c.errorCh)
 	}()
 
 	return nil
 }
 
 func (c *Client) Send(msg ClientMessage) error {
+	c.mut.RLock()
+	defer c.mut.RUnlock()
+
+	if c.closed {
+		return fmt.Errorf("ws client is closed")
+	}
+
 	if c.wsClient == nil {
 		return fmt.Errorf("ws client is not initialized")
 	}
@@ -190,6 +225,7 @@ func (c *Client) Send(msg ClientMessage) error {
 	if err != nil {
 		return fmt.Errorf("failed to pack message: %w", err)
 	}
+
 	return c.wsClient.Send(ws.BinaryMessage, data)
 }
 
@@ -205,12 +241,27 @@ func (c *Client) Close() error {
 	if c.httpClient != nil {
 		c.httpClient.CloseIdleConnections()
 	}
-	if c.wsClient != nil {
-		err := c.wsClient.Close()
-		close(c.receiveCh)
-		return err
+
+	c.mut.Lock()
+	if c.closed {
+		c.mut.Unlock()
+		return fmt.Errorf("ws client is closed")
 	}
-	return nil
+
+	if c.wsClient == nil {
+		c.mut.Unlock()
+		return fmt.Errorf("ws client is not initialized")
+	}
+
+	wsClient := c.wsClient
+	c.wsClient = nil
+	c.closed = true
+	c.mut.Unlock()
+	err := wsClient.Close()
+	c.wg.Wait()
+	close(c.receiveCh)
+	close(c.errorCh)
+	return err
 }
 
 func (c *Client) sendError(err error) {
@@ -221,8 +272,8 @@ func (c *Client) sendError(err error) {
 	}
 }
 
-func (c *Client) msgReader() {
-	for msg := range c.wsClient.ReceiveCh() {
+func (c *Client) msgReader(wsClient *ws.Client) {
+	for msg := range wsClient.ReceiveCh() {
 		if msg.Type != ws.BinaryMessage {
 			c.sendError(fmt.Errorf("unexpected msg type: %d", msg.Type))
 			continue
@@ -234,10 +285,62 @@ func (c *Client) msgReader() {
 			continue
 		}
 
+		if cm.Type == ClientMessageHello {
+			data, ok := cm.Data.(map[string]string)
+			if ok && data["connID"] != "" {
+				c.mut.Lock()
+				c.connID = data["connID"]
+				c.mut.Unlock()
+			}
+		}
+
 		select {
 		case c.receiveCh <- cm:
 		default:
 			c.sendError(fmt.Errorf("failed to send client message: channel is full"))
 		}
 	}
+}
+
+func (c *Client) reconnectHandler() {
+	var attempt int
+	var waitTime time.Duration
+	for {
+		attempt++
+		if waitTime < maxReconnectInterval {
+			waitTime += c.cfg.ReconnectInterval
+		}
+		time.Sleep(waitTime)
+
+		if c.reconnectCb != nil {
+			if err := c.reconnectCb(c, attempt); err != nil {
+				c.sendError(fmt.Errorf("reconnect callback failed: %w", err))
+				c.mut.Lock()
+				c.closed = true
+				c.mut.Unlock()
+				close(c.receiveCh)
+				close(c.errorCh)
+				return
+			}
+		}
+
+		err := c.Connect()
+		if err == nil {
+			break
+		}
+
+		c.sendError(fmt.Errorf("failed to re-connect: %w", err))
+	}
+}
+
+func (c *Client) authKey() string {
+	c.mut.RLock()
+	defer c.mut.RUnlock()
+	return c.cfg.AuthKey
+}
+
+func (c *Client) SetAuthKey(authKey string) {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+	c.cfg.AuthKey = authKey
 }
