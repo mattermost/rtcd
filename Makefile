@@ -14,7 +14,7 @@ DOCKER                  := $(shell which docker)
 # Dockerfile's location
 DOCKER_FILE             += ./build/Dockerfile
 # Docker options to inherit for all docker run commands
-DOCKER_OPTS             += --rm -i -u $$(id -u):$$(id -g) --platform "linux/amd64"
+DOCKER_OPTS             += --rm -u $$(id -u):$$(id -g) --platform "linux/amd64"
 # Registry to upload images
 DOCKER_REGISTRY         += docker.io
 DOCKER_REGISTRY_REPO    += mattermost
@@ -24,7 +24,15 @@ DOCKER_PASSWORD         ?= password
 ## Docker Images
 DOCKER_IMAGE_GOLINT     += "golangci/golangci-lint:v1.45.2@sha256:e84b639c061c8888be91939c78dae9b1525359954e405ab0d9868a46861bd21b"
 DOCKER_IMAGE_DOCKERLINT += "hadolint/hadolint:v2.9.2@sha256:d355bd7df747a0f124f3b5e7b21e9dafd0cb19732a276f901f0fdee243ec1f3b"
+DOCKER_IMAGE_COSIGN     += "bitnami/cosign:1.8.0@sha256:8c2c61c546258fffff18b47bb82a65af6142007306b737129a7bd5429d53629a"
 
+## Cosign Variables
+# The public key
+COSIGN_PUBLIC_KEY       ?= akey
+# The private key
+COSIGN_KEY              ?= akey
+# The passphrase used to decrypt the private key
+COSIGN_PASSWORD         ?= password
 
 ## Go Variables
 # Go executable
@@ -34,7 +42,7 @@ GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.bu
 GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.buildVersion=$(APP_VERSION)"
 GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.buildDate=$(BUILD_DATE)"
 # Architectures to build for
-GO_BUILD_PLATFORMS           ?= linux-amd64 linux-arm64 darwin-amd64 darwin-arm64
+GO_BUILD_PLATFORMS           ?= linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 freebsd-amd64
 GO_BUILD_PLATFORMS_ARTIFACTS = $(foreach cmd,$(addprefix go-build/,${APP_NAME}),$(addprefix $(cmd)-,$(GO_BUILD_PLATFORMS)))
 # Build options
 GO_BUILD_OPTS                += -mod=readonly -trimpath
@@ -84,6 +92,14 @@ OK   = echo ${TIME} ${GREEN}[ OK ]${CNone}
 FAIL = (echo ${TIME} ${RED}[FAIL]${CNone} && false)
 
 # ====================================================================================
+# Verbosity control hack
+
+VERBOSE ?= 0
+AT_0 := @
+AT_1 :=
+AT = $(AT_$(VERBOSE))
+
+# ====================================================================================
 # Targets
 
 help: ## to get help
@@ -100,35 +116,67 @@ test: go-test ## to test all
 .PHONY: docker-build
 docker-build: go-build ## to build the docker image
 	@$(INFO) Performing Docker build...
-	$(DOCKER) build -f ${DOCKER_FILE} . \
+	$(AT)$(DOCKER) build -f ${DOCKER_FILE} . \
 	-t ${APP_NAME}:${APP_VERSION} || ${FAIL}
 	@$(OK) Performing Docker build ${APP_NAME}:${APP_VERSION}
 
 .PHONY: docker-push
 docker-push: ## to push the docker image
 	@$(INFO) Pushing to registry...
-	$(DOCKER) tag ${APP_NAME}:${APP_VERSION} $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION} || ${FAIL}
-	$(DOCKER) push $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION} || ${FAIL}
+	$(AT)$(DOCKER) tag ${APP_NAME}:${APP_VERSION} $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION} || ${FAIL}
+	$(AT)$(DOCKER) push $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION} || ${FAIL}
 	@$(OK) Pushing to registry $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION}
+
+.PHONY: docker-sign
+docker-sign: ## to sign the docker image
+	@$(INFO) Signing the docker image...
+	$(AT)echo "$${COSIGN_KEY}" > cosign.key && \
+	$(DOCKER) run ${DOCKER_OPTS} \
+	--entrypoint '/bin/sh' \
+	-v $(PWD):/app -w /app \
+	-e COSIGN_PASSWORD=${COSIGN_PASSWORD} \
+	-e HOME="/tmp" \
+    ${DOCKER_IMAGE_COSIGN} \
+	-c \
+	echo "Signing..." && \
+	cosign login $(DOCKER_REGISTRY) -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} && \
+	cosign sign --key cosign.key $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION} || ${FAIL}
+	$(AT)rm -f cosign.key || ${FAIL}
+	@$(OK) Signing the docker image: $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION}
+
+.PHONY: docker-verify
+docker-verify: ## to verify the docker image
+	@$(INFO) Verifying the published docker image...
+	$(AT)echo "$${COSIGN_PUBLIC_KEY}" > cosign_public.key && \
+	$(DOCKER) run ${DOCKER_OPTS} \
+	--entrypoint '/bin/sh' \
+	-v $(PWD):/app -w /app \
+    ${DOCKER_IMAGE_COSIGN} \
+	-c \
+	echo "Verifying..." && \
+	cosign verify --key cosign_public.key $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION} || ${FAIL}
+	$(AT)rm -f cosign_public.key || ${FAIL}
+	@$(OK) Verifying the published docker image: $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION}
+
 
 .PHONY: docker-sbom
 docker-sbom: ## to print a sbom report
 	@$(INFO) Performing Docker sbom report...
-	$(DOCKER) sbom ${APP_NAME}:${APP_VERSION} || ${FAIL}
+	$(AT)$(DOCKER) sbom ${APP_NAME}:${APP_VERSION} || ${FAIL}
 	@$(OK) Performing Docker sbom report
 
 .PHONY: docker-scan
 docker-scan: ## to print a vulnerability report
 	@$(INFO) Performing Docker scan report...
-	$(DOCKER) scan ${APP_NAME}:${APP_VERSION} || ${FAIL}
+	$(AT)$(DOCKER) scan ${APP_NAME}:${APP_VERSION} || ${FAIL}
 	@$(OK) Performing Docker scan report
 
 .PHONY: docker-lint
 docker-lint: ## to lint the Dockerfile
 	@$(INFO) Dockerfile linting...
-	$(DOCKER) run ${DOCKER_OPTS} \
+	$(AT)$(DOCKER) run -i ${DOCKER_OPTS} \
 	${DOCKER_IMAGE_DOCKERLINT} \
-	< ${DOCKER_FILE}
+	< ${DOCKER_FILE} || ${FAIL}
 	@$(OK) Dockerfile linting
 
 .PHONY: docker-login
@@ -142,7 +190,7 @@ go-build: $(GO_BUILD_PLATFORMS_ARTIFACTS) ## to build binaries
 .PHONY: go-build
 go-build/%:
 	@$(INFO) go build $*...
-	target="$*"; \
+	$(AT)target="$*"; \
 	command="$${target%%-*}"; \
 	platform_ext="$${target#*-}"; \
 	platform="$${platform_ext%.*}"; \
@@ -160,35 +208,35 @@ go-build/%:
 .PHONY: go-run
 go-run: ## to run locally for development
 	@$(INFO) running locally...
-	$(GO) run ${GO_BUILD_OPTS} ${CONFIG_APP_CODE} || ${FAIL}
+	$(AT)$(GO) run ${GO_BUILD_OPTS} ${CONFIG_APP_CODE} || ${FAIL}
 	@$(OK) running locally
 
 .PHONY: go-test
 go-test: ## to run tests
 	@$(INFO) testing...
-	$(GO) test ${GO_TEST_OPTS} ./... || ${FAIL}
+	$(AT)$(GO) test ${GO_TEST_OPTS} ./... || ${FAIL}
 	@$(OK) testing
 
 .PHONY: go-mod-check
 go-mod-check: ## to check go mod files consistency
 	@$(INFO) Checking go mod files consistency...
-	go mod tidy
-	git --no-pager diff --exit-code go.mod go.sum || \
+	$(AT)$(GO) mod tidy
+	$(AT)git --no-pager diff --exit-code go.mod go.sum || \
 	(${WARN} Please run "go mod tidy" and commit the changes in go.mod and go.sum. && ${FAIL} ; exit 128 )
 	@$(OK) Checking go mod files consistency
 
 .PHONY: go-update-dependencies
 go-update-dependencies: ## to update go dependencies (vendor)
 	@$(INFO) updating go dependencies...
-	$(GO) get -u ./... && \
-	$(GO) mod vendor && \
-	$(GO) mod tidy || ${FAIL}
+	$(AT)$(GO) get -u ./... && \
+	$(AT)$(GO) mod vendor && \
+	$(AT)$(GO) mod tidy || ${FAIL}
 	@$(OK) updating go dependencies
 
 .PHONY: go-lint
 go-lint: ## to lint go code
 	@$(INFO) App linting...
-	GOCACHE="/tmp" docker run ${DOCKER_OPTS} \
+	$(AT)GOCACHE="/tmp" $(DOCKER) run ${DOCKER_OPTS} \
 	-v $(PWD):/app -w /app \
 	-e GOCACHE="/tmp" \
 	-e GOLANGCI_LINT_CACHE="/tmp" \
@@ -196,14 +244,20 @@ go-lint: ## to lint go code
 	golangci-lint run ./... || ${FAIL}
 	@$(OK) App linting
 
+.PHONY: go-fmt
+go-fmt: ## to perform formatting
+	@$(INFO) App code formatting...
+	$(AT)$(GO) fmt ./... || ${FAIL}
+	@$(OK) App code formatting...
+
 .PHONY: go-doc
 go-doc: ## to generate documentation
 	@$(INFO) Generating Documentation...
-	$(GO) run ./scripts/env_config.go ./docs/env_config.md || ${FAIL}
+	$(AT)$(GO) run ./scripts/env_config.go ./docs/env_config.md || ${FAIL}
 	@$(OK) Generating Documentation
 
 .PHONY: clean
 clean: ## to clean-up
 	@$(INFO) cleaning /${GO_OUT_BIN_DIR} folder...
-	rm -rf ${GO_OUT_BIN_DIR} || ${FAIL}
+	$(AT)rm -rf ${GO_OUT_BIN_DIR} || ${FAIL}
 	@$(OK) cleaning /${GO_OUT_BIN_DIR} folder
