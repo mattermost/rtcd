@@ -220,7 +220,7 @@ go-test: ## to run tests
 .PHONY: go-mod-check
 go-mod-check: ## to check go mod files consistency
 	@$(INFO) Checking go mod files consistency...
-	$(AT)go mod tidy
+	$(AT)$(GO) mod tidy
 	$(AT)git --no-pager diff --exit-code go.mod go.sum || \
 	(${WARN} Please run "go mod tidy" and commit the changes in go.mod and go.sum. && ${FAIL} ; exit 128 )
 	@$(OK) Checking go mod files consistency
@@ -236,7 +236,7 @@ go-update-dependencies: ## to update go dependencies (vendor)
 .PHONY: go-lint
 go-lint: ## to lint go code
 	@$(INFO) App linting...
-	$(AT)GOCACHE="/tmp" docker run ${DOCKER_OPTS} \
+	$(AT)GOCACHE="/tmp" $(DOCKER) run ${DOCKER_OPTS} \
 	-v $(PWD):/app -w /app \
 	-e GOCACHE="/tmp" \
 	-e GOLANGCI_LINT_CACHE="/tmp" \
@@ -247,7 +247,7 @@ go-lint: ## to lint go code
 .PHONY: go-fmt
 go-fmt: ## to perform formatting
 	@$(INFO) App code formatting...
-	$(AT)go fmt ./... || ${FAIL}
+	$(AT)$(GO) fmt ./... || ${FAIL}
 	@$(OK) App code formatting...
 
 .PHONY: go-doc
