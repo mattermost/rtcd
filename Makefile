@@ -84,6 +84,14 @@ OK   = echo ${TIME} ${GREEN}[ OK ]${CNone}
 FAIL = (echo ${TIME} ${RED}[FAIL]${CNone} && false)
 
 # ====================================================================================
+# Verbosity control hack
+
+VERBOSE ?= 0
+AT_0 := @
+AT_1 :=
+AT = $(AT_$(VERBOSE))
+
+# ====================================================================================
 # Targets
 
 help: ## to get help
@@ -100,35 +108,35 @@ test: go-test ## to test all
 .PHONY: docker-build
 docker-build: go-build ## to build the docker image
 	@$(INFO) Performing Docker build...
-	$(DOCKER) build -f ${DOCKER_FILE} . \
+	$(AT)$(DOCKER) build -f ${DOCKER_FILE} . \
 	-t ${APP_NAME}:${APP_VERSION} || ${FAIL}
 	@$(OK) Performing Docker build ${APP_NAME}:${APP_VERSION}
 
 .PHONY: docker-push
 docker-push: ## to push the docker image
 	@$(INFO) Pushing to registry...
-	$(DOCKER) tag ${APP_NAME}:${APP_VERSION} $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION} || ${FAIL}
-	$(DOCKER) push $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION} || ${FAIL}
+	$(AT)$(DOCKER) tag ${APP_NAME}:${APP_VERSION} $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION} || ${FAIL}
+	$(AT)$(DOCKER) push $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION} || ${FAIL}
 	@$(OK) Pushing to registry $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION}
 
 .PHONY: docker-sbom
 docker-sbom: ## to print a sbom report
 	@$(INFO) Performing Docker sbom report...
-	$(DOCKER) sbom ${APP_NAME}:${APP_VERSION} || ${FAIL}
+	$(AT)$(DOCKER) sbom ${APP_NAME}:${APP_VERSION} || ${FAIL}
 	@$(OK) Performing Docker sbom report
 
 .PHONY: docker-scan
 docker-scan: ## to print a vulnerability report
 	@$(INFO) Performing Docker scan report...
-	$(DOCKER) scan ${APP_NAME}:${APP_VERSION} || ${FAIL}
+	$(AT)$(DOCKER) scan ${APP_NAME}:${APP_VERSION} || ${FAIL}
 	@$(OK) Performing Docker scan report
 
 .PHONY: docker-lint
 docker-lint: ## to lint the Dockerfile
 	@$(INFO) Dockerfile linting...
-	$(DOCKER) run ${DOCKER_OPTS} \
+	$(AT)$(DOCKER) run ${DOCKER_OPTS} \
 	${DOCKER_IMAGE_DOCKERLINT} \
-	< ${DOCKER_FILE}
+	< ${DOCKER_FILE} || ${FAIL}
 	@$(OK) Dockerfile linting
 
 .PHONY: docker-login
@@ -142,7 +150,7 @@ go-build: $(GO_BUILD_PLATFORMS_ARTIFACTS) ## to build binaries
 .PHONY: go-build
 go-build/%:
 	@$(INFO) go build $*...
-	target="$*"; \
+	$(AT)target="$*"; \
 	command="$${target%%-*}"; \
 	platform_ext="$${target#*-}"; \
 	platform="$${platform_ext%.*}"; \
@@ -160,35 +168,35 @@ go-build/%:
 .PHONY: go-run
 go-run: ## to run locally for development
 	@$(INFO) running locally...
-	$(GO) run ${GO_BUILD_OPTS} ${CONFIG_APP_CODE} || ${FAIL}
+	$(AT)$(GO) run ${GO_BUILD_OPTS} ${CONFIG_APP_CODE} || ${FAIL}
 	@$(OK) running locally
 
 .PHONY: go-test
 go-test: ## to run tests
 	@$(INFO) testing...
-	$(GO) test ${GO_TEST_OPTS} ./... || ${FAIL}
+	$(AT)$(GO) test ${GO_TEST_OPTS} ./... || ${FAIL}
 	@$(OK) testing
 
 .PHONY: go-mod-check
 go-mod-check: ## to check go mod files consistency
 	@$(INFO) Checking go mod files consistency...
-	go mod tidy
-	git --no-pager diff --exit-code go.mod go.sum || \
+	$(AT)go mod tidy
+	$(AT)git --no-pager diff --exit-code go.mod go.sum || \
 	(${WARN} Please run "go mod tidy" and commit the changes in go.mod and go.sum. && ${FAIL} ; exit 128 )
 	@$(OK) Checking go mod files consistency
 
 .PHONY: go-update-dependencies
 go-update-dependencies: ## to update go dependencies (vendor)
 	@$(INFO) updating go dependencies...
-	$(GO) get -u ./... && \
-	$(GO) mod vendor && \
-	$(GO) mod tidy || ${FAIL}
+	$(AT)$(GO) get -u ./... && \
+	$(AT)$(GO) mod vendor && \
+	$(AT)$(GO) mod tidy || ${FAIL}
 	@$(OK) updating go dependencies
 
 .PHONY: go-lint
 go-lint: ## to lint go code
 	@$(INFO) App linting...
-	GOCACHE="/tmp" docker run ${DOCKER_OPTS} \
+	$(AT)GOCACHE="/tmp" docker run ${DOCKER_OPTS} \
 	-v $(PWD):/app -w /app \
 	-e GOCACHE="/tmp" \
 	-e GOLANGCI_LINT_CACHE="/tmp" \
@@ -199,11 +207,11 @@ go-lint: ## to lint go code
 .PHONY: go-doc
 go-doc: ## to generate documentation
 	@$(INFO) Generating Documentation...
-	$(GO) run ./scripts/env_config.go ./docs/env_config.md || ${FAIL}
+	$(AT)$(GO) run ./scripts/env_config.go ./docs/env_config.md || ${FAIL}
 	@$(OK) Generating Documentation
 
 .PHONY: clean
 clean: ## to clean-up
 	@$(INFO) cleaning /${GO_OUT_BIN_DIR} folder...
-	rm -rf ${GO_OUT_BIN_DIR} || ${FAIL}
+	$(AT)rm -rf ${GO_OUT_BIN_DIR} || ${FAIL}
 	@$(OK) cleaning /${GO_OUT_BIN_DIR} folder
