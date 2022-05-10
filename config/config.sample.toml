@@ -10,6 +10,7 @@ security.admin_secret_key = ""
 [rtc]
 ice_port_udp = 8443
 ice_host_override = ""
+ice_servers = []
 
 [store]
 data_source = "/tmp/rtcd_db"

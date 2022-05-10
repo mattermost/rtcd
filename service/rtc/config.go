@@ -13,6 +13,8 @@ type ServerConfig struct {
 	// ICEHostOverride optionally specifies an IP address (or hostname)
 	// to be used as the main host ICE candidate.
 	ICEHostOverride string `toml:"ice_host_override"`
+	// A comma separated list of ICE servers URLs (STUN/TURN) to use.
+	ICEServers []string `toml:"ice_servers"`
 }
 
 func (c ServerConfig) IsValid() error {

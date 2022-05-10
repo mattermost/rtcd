@@ -11,6 +11,7 @@ RTCD_API_SECURITY_ADMINSECRETKEY           String
 RTCD_API_SECURITY_ALLOWSELFREGISTRATION    True or False
 RTCD_RTC_ICEPORTUDP                        Integer
 RTCD_RTC_ICEHOSTOVERRIDE                   String
+RTCD_RTC_ICESERVERS                        Comma-separated list of String
 RTCD_STORE_DATASOURCE                      String
 RTCD_LOGGER_ENABLECONSOLE                  True or False
 RTCD_LOGGER_CONSOLEJSON                    True or False

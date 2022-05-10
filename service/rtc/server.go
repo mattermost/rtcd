@@ -82,6 +82,15 @@ func (s *Server) ReceiveCh() <-chan Message {
 }
 
 func (s *Server) Start() error {
+	if s.cfg.ICEHostOverride == "" && len(s.cfg.ICEServers) > 0 {
+		addr, err := getPublicIP(s.cfg.ICEPortUDP, s.cfg.ICEServers)
+		if err != nil {
+			return fmt.Errorf("failed to get public IP address: %w", err)
+		}
+		s.cfg.ICEHostOverride = addr
+		s.log.Info("got public IP address", mlog.String("addr", addr))
+	}
+
 	var conns []net.PacketConn
 	for i := 0; i < runtime.NumCPU(); i++ {
 		listenConfig := net.ListenConfig{
