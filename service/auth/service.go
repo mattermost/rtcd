@@ -10,7 +10,7 @@ import (
 	"github.com/mattermost/rtcd/service/store"
 )
 
-const DefaultKeyLen = 32
+const MinKeyLen = 32
 
 type Service struct {
 	store store.Store
@@ -36,30 +36,29 @@ func (s *Service) Authenticate(id, authToken string) error {
 	return nil
 }
 
-func (s *Service) Register(id string) (string, error) {
+func (s *Service) Register(id, key string) error {
+	if len(key) < MinKeyLen {
+		return fmt.Errorf("registration failed: key not long enough")
+	}
+
 	if _, err := s.store.Get(id); err == nil {
-		return "", fmt.Errorf("registration failed: already registered")
+		return fmt.Errorf("registration failed: already registered")
 	} else if err != nil && !errors.Is(err, store.ErrNotFound) {
-		return "", fmt.Errorf("registration failed: %w", err)
+		return fmt.Errorf("registration failed: %w", err)
 	}
 
-	authToken, err := newRandomString(DefaultKeyLen)
+	hash, err := hashKey(key)
 	if err != nil {
-		return "", fmt.Errorf("registration failed: %w", err)
-	}
-
-	hash, err := hashKey(authToken)
-	if err != nil {
-		return "", fmt.Errorf("registration failed: %w", err)
+		return fmt.Errorf("registration failed: %w", err)
 	}
 
 	if err := s.store.Put(id, hash); errors.Is(err, store.ErrConflict) {
-		return "", fmt.Errorf("registration failed: already registered")
+		return fmt.Errorf("registration failed: already registered")
 	} else if err != nil {
-		return "", fmt.Errorf("registration failed: %w", err)
+		return fmt.Errorf("registration failed: %w", err)
 	}
 
-	return authToken, nil
+	return nil
 }
 
 func (s *Service) Unregister(id string) error {

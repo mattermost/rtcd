@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattermost/rtcd/service/auth"
+	"github.com/mattermost/rtcd/service/random"
 	"github.com/mattermost/rtcd/service/ws"
 
 	"github.com/stretchr/testify/require"
@@ -71,22 +73,31 @@ func TestClientRegister(t *testing.T) {
 	defer c.Close()
 
 	t.Run("empty clientID", func(t *testing.T) {
-		authToken, err := c.Register("")
+		authKey, err := random.NewSecureString(auth.MinKeyLen)
+		require.NoError(t, err)
+		err = c.Register("", authKey)
 		require.Error(t, err)
-		require.Empty(t, authToken)
 		require.Equal(t, "request failed: registration failed: error: empty key", err.Error())
 	})
 
-	t.Run("valid clientID", func(t *testing.T) {
-		authToken, err := c.Register("clientA")
+	t.Run("empty authKey", func(t *testing.T) {
+		err := c.Register("clientA", "")
+		require.Error(t, err)
+		require.EqualError(t, err, "request failed: registration failed: key not long enough")
+	})
+
+	t.Run("valid", func(t *testing.T) {
+		authKey, err := random.NewSecureString(auth.MinKeyLen)
 		require.NoError(t, err)
-		require.NotEmpty(t, authToken)
+		err = c.Register("clientA", authKey)
+		require.NoError(t, err)
 	})
 
 	t.Run("existing clientID", func(t *testing.T) {
-		authToken, err := c.Register("clientA")
+		authKey, err := random.NewSecureString(auth.MinKeyLen)
+		require.NoError(t, err)
+		err = c.Register("clientA", authKey)
 		require.Error(t, err)
-		require.Empty(t, authToken)
 		require.Equal(t, "request failed: registration failed: already registered", err.Error())
 	})
 
@@ -99,9 +110,8 @@ func TestClientRegister(t *testing.T) {
 		require.NotNil(t, c)
 		defer c.Close()
 
-		authToken, err := c.Register("")
+		err = c.Register("", "")
 		require.Error(t, err)
-		require.Empty(t, authToken)
 		require.Equal(t, "request failed: authentication failed: unauthorized", err.Error())
 	})
 
@@ -113,15 +123,15 @@ func TestClientRegister(t *testing.T) {
 		require.NotNil(t, c)
 		defer c.Close()
 
-		authToken, err := c.Register("clientB")
+		authKey, err := random.NewSecureString(auth.MinKeyLen)
+		require.NoError(t, err)
+		err = c.Register("clientB", authKey)
 		require.Error(t, err)
-		require.Empty(t, authToken)
 		require.Equal(t, "request failed: authentication failed: unauthorized", err.Error())
 
 		th.srvc.cfg.API.Security.AllowSelfRegistration = true
-		authToken, err = c.Register("clientB")
+		err = c.Register("clientB", authKey)
 		require.NoError(t, err)
-		require.NotEmpty(t, authToken)
 	})
 }
 
@@ -138,7 +148,9 @@ func TestClientUnregister(t *testing.T) {
 	defer c.Close()
 
 	t.Run("empty client ID", func(t *testing.T) {
-		authKey, err := c.Register("clientA")
+		authKey, err := random.NewSecureString(auth.MinKeyLen)
+		require.NoError(t, err)
+		err = c.Register("clientA", authKey)
 		require.NoError(t, err)
 		require.NotEmpty(t, authKey)
 
@@ -188,7 +200,9 @@ func TestClientConnect(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		clientID := "clientA"
-		authKey, err := th.adminClient.Register(clientID)
+		authKey, err := random.NewSecureString(auth.MinKeyLen)
+		require.NoError(t, err)
+		err = th.adminClient.Register(clientID, authKey)
 		require.NoError(t, err)
 		require.NotEmpty(t, authKey)
 
@@ -216,9 +230,10 @@ func TestClientSend(t *testing.T) {
 	defer th.Teardown()
 
 	clientID := "clientA"
-	authKey, err := th.adminClient.Register(clientID)
+	authKey, err := random.NewSecureString(auth.MinKeyLen)
 	require.NoError(t, err)
-	require.NotEmpty(t, authKey)
+	err = th.adminClient.Register(clientID, authKey)
+	require.NoError(t, err)
 
 	t.Run("not ininitialized", func(t *testing.T) {
 		c, err := NewClient(ClientConfig{
@@ -279,7 +294,9 @@ func TestClientReceive(t *testing.T) {
 	defer th.Teardown()
 
 	clientID := "clientA"
-	authKey, err := th.adminClient.Register(clientID)
+	authKey, err := random.NewSecureString(auth.MinKeyLen)
+	require.NoError(t, err)
+	err = th.adminClient.Register(clientID, authKey)
 	require.NoError(t, err)
 	require.NotEmpty(t, authKey)
 
@@ -343,7 +360,9 @@ func TestClientReconnect(t *testing.T) {
 	defer th.Teardown()
 
 	clientID := "clientA"
-	authKey, err := th.adminClient.Register(clientID)
+	authKey, err := random.NewSecureString(auth.MinKeyLen)
+	require.NoError(t, err)
+	err = th.adminClient.Register(clientID, authKey)
 	require.NoError(t, err)
 	require.NotEmpty(t, authKey)
 
@@ -448,7 +467,9 @@ func TestClientCloseReconnectRace(t *testing.T) {
 	defer th.Teardown()
 
 	clientID := "clientA"
-	authKey, err := th.adminClient.Register(clientID)
+	authKey, err := random.NewSecureString(auth.MinKeyLen)
+	require.NoError(t, err)
+	err = th.adminClient.Register(clientID, authKey)
 	require.NoError(t, err)
 	require.NotEmpty(t, authKey)
 
@@ -491,7 +512,9 @@ func TestClientConcurrency(t *testing.T) {
 	defer th.Teardown()
 
 	clientID := "clientA"
-	authKey, err := th.adminClient.Register(clientID)
+	authKey, err := random.NewSecureString(auth.MinKeyLen)
+	require.NoError(t, err)
+	err = th.adminClient.Register(clientID, authKey)
 	require.NoError(t, err)
 	require.NotEmpty(t, authKey)
 

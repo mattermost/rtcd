@@ -51,13 +51,17 @@ func TestRegister(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
-	authToken, err := s.Register("instanceA")
-	require.NoError(t, err)
-	require.Len(t, authToken, DefaultKeyLen)
-
-	authToken, err = s.Register("instanceA")
+	err = s.Register("instanceA", "short key")
 	require.Error(t, err)
-	require.Empty(t, authToken)
+	require.EqualError(t, err, "registration failed: key not long enough")
+
+	authKey, err := newRandomString(MinKeyLen)
+	require.NoError(t, err)
+	err = s.Register("instanceA", authKey)
+	require.NoError(t, err)
+
+	err = s.Register("instanceA", authKey)
+	require.Error(t, err)
 	require.EqualError(t, err, "registration failed: already registered")
 
 	err = s.Unregister("instanceA")
@@ -67,9 +71,8 @@ func TestRegister(t *testing.T) {
 	require.Error(t, err)
 	require.EqualError(t, err, "unregister failed: error: not found")
 
-	authToken, err = s.Register("instanceA")
+	err = s.Register("instanceA", authKey)
 	require.NoError(t, err)
-	require.Len(t, authToken, DefaultKeyLen)
 }
 
 func TestAuthenticate(t *testing.T) {
@@ -84,14 +87,15 @@ func TestAuthenticate(t *testing.T) {
 	require.Error(t, err)
 	require.EqualError(t, err, "authentication failed: error: not found")
 
-	authToken, err := s.Register("instanceA")
+	authKey, err := newRandomString(MinKeyLen)
 	require.NoError(t, err)
-	require.Len(t, authToken, DefaultKeyLen)
-
-	err = s.Authenticate("instanceA", authToken)
+	err = s.Register("instanceA", authKey)
 	require.NoError(t, err)
 
-	err = s.Authenticate("instanceA", authToken+" ")
+	err = s.Authenticate("instanceA", authKey)
+	require.NoError(t, err)
+
+	err = s.Authenticate("instanceA", authKey+" ")
 	require.Error(t, err)
 	require.EqualError(t, err, "authentication failed")
 

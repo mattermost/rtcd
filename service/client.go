@@ -75,50 +75,46 @@ func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
 	return &c, nil
 }
 
-func (c *Client) Register(clientID string) (string, error) {
+func (c *Client) Register(clientID string, authKey string) error {
 	if c.httpClient == nil {
-		return "", fmt.Errorf("http client is not initialized")
+		return fmt.Errorf("http client is not initialized")
 	}
 
 	reqData := map[string]string{
 		"clientID": clientID,
+		"authKey":  authKey,
 	}
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(reqData); err != nil {
-		return "", fmt.Errorf("failed to encode body: %w", err)
+		return fmt.Errorf("failed to encode body: %w", err)
 	}
 
 	req, err := http.NewRequest("POST", c.cfg.httpURL+"/register", &buf)
 	if err != nil {
-		return "", fmt.Errorf("failed to build request: %w", err)
+		return fmt.Errorf("failed to build request: %w", err)
 	}
-	req.SetBasicAuth(c.cfg.ClientID, c.authKey())
+	req.SetBasicAuth(c.cfg.ClientID, c.cfg.AuthKey)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("http request failed: %w", err)
+		return fmt.Errorf("http request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respData := map[string]string{}
 	if err := json.NewDecoder(resp.Body).Decode(&respData); err != nil {
-		return "", fmt.Errorf("decoding http response failed: %w", err)
+		return fmt.Errorf("decoding http response failed: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusCreated {
 		if errMsg := respData["error"]; errMsg != "" {
-			return "", fmt.Errorf("request failed: %s", errMsg)
+			return fmt.Errorf("request failed: %s", errMsg)
 		}
-		return "", fmt.Errorf("request failed with status %s", resp.Status)
+		return fmt.Errorf("request failed with status %s", resp.Status)
 	}
 
-	authKey := respData["authKey"]
-	if authKey == "" {
-		return "", fmt.Errorf("unexpected empty auth key")
-	}
-
-	return authKey, nil
+	return nil
 }
 
 func (c *Client) Unregister(clientID string) error {
@@ -139,7 +135,7 @@ func (c *Client) Unregister(clientID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to build request: %w", err)
 	}
-	req.SetBasicAuth(c.cfg.ClientID, c.authKey())
+	req.SetBasicAuth(c.cfg.ClientID, c.cfg.AuthKey)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -331,16 +327,4 @@ func (c *Client) reconnectHandler() {
 
 		c.sendError(fmt.Errorf("failed to re-connect: %w", err))
 	}
-}
-
-func (c *Client) authKey() string {
-	c.mut.RLock()
-	defer c.mut.RUnlock()
-	return c.cfg.AuthKey
-}
-
-func (c *Client) SetAuthKey(authKey string) {
-	c.mut.Lock()
-	defer c.mut.Unlock()
-	c.cfg.AuthKey = authKey
 }

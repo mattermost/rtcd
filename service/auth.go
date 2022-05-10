@@ -76,7 +76,8 @@ func (s *Service) registerClient(w http.ResponseWriter, r *http.Request) {
 	}
 
 	clientID := data.reqData["clientID"]
-	authKey, err := s.auth.Register(clientID)
+	authKey := data.reqData["authKey"]
+	err := s.auth.Register(clientID, authKey)
 	if err != nil {
 		data.err = err.Error()
 		data.code = http.StatusBadRequest
@@ -84,7 +85,6 @@ func (s *Service) registerClient(w http.ResponseWriter, r *http.Request) {
 		s.log.Debug("registered new client", mlog.String("clientID", clientID))
 		data.code = http.StatusCreated
 		data.resData["clientID"] = clientID
-		data.resData["authKey"] = authKey
 	}
 }
 
