@@ -1,0 +1,7 @@
+---
+
+include:
+  - project: mattermost/ci/rtcd
+    ref: main
+    file: private.yml
+
