@@ -4,7 +4,10 @@
 package service
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"net"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -57,6 +60,26 @@ func TestNewClient(t *testing.T) {
 		require.NotEmpty(t, c)
 		require.Equal(t, apiURL, c.cfg.httpURL)
 		require.Equal(t, "wss://localhost/ws", c.cfg.wsURL)
+	})
+
+	t.Run("custom dialing function", func(t *testing.T) {
+		var called bool
+		dialFn := func(ctx context.Context, network, addr string) (net.Conn, error) {
+			called = true
+			return (&net.Dialer{}).DialContext(ctx, network, addr)
+		}
+
+		apiURL := "http://localhost"
+		c, err := NewClient(ClientConfig{URL: apiURL}, WithDialFunc(dialFn))
+		require.NoError(t, err)
+		require.NotNil(t, c)
+		require.NotEmpty(t, c)
+		require.Equal(t, apiURL, c.cfg.httpURL)
+		require.Equal(t, "ws://localhost/ws", c.cfg.wsURL)
+
+		_ = c.Register("", "")
+
+		require.True(t, called)
 	})
 }
 
@@ -222,6 +245,20 @@ func TestClientConnect(t *testing.T) {
 		err = c.Connect()
 		require.Error(t, err)
 		require.Equal(t, "ws client is closed", err.Error())
+	})
+
+	t.Run("custom dialing function", func(t *testing.T) {
+		dialFn := func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return nil, fmt.Errorf("test dial failure")
+		}
+		c, err := NewClient(ClientConfig{URL: th.apiURL}, WithDialFunc(dialFn))
+		require.NoError(t, err)
+		require.NotNil(t, c)
+		defer c.Close()
+
+		err = c.Connect()
+		require.Error(t, err)
+		require.Equal(t, "failed to create ws client: failed to dial: test dial failure", err.Error())
 	})
 }
 

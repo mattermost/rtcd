@@ -22,13 +22,15 @@ const (
 )
 
 type Client struct {
-	cfg       ClientConfig
-	conn      *conn
-	sendCh    chan Message
-	receiveCh chan Message
-	errorCh   chan error
-	wg        sync.WaitGroup
-	connState int32
+	cfg           ClientConfig
+	conn          *conn
+	sendCh        chan Message
+	receiveCh     chan Message
+	errorCh       chan error
+	wg            sync.WaitGroup
+	connState     int32
+	dialFn        DialContextFn
+	pingHandlerFn func(msg string) error
 }
 
 // NewClient initializes and returns a new WebSocket client.
@@ -37,24 +39,8 @@ func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
 		return nil, fmt.Errorf("failed to validate config: %w", err)
 	}
 
-	header := http.Header{
-		"Authorization": []string{"Basic " + cfg.AuthToken},
-	}
-
-	ws, _, err := websocket.DefaultDialer.Dial(cfg.URL, header)
-	if err != nil {
-		return nil, fmt.Errorf("failed to dial: %w", err)
-	}
-
-	connID := cfg.ConnID
-	if connID == "" {
-		connID = random.NewID()
-	}
-	conn := newConn(connID, "", ws)
-
 	c := &Client{
 		cfg:       cfg,
-		conn:      conn,
 		sendCh:    make(chan Message, sendChSize),
 		receiveCh: make(chan Message, receiveChSize),
 		errorCh:   make(chan error),
@@ -65,6 +51,29 @@ func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
 			return nil, fmt.Errorf("failed to apply option: %w", err)
 		}
 	}
+
+	header := http.Header{
+		"Authorization": []string{"Basic " + cfg.AuthToken},
+	}
+
+	dialer := *websocket.DefaultDialer
+	if c.dialFn != nil {
+		dialer.NetDialContext = c.dialFn
+	}
+	ws, _, err := dialer.Dial(cfg.URL, header)
+	if err != nil {
+		return nil, fmt.Errorf("failed to dial: %w", err)
+	}
+
+	if c.pingHandlerFn != nil {
+		ws.SetPingHandler(c.pingHandlerFn)
+	}
+
+	connID := cfg.ConnID
+	if connID == "" {
+		connID = random.NewID()
+	}
+	c.conn = newConn(connID, "", ws)
 
 	c.wg.Add(2)
 	go c.connReader()

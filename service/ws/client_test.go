@@ -4,6 +4,7 @@
 package ws
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -52,6 +53,38 @@ func TestNewClient(t *testing.T) {
 		require.NotEmpty(t, msg)
 		require.NotEmpty(t, msg.ConnID)
 		require.Equal(t, CloseMessage, msg.Type)
+	})
+
+	t.Run("custom dialing function", func(t *testing.T) {
+		_, port, err := net.SplitHostPort(addr)
+		require.NoError(t, err)
+		u := url.URL{Scheme: "ws", Host: "localhost:" + port, Path: "/ws"}
+
+		var called bool
+		dialFn := func(ctx context.Context, network, addr string) (net.Conn, error) {
+			called = true
+			return (&net.Dialer{}).DialContext(ctx, network, addr)
+		}
+
+		dialErrorFn := func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return nil, fmt.Errorf("dial error test")
+		}
+
+		cfg := ClientConfig{
+			URL: u.String(),
+		}
+		c, err := NewClient(cfg, WithDialFunc(dialFn))
+		require.NoError(t, err)
+		require.NotNil(t, c)
+		require.True(t, called)
+
+		err = c.Close()
+		require.NoError(t, err)
+
+		c, err = NewClient(cfg, WithDialFunc(dialErrorFn))
+		require.Error(t, err)
+		require.Nil(t, c)
+		require.Equal(t, "failed to dial: dial error test", err.Error())
 	})
 }
 
@@ -116,9 +149,9 @@ func TestClientPing(t *testing.T) {
 	defer shutdown()
 
 	withCustomPingHandler := func(c *Client) error {
-		c.conn.ws.SetPingHandler(func(_ string) error {
+		c.pingHandlerFn = func(_ string) error {
 			return nil
-		})
+		}
 		return nil
 	}
 
