@@ -6,6 +6,7 @@ package service
 import (
 	"encoding/json"
 	"net/http"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -21,17 +22,42 @@ func TestGetVersion(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
-	t.Run("valid response", func(t *testing.T) {
-		version = "0.1.0-test"
+	t.Run("valid response, all fields set", func(t *testing.T) {
 		buildHash = "test"
+		buildDate = "2022-05-12 09:05"
+		buildVersion = "dev-432dad0"
+		defer func() {
+			buildHash = ""
+			buildDate = ""
+			buildVersion = ""
+		}()
+		goVersion := runtime.Version()
 		resp, err := http.Get(th.apiURL + "/version")
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 		defer resp.Body.Close()
-		var data map[string]string
-		err = json.NewDecoder(resp.Body).Decode(&data)
+		var info versionInfo
+		err = json.NewDecoder(resp.Body).Decode(&info)
 		require.NoError(t, err)
-		require.Equal(t, version, data["version"])
-		require.Equal(t, buildHash, data["build"])
+		require.Equal(t, versionInfo{
+			BuildHash:    buildHash,
+			BuildDate:    buildDate,
+			BuildVersion: buildVersion,
+			GoVersion:    goVersion,
+		}, info)
+	})
+
+	t.Run("valid response, empty fields", func(t *testing.T) {
+		goVersion := runtime.Version()
+		resp, err := http.Get(th.apiURL + "/version")
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		defer resp.Body.Close()
+		var info versionInfo
+		err = json.NewDecoder(resp.Body).Decode(&info)
+		require.NoError(t, err)
+		require.Equal(t, versionInfo{
+			GoVersion: goVersion,
+		}, info)
 	})
 }

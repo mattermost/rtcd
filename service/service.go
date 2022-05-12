@@ -55,7 +55,7 @@ func New(cfg Config) (*Service, error) {
 		return nil, fmt.Errorf("rtcd: failed to init logger: %w", err)
 	}
 
-	s.log.Info("rtcd: starting up")
+	s.log.Info("rtcd: starting up", getVersionInfo().logFields()...)
 
 	s.store, err = store.New(cfg.Store.DataSource)
 	if err != nil {
