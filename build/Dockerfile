@@ -3,14 +3,18 @@
 # and gcr.io/distroless/static as runner
 FROM golang:1.17.9-alpine@sha256:5c2fcfeb58ad9d4948d94e7b2d0432a9bc38bee0f8dfb41d383f38a18b75c38d as builder
 
+#GO_BUILD_PLATFORMS holds the platforms that we will build the docker image against
+ARG GO_BUILD_PLATFORMS=linux-amd64
+
 # Setup directories structure and compile
 COPY . /src
 WORKDIR /src
 RUN apk add \
+    coreutils=9.0-r2 \
     make=4.3-r0 \
     git=2.34.2-r0 \
     --no-cache \
-    && make build
+    && make go-build
 
 # Shrink final image since we only need the rtcd binary
 # and use distroless container image as runner for security
