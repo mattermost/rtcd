@@ -114,7 +114,7 @@ lint: go-lint go-mod-check docker-lint ## to lint all
 test: go-test ## to test all
 
 .PHONY: docker-build
-docker-build: go-build ## to build the docker image
+docker-build: ## to build the docker image
 	@$(INFO) Performing Docker build...
 	$(AT)$(DOCKER) build -f ${DOCKER_FILE} . \
 	-t ${APP_NAME}:${APP_VERSION} || ${FAIL}
