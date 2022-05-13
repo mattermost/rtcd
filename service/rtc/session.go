@@ -76,6 +76,7 @@ func (s *Server) addSession(cfg SessionConfig, peerConn *webrtc.PeerConnection, 
 			sessions: map[string]*session{},
 		}
 		g.calls[c.id] = c
+		s.metrics.IncRTCCalls(g.id)
 	}
 	g.mut.Unlock()
 

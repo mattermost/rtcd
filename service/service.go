@@ -90,6 +90,7 @@ func New(cfg Config) (*Service, error) {
 	}
 
 	s.apiServer.RegisterHandleFunc("/version", s.getVersion)
+	s.apiServer.RegisterHandleFunc("/stats", s.getStats)
 	s.apiServer.RegisterHandleFunc("/register", s.registerClient)
 	s.apiServer.RegisterHandleFunc("/unregister", s.unregisterClient)
 	s.apiServer.RegisterHandler("/ws", s.wsServer)

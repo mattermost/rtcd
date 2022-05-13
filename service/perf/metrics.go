@@ -22,6 +22,7 @@ type Metrics struct {
 	RTPPacketCounters      *prometheus.CounterVec
 	RTPPacketBytesCounters *prometheus.CounterVec
 	RTCSessions            *prometheus.GaugeVec
+	RTCCalls               *prometheus.GaugeVec
 	RTCConnStateCounters   *prometheus.CounterVec
 	RTCErrors              *prometheus.CounterVec
 
@@ -71,9 +72,20 @@ func NewMetrics(namespace string, registry *prometheus.Registry) *Metrics {
 			Name:      "sessions_total",
 			Help:      "Total number of active RTC sessions",
 		},
-		[]string{"groupID", "callID"},
+		[]string{"groupID"},
 	)
 	m.registry.MustRegister(m.RTCSessions)
+
+	m.RTCCalls = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: metricsSubSystemRTC,
+			Name:      "calls_total",
+			Help:      "Total number of active calls",
+		},
+		[]string{"groupID"},
+	)
+	m.registry.MustRegister(m.RTCCalls)
 
 	m.RTCConnStateCounters = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -122,12 +134,20 @@ func NewMetrics(namespace string, registry *prometheus.Registry) *Metrics {
 	return &m
 }
 
-func (m *Metrics) IncRTCSessions(groupID string, callID string) {
-	m.RTCSessions.With(prometheus.Labels{"groupID": groupID, "callID": callID}).Inc()
+func (m *Metrics) IncRTCSessions(groupID string) {
+	m.RTCSessions.With(prometheus.Labels{"groupID": groupID}).Inc()
 }
 
-func (m *Metrics) DecRTCSessions(groupID string, callID string) {
-	m.RTCSessions.With(prometheus.Labels{"groupID": groupID, "callID": callID}).Dec()
+func (m *Metrics) DecRTCSessions(groupID string) {
+	m.RTCSessions.With(prometheus.Labels{"groupID": groupID}).Dec()
+}
+
+func (m *Metrics) IncRTCCalls(groupID string) {
+	m.RTCCalls.With(prometheus.Labels{"groupID": groupID}).Inc()
+}
+
+func (m *Metrics) DecRTCCalls(groupID string) {
+	m.RTCCalls.With(prometheus.Labels{"groupID": groupID}).Dec()
 }
 
 func (m *Metrics) IncRTCConnState(state string) {

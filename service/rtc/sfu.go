@@ -88,7 +88,7 @@ func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, error) {
 }
 
 func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
-	s.metrics.IncRTCSessions(cfg.GroupID, cfg.CallID)
+	s.metrics.IncRTCSessions(cfg.GroupID)
 
 	peerConnConfig := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
@@ -372,7 +372,7 @@ func (s *Server) CloseSession(sessionID string) error {
 		return nil
 	}
 
-	s.metrics.DecRTCSessions(cfg.GroupID, cfg.CallID)
+	s.metrics.DecRTCSessions(cfg.GroupID)
 
 	group := s.getGroup(cfg.GroupID)
 	if group == nil {
@@ -394,6 +394,7 @@ func (s *Server) CloseSession(sessionID string) error {
 	delete(call.sessions, cfg.SessionID)
 	if len(call.sessions) == 0 {
 		group.mut.Lock()
+		s.metrics.DecRTCCalls(group.id)
 		delete(group.calls, cfg.CallID)
 		if len(group.calls) == 0 {
 			s.mut.Lock()

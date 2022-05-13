@@ -15,7 +15,14 @@ type httpData struct {
 	err     string
 	code    int
 	reqData map[string]string
-	resData map[string]string
+	resData map[string]interface{}
+}
+
+func newHTTPData() *httpData {
+	return &httpData{
+		reqData: map[string]string{},
+		resData: map[string]interface{}{},
+	}
 }
 
 func (s *Service) httpAudit(handler string, data *httpData, w http.ResponseWriter, r *http.Request) {
