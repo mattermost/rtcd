@@ -138,7 +138,6 @@ docker-sign: ## to sign the docker image
 	$(AT)echo "$${COSIGN_KEY}" > cosign.key && \
 	$(DOCKER) run ${DOCKER_OPTS} \
 	--entrypoint '/bin/sh' \
-	-v $(PWD):/app -w /app \
 	-e COSIGN_PASSWORD=${COSIGN_PASSWORD} \
 	-e HOME="/tmp" \
     ${DOCKER_IMAGE_COSIGN} \
@@ -155,14 +154,12 @@ docker-verify: ## to verify the docker image
 	$(AT)echo "$${COSIGN_PUBLIC_KEY}" > cosign_public.key && \
 	$(DOCKER) run ${DOCKER_OPTS} \
 	--entrypoint '/bin/sh' \
-	-v $(PWD):/app -w /app \
     ${DOCKER_IMAGE_COSIGN} \
 	-c \
 	echo "Verifying..." && \
 	cosign verify --key cosign_public.key $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION} || ${FAIL}
 	$(AT)rm -f cosign_public.key || ${FAIL}
 	@$(OK) Verifying the published docker image: $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION}
-
 
 .PHONY: docker-sbom
 docker-sbom: ## to print a sbom report
