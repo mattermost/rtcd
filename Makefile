@@ -113,7 +113,7 @@ help: ## to get help
 	awk 'BEGIN {FS = ":.*?## "}; {printf "make ${CYAN}%-30s${CNone} %s\n", $$1, $$2}'
 
 .PHONY: lint
-lint: go-lint go-mod-check docker-lint ## to lint all
+lint: go-lint docker-lint ## to lint all
 
 .PHONY: test
 test: go-test ## to test all
