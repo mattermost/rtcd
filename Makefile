@@ -51,12 +51,17 @@ GO_TEST_OPTS                 += -mod=readonly -failfast -race
 GO_OUT_BIN_DIR               := ./dist
 
 ## General Variables
+# Branch Variables
+PROTECTED_BRANCH := master
+CURRENT_BRANCH   := $(shell git rev-parse --abbrev-ref HEAD)
 # Use repository name as application name
 APP_NAME    := $(shell basename -s .git `git config --get remote.origin.url`)
 # Get current commit
 APP_COMMIT  := $(shell git log --pretty=format:'%h' -n 1)
-# Check if we are in a release tag, if yes use it as app version.
+# Check if we are in a release tag, if yes use it as app version, else use dev-sha as app version
 APP_VERSION := $(shell git describe --abbrev=0 --exact-match --tags > /dev/null 2>&1 || echo dev-$(APP_COMMIT))
+# Check if we are in protected branch, if yes use latest as app version.
+APP_VERSION := $(shell if [ $(PROTECTED_BRANCH) = $(CURRENT_BRANCH) ]; then echo latest; else echo $(APP_VERSION) ; fi)
 # Get current date and format like: 2022-04-27 11:32
 BUILD_DATE  := $(shell date +%Y-%m-%d\ %H:%M)
 
@@ -115,7 +120,7 @@ test: go-test ## to test all
 
 .PHONY: docker-build
 docker-build: ## to build the docker image
-	@$(INFO) Performing Docker build...
+	@$(INFO) Performing Docker build ${APP_NAME}:${APP_VERSION}...
 	$(AT)$(DOCKER) build -f ${DOCKER_FILE} . \
 	-t ${APP_NAME}:${APP_VERSION} || ${FAIL}
 	@$(OK) Performing Docker build ${APP_NAME}:${APP_VERSION}
