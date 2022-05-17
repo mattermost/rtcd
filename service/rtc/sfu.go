@@ -93,7 +93,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 	peerConnConfig := webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
 			{
-				URLs: []string{},
+				URLs: s.cfg.ICEServers,
 			},
 		},
 		SDPSemantics: webrtc.SDPSemanticsUnifiedPlanWithFallback,
