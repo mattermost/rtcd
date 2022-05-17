@@ -23,9 +23,9 @@ func TestNewRandomString(t *testing.T) {
 }
 
 func TestHashKey(t *testing.T) {
-	key, err := newRandomString(DefaultKeyLen)
+	key, err := newRandomString(MinKeyLen)
 	require.NoError(t, err)
-	require.Len(t, key, DefaultKeyLen)
+	require.Len(t, key, MinKeyLen)
 
 	hash, err := hashKey("")
 	require.Error(t, err)
@@ -38,9 +38,9 @@ func TestHashKey(t *testing.T) {
 }
 
 func TestCompareKeyHash(t *testing.T) {
-	key, err := newRandomString(DefaultKeyLen)
+	key, err := newRandomString(MinKeyLen)
 	require.NoError(t, err)
-	require.Len(t, key, DefaultKeyLen)
+	require.Len(t, key, MinKeyLen)
 
 	hash, err := hashKey(key)
 	require.NoError(t, err)

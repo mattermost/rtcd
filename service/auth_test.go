@@ -39,7 +39,7 @@ func TestRegisterClient(t *testing.T) {
 	})
 
 	t.Run("valid response", func(t *testing.T) {
-		buf := bytes.NewBuffer([]byte(`{"clientID": "clientA"}`))
+		buf := bytes.NewBuffer([]byte(`{"clientID": "clientA", "authKey": "Ey4-H_BJA00_TVByPi8DozE12ekN3S7L"}`))
 		req, err := http.NewRequest("POST", th.apiURL+"/register", buf)
 		require.NoError(t, err)
 		req.SetBasicAuth("", th.srvc.cfg.API.Security.AdminSecretKey)
@@ -50,7 +50,7 @@ func TestRegisterClient(t *testing.T) {
 		var response map[string]string
 		err = json.NewDecoder(resp.Body).Decode(&response)
 		require.NoError(t, err)
-		require.NotEmpty(t, response["authKey"])
+		require.NotEmpty(t, response["clientID"])
 	})
 }
 
@@ -81,7 +81,8 @@ func TestWSAuthHandler(t *testing.T) {
 
 	t.Run("valid auth", func(t *testing.T) {
 		clientID := "clientA"
-		buf := bytes.NewBuffer([]byte(fmt.Sprintf(`{"clientID": "%s"}`, clientID)))
+		authKey := "Ey4-H_BJA00_TVByPi8DozE12ekN3S7L"
+		buf := bytes.NewBuffer([]byte(fmt.Sprintf(`{"clientID": "%s", "authKey": "%s"}`, clientID, authKey)))
 		req, err := http.NewRequest("POST", th.apiURL+"/register", buf)
 		require.NoError(t, err)
 		req.SetBasicAuth("", th.srvc.cfg.API.Security.AdminSecretKey)
@@ -92,8 +93,6 @@ func TestWSAuthHandler(t *testing.T) {
 		var response map[string]string
 		err = json.NewDecoder(resp.Body).Decode(&response)
 		require.NoError(t, err)
-		require.NotEmpty(t, response["authKey"])
-		authKey := response["authKey"]
 
 		token := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", clientID, authKey)))
 		require.NotEmpty(t, token)

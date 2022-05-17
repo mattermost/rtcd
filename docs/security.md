@@ -8,10 +8,9 @@ The authentication flow is as follows:
 
 #### Registration
 
-1. Client makes a request for registration by providing a random string which uniquely identifies the client.
-2. Server generates a 32 characters (base64) long auth key (192 bits of total entropy). 
-3. Server calculates a hash (bcrypt) for the key and saves it to the embedded persistent k/v store, mapping to the provided client id.
-4. The auth key is returned to the client.
+1. Client makes a request for registration by providing a JSON payload containing a random string which uniquely identifies the client (clientID) and an authentication key (authKey). 
+2. Server calculates a hash (bcrypt) for the authentication key and saves it to the embedded persistent k/v store, mapping to the provided client id.
+3. On success server returns a JSON response payload with the clientID and HTTP code 201.
 
 #### Client Authentication
 
