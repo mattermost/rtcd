@@ -32,6 +32,7 @@ type Client struct {
 	receiveCh   chan ClientMessage
 	errorCh     chan error
 	reconnectCb ClientReconnectCb
+	dialFn      DialContextFn
 	closed      bool
 
 	mut sync.RWMutex
@@ -48,13 +49,25 @@ func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
 	c.receiveCh = make(chan ClientMessage, msgChSize)
 	c.errorCh = make(chan error)
 
+	for _, opt := range opts {
+		if err := opt(&c); err != nil {
+			return nil, fmt.Errorf("failed to apply option: %w", err)
+		}
+	}
+
+	dialFn := (&net.Dialer{
+		Timeout:   5 * time.Second,
+		KeepAlive: 30 * time.Second,
+		DualStack: true,
+	}).DialContext
+
+	if c.dialFn != nil {
+		dialFn = c.dialFn
+	}
+
 	transport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   5 * time.Second,
-			KeepAlive: 30 * time.Second,
-			DualStack: true,
-		}).DialContext,
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           dialFn,
 		MaxConnsPerHost:       100,
 		MaxIdleConns:          100,
 		MaxIdleConnsPerHost:   100,
@@ -65,12 +78,6 @@ func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
 	}
 
 	c.httpClient = &http.Client{Transport: transport}
-
-	for _, opt := range opts {
-		if err := opt(&c); err != nil {
-			return nil, fmt.Errorf("failed to apply option: %w", err)
-		}
-	}
 
 	return &c, nil
 }
@@ -173,7 +180,7 @@ func (c *Client) Connect() error {
 	wsClient, err := ws.NewClient(ws.ClientConfig{
 		URL:       c.cfg.wsURL,
 		AuthToken: base64.StdEncoding.EncodeToString([]byte(c.cfg.ClientID + ":" + c.cfg.AuthKey)),
-	})
+	}, ws.WithDialFunc(ws.DialContextFn(c.dialFn)))
 	if err != nil {
 		return fmt.Errorf("failed to create ws client: %w", err)
 	}
