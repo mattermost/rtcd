@@ -41,6 +41,7 @@ GO                           := $(shell which go)
 GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.buildHash=$(APP_COMMIT)"
 GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.buildVersion=$(APP_VERSION)"
 GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.buildDate=$(BUILD_DATE)"
+GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.goVersion=$(GO_VERSION)"
 # Architectures to build for
 GO_BUILD_PLATFORMS           ?= linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 freebsd-amd64
 GO_BUILD_PLATFORMS_ARTIFACTS = $(foreach cmd,$(addprefix go-build/,${APP_NAME}),$(addprefix $(cmd)-,$(GO_BUILD_PLATFORMS)))
@@ -51,12 +52,17 @@ GO_TEST_OPTS                 += -mod=readonly -failfast -race
 GO_OUT_BIN_DIR               := ./dist
 
 ## General Variables
+# Branch Variables
+PROTECTED_BRANCH := master
+CURRENT_BRANCH   := $(shell git rev-parse --abbrev-ref HEAD)
 # Use repository name as application name
 APP_NAME    := $(shell basename -s .git `git config --get remote.origin.url`)
 # Get current commit
 APP_COMMIT  := $(shell git log --pretty=format:'%h' -n 1)
-# Check if we are in a release tag, if yes use it as app version.
+# Check if we are in a release tag, if yes use it as app version, else use dev-sha as app version
 APP_VERSION := $(shell git describe --abbrev=0 --exact-match --tags > /dev/null 2>&1 || echo dev-$(APP_COMMIT))
+# Check if we are in protected branch, if yes use latest as app version.
+APP_VERSION := $(shell if [ $(PROTECTED_BRANCH) = $(CURRENT_BRANCH) ]; then echo latest; else echo $(APP_VERSION) ; fi)
 # Get current date and format like: 2022-04-27 11:32
 BUILD_DATE  := $(shell date +%Y-%m-%d\ %H:%M)
 
@@ -108,14 +114,14 @@ help: ## to get help
 	awk 'BEGIN {FS = ":.*?## "}; {printf "make ${CYAN}%-30s${CNone} %s\n", $$1, $$2}'
 
 .PHONY: lint
-lint: go-lint go-mod-check docker-lint ## to lint all
+lint: go-lint docker-lint ## to lint all
 
 .PHONY: test
 test: go-test ## to test all
 
 .PHONY: docker-build
 docker-build: ## to build the docker image
-	@$(INFO) Performing Docker build...
+	@$(INFO) Performing Docker build ${APP_NAME}:${APP_VERSION}...
 	$(AT)$(DOCKER) build -f ${DOCKER_FILE} . \
 	-t ${APP_NAME}:${APP_VERSION} || ${FAIL}
 	@$(OK) Performing Docker build ${APP_NAME}:${APP_VERSION}
@@ -133,7 +139,6 @@ docker-sign: ## to sign the docker image
 	$(AT)echo "$${COSIGN_KEY}" > cosign.key && \
 	$(DOCKER) run ${DOCKER_OPTS} \
 	--entrypoint '/bin/sh' \
-	-v $(PWD):/app -w /app \
 	-e COSIGN_PASSWORD=${COSIGN_PASSWORD} \
 	-e HOME="/tmp" \
     ${DOCKER_IMAGE_COSIGN} \
@@ -150,14 +155,12 @@ docker-verify: ## to verify the docker image
 	$(AT)echo "$${COSIGN_PUBLIC_KEY}" > cosign_public.key && \
 	$(DOCKER) run ${DOCKER_OPTS} \
 	--entrypoint '/bin/sh' \
-	-v $(PWD):/app -w /app \
     ${DOCKER_IMAGE_COSIGN} \
 	-c \
 	echo "Verifying..." && \
 	cosign verify --key cosign_public.key $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION} || ${FAIL}
 	$(AT)rm -f cosign_public.key || ${FAIL}
 	@$(OK) Verifying the published docker image: $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION}
-
 
 .PHONY: docker-sbom
 docker-sbom: ## to print a sbom report
