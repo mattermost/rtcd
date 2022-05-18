@@ -159,8 +159,8 @@ docker-verify: ## to verify the docker image
         -v $(PWD):/app -w /app \
         ${DOCKER_IMAGE_COSIGN} \
 	-c \
-	echo "Verifying..." && \
-	cosign verify --key cosign_public.key $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION} || ${FAIL}
+	"echo Verifying... && \
+	cosign verify --key cosign_public.key $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION}" || ${FAIL}
 	$(AT)rm -f cosign_public.key || ${FAIL}
 	@$(OK) Verifying the published docker image: $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION}
 
