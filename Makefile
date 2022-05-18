@@ -185,7 +185,7 @@ docker-lint: ## to lint the Dockerfile
 .PHONY: docker-login
 docker-login: ## to login to a container registry
 	@$(INFO) Dockerd login to container registry ${DOCKER_REGISTRY}...
-	@echo -n "${DOCKER_PASSWORD}" | $(DOCKER) login --password-stdin -u ${DOCKER_USER} $(DOCKER_REGISTRY) || ${FAIL}
+	$(AT) echo "${DOCKER_PASSWORD}" | $(DOCKER) login --password-stdin -u ${DOCKER_USER} $(DOCKER_REGISTRY) || ${FAIL}
 	@$(OK) Dockerd login to container registry ${DOCKER_REGISTRY}...
 
 go-build: $(GO_BUILD_PLATFORMS_ARTIFACTS) ## to build binaries
