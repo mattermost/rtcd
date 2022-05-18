@@ -139,13 +139,14 @@ docker-sign: ## to sign the docker image
 	$(AT)echo "$${COSIGN_KEY}" > cosign.key && \
 	$(DOCKER) run ${DOCKER_OPTS} \
 	--entrypoint '/bin/sh' \
+        -v $(PWD):/app -w /app \
 	-e COSIGN_PASSWORD=${COSIGN_PASSWORD} \
 	-e HOME="/tmp" \
     ${DOCKER_IMAGE_COSIGN} \
 	-c \
-	echo "Signing..." && \
+	"echo Signing... && \
 	cosign login $(DOCKER_REGISTRY) -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} && \
-	cosign sign --key cosign.key $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION} || ${FAIL}
+	cosign sign --key cosign.key $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION}" || ${FAIL}
 	$(AT)rm -f cosign.key || ${FAIL}
 	@$(OK) Signing the docker image: $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION}
 
@@ -155,7 +156,8 @@ docker-verify: ## to verify the docker image
 	$(AT)echo "$${COSIGN_PUBLIC_KEY}" > cosign_public.key && \
 	$(DOCKER) run ${DOCKER_OPTS} \
 	--entrypoint '/bin/sh' \
-    ${DOCKER_IMAGE_COSIGN} \
+        -v $(PWD):/app -w /app \
+        ${DOCKER_IMAGE_COSIGN} \
 	-c \
 	echo "Verifying..." && \
 	cosign verify --key cosign_public.key $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION} || ${FAIL}
