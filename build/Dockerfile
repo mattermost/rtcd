@@ -1,7 +1,9 @@
 # This dockerfile is used to build Mattermost rtcd
-# A multi stage build, with golang:1.17.9-alpine used as a builder
+# A multi stage build, with golang used as a builder
 # and gcr.io/distroless/static as runner
-FROM golang:1.17.9-alpine@sha256:5c2fcfeb58ad9d4948d94e7b2d0432a9bc38bee0f8dfb41d383f38a18b75c38d as builder
+ARG GO_IMAGE=golang:1.17@sha256:79138c839452a2a9d767f0bba601bd5f63af4a1d8bb645bf6141bff8f4f33bb8
+# hadolint ignore=DL3006
+FROM ${GO_IMAGE} as builder
 
 #GO_BUILD_PLATFORMS holds the platforms that we will build the docker image against
 ARG GO_BUILD_PLATFORMS=linux-amd64
@@ -9,12 +11,7 @@ ARG GO_BUILD_PLATFORMS=linux-amd64
 # Setup directories structure and compile
 COPY . /src
 WORKDIR /src
-RUN apk add \
-    coreutils=9.0-r2 \
-    make=4.3-r0 \
-    git=2.34.2-r0 \
-    --no-cache \
-    && make go-build
+RUN make go-build
 
 # Shrink final image since we only need the rtcd binary
 # and use distroless container image as runner for security
