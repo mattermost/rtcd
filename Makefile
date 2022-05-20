@@ -54,6 +54,14 @@ GO_TEST_OPTS                 += -mod=readonly -failfast -race
 # Temporary folder to output compiled binaries artifacts
 GO_OUT_BIN_DIR               := ./dist
 
+## Github Variables
+# A github access token that provides access to upload artifacts under releases
+GITHUB_ACCESS_TOKEN          ?= password
+# Github organization
+GITHUB_ORG                   := mattermost
+# GITHUB org is most probably the name of the repo
+GITHUB_REPO                   := ${APP_NAME}
+
 ## General Variables
 # Branch Variables
 PROTECTED_BRANCH := master
@@ -271,6 +279,36 @@ go-doc: ## to generate documentation
 	@$(INFO) Generating Documentation...
 	$(AT)$(GO) run ./scripts/env_config.go ./docs/env_config.md || ${FAIL}
 	@$(OK) Generating Documentation
+
+.PHONY: github-push
+github-push: ## to push release artifacts to github
+ifeq ($(GITHUB_ACCESS_TOKEN),)
+	$(error "Please set the GITHUB_ACCESS_TOKEN environment variable")
+else
+	@echo Releasing: $(APP_VERSION)
+	@$(eval RELEASE:=$(shell curl -s -d '{"tag_name": "v$(APP_VERSION)", "name": "v$(APP_VERSION)"}' -H "Authorization: token ${GITHUB_ACCESS_TOKEN}" "https://api.github.com/repos/$(GITHUB_ORG)/$(GITHUB_REPO)/releases" | grep -m 1 '"id"' | tr -cd '[[:digit:]]'))
+	@echo ReleaseID: $(RELEASE)
+	@( cd ${GO_OUT_BIN_DIR}; for asset in `ls -A *tgz`; do \
+	    echo $$asset; \
+	    curl -o /dev/null -X POST \
+	      -H "Content-Type: application/gzip" \
+	      -H "Authorization: token ${GITHUB_ACCESS_TOKEN}" \
+	      --data-binary "@$$asset" \
+	      "https://uploads.github.com/repos/$(GITHUB)/$(NAME)/releases/$(RELEASE)/assets?name=$${asset}" ; \
+	done )
+	@( cd release; for asset in `ls -A *tgz`; do \
+	    sha256sum $$asset > $$asset.sha256; \
+	done )
+	@( cd release; for asset in `ls -A *sha256`; do \
+	    echo $$asset; \
+	    curl -o /dev/null -X POST \
+	      -H "Content-Type: text/plain" \
+	      -H "Authorization: token ${GITHUB_ACCESS_TOKEN}" \
+	      --data-binary "@$$asset" \
+	      "https://uploads.github.com/repos/$(GITHUB)/$(NAME)/releases/$(RELEASE)/assets?name=$${asset}" ; \
+	done )
+endif
+
 
 .PHONY: clean
 clean: ## to clean-up
