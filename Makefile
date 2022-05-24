@@ -116,6 +116,9 @@ help: ## to get help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) |\
 	awk 'BEGIN {FS = ":.*?## "}; {printf "make ${CYAN}%-30s${CNone} %s\n", $$1, $$2}'
 
+.PHONY: build
+build: go-build-docker ## to build all using a container
+
 .PHONY: lint
 lint: go-lint docker-lint ## to lint all
 
@@ -214,6 +217,18 @@ go-build/%:
 	-o ${GO_OUT_BIN_DIR}/$* \
 	${CONFIG_APP_CODE} || ${FAIL}
 	@$(OK) go build $*
+
+.PHONY: go-build-docker
+go-build-docker: # to build binaries under a controlled docker dedicated go container using DOCKER_IMAGE_GO
+	@$(INFO) go build docker
+	$(AT)$(DOCKER) run ${DOCKER_OPTS} \
+	-v $(PWD):/app -w /app \
+	-e GOCACHE="/tmp" \
+	$(DOCKER_IMAGE_GO) \
+	/bin/sh -c \
+	"cd /app && \
+	make go-build"  || ${FAIL}
+	@$(OK) go build docker
 
 .PHONY: go-run
 go-run: ## to run locally for development
