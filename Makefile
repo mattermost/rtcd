@@ -26,6 +26,7 @@ DOCKER_IMAGE_GO         += "golang:${GO_VERSION}@sha256:79138c839452a2a9d767f0bb
 DOCKER_IMAGE_GOLINT     += "golangci/golangci-lint:v1.45.2@sha256:e84b639c061c8888be91939c78dae9b1525359954e405ab0d9868a46861bd21b"
 DOCKER_IMAGE_DOCKERLINT += "hadolint/hadolint:v2.9.2@sha256:d355bd7df747a0f124f3b5e7b21e9dafd0cb19732a276f901f0fdee243ec1f3b"
 DOCKER_IMAGE_COSIGN     += "bitnami/cosign:1.8.0@sha256:8c2c61c546258fffff18b47bb82a65af6142007306b737129a7bd5429d53629a"
+DOCKER_IMAGE_GH_CLI     += "registry.internal.mattermost.com/images/build-ci:3.16.0@sha256:f6a229a9ababef3c483f237805ee4c3dbfb63f5de4fbbf58f4c4b6ed8fcd34b6"
 
 ## Cosign Variables
 # The public key
@@ -53,6 +54,14 @@ GO_BUILD_OPTS                += -mod=readonly -trimpath
 GO_TEST_OPTS                 += -mod=readonly -failfast -race
 # Temporary folder to output compiled binaries artifacts
 GO_OUT_BIN_DIR               := ./dist
+
+## Github Variables
+# A github access token that provides access to upload artifacts under releases
+GITHUB_TOKEN                 ?= a_token
+# Github organization
+GITHUB_ORG                   := mattermost
+# Most probably the name of the repo
+GITHUB_REPO                  := ${APP_NAME}
 
 ## General Variables
 # Branch Variables
@@ -286,6 +295,22 @@ go-doc: ## to generate documentation
 	@$(INFO) Generating Documentation...
 	$(AT)$(GO) run ./scripts/env_config.go ./docs/env_config.md || ${FAIL}
 	@$(OK) Generating Documentation
+
+.PHONY: github-release
+github-release: ## to publish a release and relevant artifacts to GitHub
+	@$(INFO) Generating github-release http://github.com/$(GITHUB_ORG)/$(GITHUB_REPO)/releases/tag/$(APP_VERSION) ...
+ifeq ($(shell echo $(APP_VERSION) | egrep '^v([0-9]+\.){0,2}(\*|[0-9]+)'),)
+	$(error "We only support releases from semver tags")
+else
+	$(AT)$(DOCKER) run \
+	-v $(PWD):/app -w /app \
+	-e GITHUB_TOKEN=$$GITHUB_TOKEN \
+	$(DOCKER_IMAGE_GH_CLI) \
+	/bin/sh -c \
+	"cd /app && \
+	gh release create $(APP_VERSION) --generate-notes $(GO_OUT_BIN_DIR)/*" || ${FAIL}
+endif
+	@$(OK) Generating github-release http://github.com/$(GITHUB_ORG)/$(GITHUB_REPO)/releases/tag/$(APP_VERSION) ...
 
 .PHONY: clean
 clean: ## to clean-up
