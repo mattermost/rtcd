@@ -5,6 +5,29 @@
 # ====================================================================================
 # Variables
 
+## General Variables
+# Branch Variables
+PROTECTED_BRANCH := master
+CURRENT_BRANCH   := $(shell git rev-parse --abbrev-ref HEAD)
+# Use repository name as application name
+APP_NAME    := $(shell basename -s .git `git config --get remote.origin.url`)
+# Get current commit
+APP_COMMIT  := $(shell git log --pretty=format:'%h' -n 1)
+# Check if we are in protected branch, if yes use `latest` as app version.
+# Else check if we are in a release tag, if yes use the tag as app version, else use `dev-sha` as app version
+APP_VERSION := $(shell if [ $(PROTECTED_BRANCH) = $(CURRENT_BRANCH) ]; then echo latest; else (git describe --abbrev=0 --exact-match --tags || echo dev-$(APP_COMMIT)) ; fi)
+
+# Get current date and format like: 2022-04-27 11:32
+BUILD_DATE  := $(shell date +%Y-%m-%d\ %H:%M)
+
+## General Configuration Variables
+# We don't need make's built-in rules.
+MAKEFLAGS     += --no-builtin-rules
+# Be pedantic about undefined variables.
+MAKEFLAGS     += --warn-undefined-variables
+# Set help as default target
+.DEFAULT_GOAL := help
+
 # App Code location
 CONFIG_APP_CODE         += ./cmd/rtcd
 
@@ -62,29 +85,6 @@ GITHUB_TOKEN                 ?= a_token
 GITHUB_ORG                   := mattermost
 # Most probably the name of the repo
 GITHUB_REPO                  := ${APP_NAME}
-
-## General Variables
-# Branch Variables
-PROTECTED_BRANCH := master
-CURRENT_BRANCH   := $(shell git rev-parse --abbrev-ref HEAD)
-# Use repository name as application name
-APP_NAME    := $(shell basename -s .git `git config --get remote.origin.url`)
-# Get current commit
-APP_COMMIT  := $(shell git log --pretty=format:'%h' -n 1)
-# Check if we are in protected branch, if yes use `latest` as app version.
-# Else check if we are in a release tag, if yes use the tag as app version, else use `dev-sha` as app version
-APP_VERSION := $(shell if [ $(PROTECTED_BRANCH) = $(CURRENT_BRANCH) ]; then echo latest; else (git describe --abbrev=0 --exact-match --tags || echo dev-$(APP_COMMIT)) ; fi)
-
-# Get current date and format like: 2022-04-27 11:32
-BUILD_DATE  := $(shell date +%Y-%m-%d\ %H:%M)
-
-## General Configuration Variables
-# We don't need make's built-in rules.
-MAKEFLAGS     += --no-builtin-rules
-# Be pedantic about undefined variables.
-MAKEFLAGS     += --warn-undefined-variables
-# Set help as default target
-.DEFAULT_GOAL := help
 
 # ====================================================================================
 # Colors
