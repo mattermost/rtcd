@@ -308,6 +308,7 @@ else
 	$(DOCKER_IMAGE_GH_CLI) \
 	/bin/sh -c \
 	"cd /app && \
+	echo -n $(GITHUB_TOKEN) | gh auth login --with-token && \
 	gh release create $(APP_VERSION) --generate-notes $(GO_OUT_BIN_DIR)/*" || ${FAIL}
 endif
 	@$(OK) Generating github-release http://github.com/$(GITHUB_ORG)/$(GITHUB_REPO)/releases/tag/$(APP_VERSION) ...
