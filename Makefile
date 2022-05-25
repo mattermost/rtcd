@@ -39,7 +39,7 @@ DOCKER_FILE             += ./build/Dockerfile
 # Docker options to inherit for all docker run commands
 DOCKER_OPTS             += --rm -u $$(id -u):$$(id -g) --platform "linux/amd64"
 # Registry to upload images
-DOCKER_REGISTRY         += docker.io
+DOCKER_REGISTRY         ?= docker.io
 DOCKER_REGISTRY_REPO    += mattermost
 # Registry credentials
 DOCKER_USER             ?= user
