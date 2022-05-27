@@ -13,9 +13,9 @@ CURRENT_BRANCH   := $(shell git rev-parse --abbrev-ref HEAD)
 APP_NAME    := $(shell basename -s .git `git config --get remote.origin.url`)
 # Get current commit
 APP_COMMIT  := $(shell git log --pretty=format:'%h' -n 1)
-# Check if we are in protected branch, if yes use `latest` as app version.
-# Else check if we are in a release tag, if yes use the tag as app version, else use `dev-sha` as app version
-APP_VERSION := $(shell if [ $(PROTECTED_BRANCH) = $(CURRENT_BRANCH) ]; then echo latest; else (git describe --abbrev=0 --exact-match --tags || echo dev-$(APP_COMMIT)) ; fi)
+# Check if we are in protected branch, if yes use `protected_branch_name-sha` as app version.
+# Else check if we are in a release tag, if yes use the tag as app version, else use `dev-sha` as app version.
+APP_VERSION := $(shell if [ $(PROTECTED_BRANCH) = $(CURRENT_BRANCH) ]; then echo $(PROTECTED_BRANCH)-$(APP_COMMIT); else (git describe --abbrev=0 --exact-match --tags || echo dev-$(APP_COMMIT)) ; fi)
 
 # Get current date and format like: 2022-04-27 11:32
 BUILD_DATE  := $(shell date +%Y-%m-%d\ %H:%M)
@@ -40,7 +40,7 @@ DOCKER_FILE             += ./build/Dockerfile
 DOCKER_OPTS             += --rm -u $$(id -u):$$(id -g) --platform "linux/amd64"
 # Registry to upload images
 DOCKER_REGISTRY         ?= docker.io
-DOCKER_REGISTRY_REPO    += mattermost
+DOCKER_REGISTRY_REPO    ?= mattermost/${APP_NAME}-daily
 # Registry credentials
 DOCKER_USER             ?= user
 DOCKER_PASSWORD         ?= password
@@ -146,9 +146,16 @@ docker-build: ## to build the docker image
 .PHONY: docker-push
 docker-push: ## to push the docker image
 	@$(INFO) Pushing to registry...
-	$(AT)$(DOCKER) tag ${APP_NAME}:${APP_VERSION} $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION} || ${FAIL}
-	$(AT)$(DOCKER) push $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION} || ${FAIL}
-	@$(OK) Pushing to registry $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION}
+	$(AT)$(DOCKER) tag ${APP_NAME}:${APP_VERSION} $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}:${APP_VERSION} || ${FAIL}
+	$(AT)$(DOCKER) push $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}:${APP_VERSION} || ${FAIL}
+# if we are on a latest semver APP_VERSION tag, also push latest
+ifneq ($(shell echo $(APP_VERSION) | egrep '^v([0-9]+\.){0,2}(\*|[0-9]+)'),)
+  ifeq ($(shell git tag -l --sort=v:refname | tail -n1),$(APP_VERSION))
+	$(AT)$(DOCKER) tag ${APP_NAME}:${APP_VERSION} $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}:latest || ${FAIL}
+	$(AT)$(DOCKER) push $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}:latest || ${FAIL}
+  endif
+endif
+	@$(OK) Pushing to registry $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}:${APP_VERSION}
 
 .PHONY: docker-sign
 docker-sign: ## to sign the docker image
@@ -163,9 +170,9 @@ docker-sign: ## to sign the docker image
 	-c \
 	"echo Signing... && \
 	cosign login $(DOCKER_REGISTRY) -u ${DOCKER_USER} -p ${DOCKER_PASSWORD} && \
-	cosign sign --key cosign.key $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION}" || ${FAIL}
+	cosign sign --key cosign.key $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}:${APP_VERSION}" || ${FAIL}
 	$(AT)rm -f cosign.key || ${FAIL}
-	@$(OK) Signing the docker image: $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION}
+	@$(OK) Signing the docker image: $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}:${APP_VERSION}
 
 .PHONY: docker-verify
 docker-verify: ## to verify the docker image
@@ -177,9 +184,9 @@ docker-verify: ## to verify the docker image
         ${DOCKER_IMAGE_COSIGN} \
 	-c \
 	"echo Verifying... && \
-	cosign verify --key cosign_public.key $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION}" || ${FAIL}
+	cosign verify --key cosign_public.key $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}:${APP_VERSION}" || ${FAIL}
 	$(AT)rm -f cosign_public.key || ${FAIL}
-	@$(OK) Verifying the published docker image: $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}/${APP_NAME}:${APP_VERSION}
+	@$(OK) Verifying the published docker image: $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}:${APP_VERSION}
 
 .PHONY: docker-sbom
 docker-sbom: ## to print a sbom report
