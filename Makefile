@@ -126,13 +126,22 @@ help: ## to get help
 	awk 'BEGIN {FS = ":.*?## "}; {printf "make ${CYAN}%-30s${CNone} %s\n", $$1, $$2}'
 
 .PHONY: build
-build: go-build-docker ## to build all using a container
+build: go-build-docker ## to build
+
+.PHONY: release
+release: build github-release ## to build and release artifacts
+
+.PHONY: package
+package: docker-login docker-build docker-push ## to build, package and push the artifact to a container registry
+
+.PHONY: sign
+sign: docker-sign docker-verify ## to sign the artifact and perform verification
 
 .PHONY: lint
-lint: go-lint docker-lint ## to lint all
+lint: go-lint docker-lint ## to lint
 
 .PHONY: test
-test: go-test ## to test all
+test: go-test ## to test
 
 .PHONY: docker-build
 docker-build: ## to build the docker image
