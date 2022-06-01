@@ -15,7 +15,7 @@ APP_NAME    := $(shell basename -s .git `git config --get remote.origin.url`)
 APP_COMMIT  := $(shell git log --pretty=format:'%h' -n 1)
 # Check if we are in protected branch, if yes use `protected_branch_name-sha` as app version.
 # Else check if we are in a release tag, if yes use the tag as app version, else use `dev-sha` as app version.
-APP_VERSION := $(shell if [ $(PROTECTED_BRANCH) = $(CURRENT_BRANCH) ]; then echo $(PROTECTED_BRANCH)-$(APP_COMMIT); else (git describe --abbrev=0 --exact-match --tags || echo dev-$(APP_COMMIT)) ; fi)
+APP_VERSION := $(shell if [ $(PROTECTED_BRANCH) = $(CURRENT_BRANCH) ]; then echo $(PROTECTED_BRANCH)-$(APP_COMMIT); else (git describe --abbrev=0 --exact-match --tags  > /dev/null 2>&1 || echo dev-$(APP_COMMIT)) ; fi)
 
 # Get current date and format like: 2022-04-27 11:32
 BUILD_DATE  := $(shell date +%Y-%m-%d\ %H:%M)
@@ -126,13 +126,22 @@ help: ## to get help
 	awk 'BEGIN {FS = ":.*?## "}; {printf "make ${CYAN}%-30s${CNone} %s\n", $$1, $$2}'
 
 .PHONY: build
-build: go-build-docker ## to build all using a container
+build: go-build-docker ## to build
+
+.PHONY: release
+release: build github-release ## to build and release artifacts
+
+.PHONY: package
+package: docker-login docker-build docker-push ## to build, package and push the artifact to a container registry
+
+.PHONY: sign
+sign: docker-sign docker-verify ## to sign the artifact and perform verification
 
 .PHONY: lint
-lint: go-lint docker-lint ## to lint all
+lint: go-lint docker-lint ## to lint
 
 .PHONY: test
-test: go-test ## to test all
+test: go-test ## to test
 
 .PHONY: docker-build
 docker-build: ## to build the docker image
