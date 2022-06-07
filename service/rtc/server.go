@@ -40,6 +40,7 @@ type Server struct {
 
 	sendCh    chan Message
 	receiveCh chan Message
+	drainCh   chan struct{}
 
 	mut sync.RWMutex
 }
@@ -167,6 +168,21 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Stop() error {
+	var drainCh chan struct{}
+	s.mut.Lock()
+	if len(s.sessions) > 0 {
+		s.log.Info("rtc: sessions ongoing, draining before exiting")
+		drainCh = make(chan struct{})
+		s.drainCh = drainCh
+	} else {
+		s.log.Debug("rtc: no sessions ongoing, exiting")
+	}
+	s.mut.Unlock()
+
+	if drainCh != nil {
+		<-drainCh
+	}
+
 	if s.udpMux != nil {
 		if err := s.udpMux.Close(); err != nil {
 			return fmt.Errorf("failed to close udp mux: %w", err)
