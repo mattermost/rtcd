@@ -8,4 +8,5 @@ Please join the [Project: rtcd](https://community.mattermost.com/core/channels/p
 
 ## License
 
-[`rtcd`](https://github.com/mattermost/rtcd) is licensed under [Apache 2.0](LICENSE).
+See [LICENSE.txt](LICENSE.txt) for license rights and limitations.
+
