@@ -367,6 +367,13 @@ func (s *Server) CloseSession(sessionID string) error {
 	s.mut.Lock()
 	cfg, ok := s.sessions[sessionID]
 	delete(s.sessions, sessionID)
+
+	if len(s.sessions) == 0 && s.drainCh != nil {
+		s.log.Debug("closing drain channel")
+		close(s.drainCh)
+		s.drainCh = nil
+	}
+
 	s.mut.Unlock()
 	if !ok {
 		return nil

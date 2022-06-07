@@ -6,6 +6,7 @@ package rtc
 import (
 	"net"
 	"testing"
+	"time"
 
 	"github.com/mattermost/rtcd/service/perf"
 
@@ -128,5 +129,60 @@ func TestStartServer(t *testing.T) {
 			require.NoError(t, err)
 		}()
 		require.NoError(t, err)
+	})
+}
+
+func TestDraining(t *testing.T) {
+	log, err := mlog.NewLogger()
+	require.NoError(t, err)
+	defer func() {
+		err := log.Shutdown()
+		require.NoError(t, err)
+	}()
+
+	cfg := ServerConfig{
+		ICEPortUDP: 30433,
+	}
+
+	metrics := perf.NewMetrics("rtcd", nil)
+	require.NotNil(t, metrics)
+
+	t.Run("no session", func(t *testing.T) {
+		s, err := NewServer(cfg, log, metrics)
+		require.NoError(t, err)
+		require.NotNil(t, s)
+
+		err = s.Start()
+		require.NoError(t, err)
+
+		err = s.Stop()
+		require.NoError(t, err)
+	})
+
+	t.Run("sessions ongoing", func(t *testing.T) {
+		s, err := NewServer(cfg, log, metrics)
+		require.NoError(t, err)
+		require.NotNil(t, s)
+
+		err = s.Start()
+		require.NoError(t, err)
+
+		s.mut.Lock()
+		s.sessions["test"] = SessionConfig{}
+		s.sessions["test1"] = SessionConfig{}
+		s.mut.Unlock()
+
+		go func() {
+			time.Sleep(time.Second * 2)
+			_ = s.CloseSession("test")
+			_ = s.CloseSession("test1")
+		}()
+
+		beforeStop := time.Now()
+
+		err = s.Stop()
+		require.NoError(t, err)
+
+		require.True(t, time.Since(beforeStop) > time.Second)
 	})
 }
