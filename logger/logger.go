@@ -80,7 +80,5 @@ func New(config Config) (*mlog.Logger, error) {
 		return nil, err
 	}
 
-	logger.RedirectStdLog(mlog.LvlStdLog)
-
 	return logger, nil
 }

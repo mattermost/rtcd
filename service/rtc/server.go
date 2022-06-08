@@ -83,7 +83,7 @@ func (s *Server) ReceiveCh() <-chan Message {
 
 func (s *Server) Start() error {
 	if s.cfg.ICEHostOverride == "" && len(s.cfg.ICEServers) > 0 {
-		addr, err := getPublicIP(s.cfg.ICEPortUDP, s.cfg.ICEServers)
+		addr, err := getPublicIP(s.cfg.ICEPortUDP, s.cfg.ICEServers.getSTUN())
 		if err != nil {
 			return fmt.Errorf("failed to get public IP address: %w", err)
 		}
