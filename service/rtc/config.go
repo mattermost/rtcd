@@ -4,6 +4,7 @@
 package rtc
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -103,6 +104,24 @@ func (s ICEServers) getSTUN() string {
 		}
 	}
 	return ""
+}
+
+func (s *ICEServers) Decode(value string) error {
+	fmt.Println(value)
+
+	var urls []string
+	err := json.Unmarshal([]byte(value), &urls)
+	if err == nil {
+		iceServers := []ICEServerConfig{
+			{
+				URLs: urls,
+			},
+		}
+		*s = iceServers
+		return nil
+	}
+
+	return json.Unmarshal([]byte(value), s)
 }
 
 func (s *ICEServers) UnmarshalTOML(data interface{}) error {
