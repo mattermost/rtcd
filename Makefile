@@ -141,7 +141,7 @@ test: go-test ## to test
 
 .PHONY: docker-build
 docker-build: ## to build the docker image
-	@$(INFO) Performing Docker build ${APP_NAME}:${APP_VERSION}...
+	@$(INFO) Performing Docker build ${APP_NAME}:${APP_VERSION}
 	$(AT)$(DOCKER) build \
 	--build-arg GO_IMAGE=${DOCKER_IMAGE_GO} \
 	-f ${DOCKER_FILE} . \
