@@ -104,3 +104,37 @@ func (s ICEServers) getSTUN() string {
 	}
 	return ""
 }
+
+func (s *ICEServers) UnmarshalTOML(data interface{}) error {
+	d, ok := data.([]interface{})
+	if !ok {
+		return fmt.Errorf("invalid type %T", data)
+	}
+
+	var iceServers []ICEServerConfig
+	for _, obj := range d {
+		var server ICEServerConfig
+
+		switch t := obj.(type) {
+		case string:
+			server.URLs = append(server.URLs, obj.(string))
+		case map[string]interface{}:
+			m := obj.(map[string]interface{})
+			urls, _ := m["urls"].([]interface{})
+			for _, u := range urls {
+				uVal, _ := u.(string)
+				server.URLs = append(server.URLs, uVal)
+			}
+			server.Username, _ = m["username"].(string)
+			server.Credential, _ = m["credential"].(string)
+		default:
+			return fmt.Errorf("unknown type %T", t)
+		}
+
+		iceServers = append(iceServers, server)
+	}
+
+	*s = iceServers
+
+	return nil
+}
