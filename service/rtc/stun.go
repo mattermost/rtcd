@@ -12,7 +12,11 @@ import (
 	"github.com/pion/stun"
 )
 
-func getPublicIP(port int, iceServers []string) (string, error) {
+func getPublicIP(port int, stunURL string) (string, error) {
+	if stunURL == "" {
+		return "", fmt.Errorf("no STUN server URL was provided")
+	}
+
 	conn, err := net.ListenUDP("udp4", &net.UDPAddr{
 		Port: port,
 	})
@@ -21,15 +25,6 @@ func getPublicIP(port int, iceServers []string) (string, error) {
 	}
 	defer conn.Close()
 
-	var stunURL string
-	for _, u := range iceServers {
-		if strings.HasPrefix(u, "stun:") {
-			stunURL = u
-		}
-	}
-	if stunURL == "" {
-		return "", fmt.Errorf("no STUN server URL was found")
-	}
 	serverURL := stunURL[strings.Index(stunURL, ":")+1:]
 	serverAddr, err := net.ResolveUDPAddr("udp", serverURL)
 	if err != nil {

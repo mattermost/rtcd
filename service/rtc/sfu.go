@@ -90,12 +90,16 @@ func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, error) {
 func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 	s.metrics.IncRTCSessions(cfg.GroupID, cfg.CallID)
 
+	iceServers := make([]webrtc.ICEServer, len(s.cfg.ICEServers))
+	for _, cfg := range s.cfg.ICEServers {
+		iceServers = append(iceServers, webrtc.ICEServer{
+			URLs:       cfg.URLs,
+			Username:   cfg.Username,
+			Credential: cfg.Credential,
+		})
+	}
 	peerConnConfig := webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{
-			{
-				URLs: s.cfg.ICEServers,
-			},
-		},
+		ICEServers:   iceServers,
 		SDPSemantics: webrtc.SDPSemanticsUnifiedPlanWithFallback,
 	}
 

@@ -87,3 +87,98 @@ func TestSessionConfigIsValid(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+func TestGetSTUN(t *testing.T) {
+	t.Run("empty struct", func(t *testing.T) {
+		var servers ICEServers
+		url := servers.getSTUN()
+		require.Empty(t, url)
+	})
+
+	t.Run("no STUN", func(t *testing.T) {
+		servers := ICEServers{
+			ICEServerConfig{
+				URLs: []string{"turn:localhost"},
+			},
+			ICEServerConfig{
+				URLs: []string{"turn:localhost"},
+			},
+		}
+		url := servers.getSTUN()
+		require.Empty(t, url)
+	})
+
+	t.Run("single STUN", func(t *testing.T) {
+		servers := ICEServers{
+			ICEServerConfig{
+				URLs: []string{"turn:localhost"},
+			},
+			ICEServerConfig{
+				URLs: []string{"stun:localhost"},
+			},
+		}
+		url := servers.getSTUN()
+		require.Equal(t, "stun:localhost", url)
+	})
+
+	t.Run("multiple STUN", func(t *testing.T) {
+		servers := ICEServers{
+			ICEServerConfig{
+				URLs: []string{"turn:localhost"},
+			},
+			ICEServerConfig{
+				URLs: []string{"stun:stun1.localhost", "stun:stun2.localhost"},
+			},
+		}
+		url := servers.getSTUN()
+		require.Equal(t, "stun:stun1.localhost", url)
+	})
+}
+
+func TestICEServerConfigIsValid(t *testing.T) {
+	t.Run("empty struct", func(t *testing.T) {
+		var cfg ICEServerConfig
+		err := cfg.IsValid()
+		require.Error(t, err)
+	})
+
+	t.Run("empty URLS", func(t *testing.T) {
+		var cfg ICEServerConfig
+		cfg.URLs = []string{}
+		err := cfg.IsValid()
+		require.Error(t, err)
+		require.Equal(t, "invalid empty URLs", err.Error())
+	})
+
+	t.Run("empty URL", func(t *testing.T) {
+		cfg := ICEServerConfig{
+			URLs: []string{
+				"",
+			},
+		}
+		err := cfg.IsValid()
+		require.Error(t, err)
+		require.Equal(t, "invalid empty URL", err.Error())
+	})
+
+	t.Run("invalid server", func(t *testing.T) {
+		cfg := ICEServerConfig{
+			URLs: []string{
+				"localhost:3478",
+			},
+		}
+		err := cfg.IsValid()
+		require.Error(t, err)
+		require.Equal(t, "URL is not a valid STUN/TURN server", err.Error())
+	})
+
+	t.Run("valid", func(t *testing.T) {
+		cfg := ICEServerConfig{
+			URLs: []string{
+				"stun:localhost:3478",
+			},
+		}
+		err := cfg.IsValid()
+		require.NoError(t, err)
+	})
+}
