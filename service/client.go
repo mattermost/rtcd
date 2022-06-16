@@ -267,6 +267,12 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) sendError(err error) {
+	c.mut.RLock()
+	defer c.mut.RUnlock()
+	if c.closed {
+		return
+	}
+
 	select {
 	case c.errorCh <- err:
 	default:
