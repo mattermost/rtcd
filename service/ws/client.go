@@ -5,6 +5,7 @@ package ws
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -42,8 +43,8 @@ func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
 	c := &Client{
 		cfg:       cfg,
 		sendCh:    make(chan Message, sendChSize),
-		receiveCh: make(chan Message, receiveChSize),
-		errorCh:   make(chan error),
+		receiveCh: make(chan Message, ReceiveChSize),
+		errorCh:   make(chan error, 32),
 	}
 
 	for _, opt := range opts {
@@ -149,6 +150,7 @@ func (c *Client) sendError(err error) {
 	select {
 	case c.errorCh <- err:
 	default:
+		log.Printf("failed to send error: channel is full: %s", err.Error())
 	}
 }
 
