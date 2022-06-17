@@ -77,6 +77,7 @@ func (c Config) IsValid() error {
 func (c *Config) SetDefaults() {
 	c.API.HTTP.ListenAddress = ":8045"
 	c.RTC.ICEPortUDP = 8443
+	c.RTC.TURNCredentialsExpirationMinutes = 1440
 	c.Store.DataSource = "/tmp/rtcd_db"
 	c.Logger.EnableConsole = true
 	c.Logger.ConsoleJSON = false
