@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	sendChSize    = 256
-	receiveChSize = 256
+	ReceiveChSize = 512
+	sendChSize    = ReceiveChSize
 	writeWaitTime = 10 * time.Second
 )
 
@@ -45,7 +45,7 @@ func NewServer(cfg ServerConfig, log mlog.LoggerIFace, opts ...ServerOption) (*S
 		log:       log,
 		conns:     make(map[string]*conn),
 		sendCh:    make(chan Message, sendChSize),
-		receiveCh: make(chan Message, receiveChSize),
+		receiveCh: make(chan Message, ReceiveChSize),
 	}
 
 	for _, opt := range opts {

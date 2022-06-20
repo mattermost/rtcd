@@ -18,7 +18,6 @@ import (
 )
 
 const (
-	msgChSize                = 64
 	maxReconnectInterval     = 30 * time.Second
 	defaultReconnectInterval = 2 * time.Second
 )
@@ -46,8 +45,8 @@ func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 	c.cfg = &cfg
-	c.receiveCh = make(chan ClientMessage, msgChSize)
-	c.errorCh = make(chan error)
+	c.receiveCh = make(chan ClientMessage, ws.ReceiveChSize)
+	c.errorCh = make(chan error, 32)
 
 	for _, opt := range opts {
 		if err := opt(&c); err != nil {
@@ -268,10 +267,16 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) sendError(err error) {
+	c.mut.RLock()
+	defer c.mut.RUnlock()
+	if c.closed {
+		return
+	}
+
 	select {
 	case c.errorCh <- err:
 	default:
-		log.Printf("failed to send error: channel is full")
+		log.Printf("failed to send error: channel is full: %s", err.Error())
 	}
 }
 
