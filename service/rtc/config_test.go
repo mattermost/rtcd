@@ -182,6 +182,18 @@ func TestICEServerConfigIsValid(t *testing.T) {
 		require.Equal(t, "URL is not a valid STUN/TURN server", err.Error())
 	})
 
+	t.Run("partially valid", func(t *testing.T) {
+		cfg := ICEServerConfig{
+			URLs: []string{
+				"turn:turn1.localhost:3478",
+				"turn2.localhost:3478",
+			},
+		}
+		err := cfg.IsValid()
+		require.Error(t, err)
+		require.Equal(t, "URL is not a valid STUN/TURN server", err.Error())
+	})
+
 	t.Run("valid", func(t *testing.T) {
 		cfg := ICEServerConfig{
 			URLs: []string{
