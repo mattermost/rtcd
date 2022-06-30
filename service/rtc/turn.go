@@ -11,6 +11,29 @@ import (
 	"time"
 )
 
+const MaxTURNCredentialsExpiration = 7 * 24 * 60 // 1 week in minutes
+
+type TURNConfig struct {
+	// The secret key used to generate TURN short-lived authentication
+	// credentials.
+	StaticAuthSecret string `toml:"static_auth_secret"`
+	// The number of minutes that the generated TURN credentials will be valid for.
+	CredentialsExpirationMinutes int `toml:"credentials_expiration_minutes"`
+}
+
+func (c TURNConfig) IsValid() error {
+	if c.StaticAuthSecret != "" {
+		if c.CredentialsExpirationMinutes <= 0 {
+			return fmt.Errorf("invalid CredentialsExpirationMinutes value: should be a positive number")
+		}
+		if c.CredentialsExpirationMinutes >= MaxTURNCredentialsExpiration {
+			return fmt.Errorf("invalid CredentialsExpirationMinutes value: should be less than 1 week")
+		}
+	}
+
+	return nil
+}
+
 func genTURNCredentials(username, secret string, expirationTS int64) (string, string, error) {
 	if username == "" {
 		return "", "", fmt.Errorf("username should not be empty")
@@ -22,6 +45,10 @@ func genTURNCredentials(username, secret string, expirationTS int64) (string, st
 
 	if expirationTS <= 0 {
 		return "", "", fmt.Errorf("expirationTS should be a positive number")
+	}
+
+	if expirationTS > time.Now().Add(MaxTURNCredentialsExpiration*time.Minute).Unix() {
+		return "", "", fmt.Errorf("expirationTS cannot be more than a week into the future")
 	}
 
 	h := hmac.New(sha1.New, []byte(secret))

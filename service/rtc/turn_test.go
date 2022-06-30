@@ -35,6 +35,14 @@ func TestGenTURNCredentials(t *testing.T) {
 		require.Empty(t, password)
 	})
 
+	t.Run("expiration > 1 week", func(t *testing.T) {
+		ts := time.Now().Add(20000 * time.Minute).Unix()
+		username, password, err := genTURNCredentials("username", "secret", ts)
+		require.EqualError(t, err, "expirationTS cannot be more than a week into the future")
+		require.Empty(t, username)
+		require.Empty(t, password)
+	})
+
 	t.Run("valid", func(t *testing.T) {
 		ts := time.Now().Add(30 * time.Minute).Unix()
 		username, password, err := genTURNCredentials("username", "secret", ts)

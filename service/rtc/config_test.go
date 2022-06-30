@@ -31,16 +31,21 @@ func TestServerConfigIsValid(t *testing.T) {
 	t.Run("invalid TURNCredentialsExpirationMinutes", func(t *testing.T) {
 		var cfg ServerConfig
 		cfg.ICEPortUDP = 8443
-		cfg.TURNStaticAuthSecret = "secret"
+		cfg.TURNConfig.StaticAuthSecret = "secret"
 		err := cfg.IsValid()
 		require.Error(t, err)
-		require.Equal(t, "invalid TURNCredentialsExpirationMinutes value: should be a positive number", err.Error())
+		require.Equal(t, "invalid TURNConfig: invalid CredentialsExpirationMinutes value: should be a positive number", err.Error())
+
+		cfg.TURNConfig.CredentialsExpirationMinutes = 20000
+		err = cfg.IsValid()
+		require.Error(t, err)
+		require.Equal(t, "invalid TURNConfig: invalid CredentialsExpirationMinutes value: should be less than 1 week", err.Error())
 	})
 
 	t.Run("valid", func(t *testing.T) {
 		var cfg ServerConfig
 		cfg.ICEPortUDP = 8443
-		cfg.TURNCredentialsExpirationMinutes = 1440
+		cfg.TURNConfig.CredentialsExpirationMinutes = 1440
 		err := cfg.IsValid()
 		require.NoError(t, err)
 	})

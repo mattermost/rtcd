@@ -93,12 +93,12 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 	iceServers := make([]webrtc.ICEServer, 0, len(s.cfg.ICEServers))
 	for _, iceCfg := range s.cfg.ICEServers {
 		// generating short-lived TURN credentials if needed.
-		if iceCfg.IsTURN() && s.cfg.TURNStaticAuthSecret == "" {
+		if iceCfg.IsTURN() && s.cfg.TURNConfig.StaticAuthSecret == "" {
 			continue
 		}
 		if iceCfg.IsTURN() && iceCfg.Username == "" && iceCfg.Credential == "" {
-			ts := time.Now().Add(time.Duration(s.cfg.TURNCredentialsExpirationMinutes) * time.Minute).Unix()
-			username, password, err := genTURNCredentials(cfg.SessionID, s.cfg.TURNStaticAuthSecret, ts)
+			ts := time.Now().Add(time.Duration(s.cfg.TURNConfig.CredentialsExpirationMinutes) * time.Minute).Unix()
+			username, password, err := genTURNCredentials(cfg.SessionID, s.cfg.TURNConfig.StaticAuthSecret, ts)
 			if err != nil {
 				s.log.Error("failed to generate TURN credentials", mlog.Err(err))
 				continue

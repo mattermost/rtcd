@@ -17,11 +17,7 @@ type ServerConfig struct {
 	ICEHostOverride string `toml:"ice_host_override"`
 	// A list of ICE server (STUN/TURN) configurations to use.
 	ICEServers ICEServers `toml:"ice_servers"`
-	// The secret key used to generate TURN short-lived authentication
-	// credentials.
-	TURNStaticAuthSecret string
-	// The number of minutes that the generated TURN credentials will be valid for.
-	TURNCredentialsExpirationMinutes int
+	TURNConfig TURNConfig `toml:"turn"`
 }
 
 func (c ServerConfig) IsValid() error {
@@ -33,8 +29,8 @@ func (c ServerConfig) IsValid() error {
 		return fmt.Errorf("invalid ICEServers value: %w", err)
 	}
 
-	if c.TURNStaticAuthSecret != "" && c.TURNCredentialsExpirationMinutes <= 0 {
-		return fmt.Errorf("invalid TURNCredentialsExpirationMinutes value: should be a positive number")
+	if err := c.TURNConfig.IsValid(); err != nil {
+		return fmt.Errorf("invalid TURNConfig: %w", err)
 	}
 
 	return nil
