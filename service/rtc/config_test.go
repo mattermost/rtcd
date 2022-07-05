@@ -28,9 +28,24 @@ func TestServerConfigIsValid(t *testing.T) {
 		require.Equal(t, "invalid ICEPortUDP value: 65000 is not in allowed range [80, 49151]", err.Error())
 	})
 
+	t.Run("invalid TURNCredentialsExpirationMinutes", func(t *testing.T) {
+		var cfg ServerConfig
+		cfg.ICEPortUDP = 8443
+		cfg.TURNConfig.StaticAuthSecret = "secret"
+		err := cfg.IsValid()
+		require.Error(t, err)
+		require.Equal(t, "invalid TURNConfig: invalid CredentialsExpirationMinutes value: should be a positive number", err.Error())
+
+		cfg.TURNConfig.CredentialsExpirationMinutes = 20000
+		err = cfg.IsValid()
+		require.Error(t, err)
+		require.Equal(t, "invalid TURNConfig: invalid CredentialsExpirationMinutes value: should be less than 1 week", err.Error())
+	})
+
 	t.Run("valid", func(t *testing.T) {
 		var cfg ServerConfig
 		cfg.ICEPortUDP = 8443
+		cfg.TURNConfig.CredentialsExpirationMinutes = 1440
 		err := cfg.IsValid()
 		require.NoError(t, err)
 	})
@@ -165,6 +180,18 @@ func TestICEServerConfigIsValid(t *testing.T) {
 		cfg := ICEServerConfig{
 			URLs: []string{
 				"localhost:3478",
+			},
+		}
+		err := cfg.IsValid()
+		require.Error(t, err)
+		require.Equal(t, "URL is not a valid STUN/TURN server", err.Error())
+	})
+
+	t.Run("partially valid", func(t *testing.T) {
+		cfg := ICEServerConfig{
+			URLs: []string{
+				"turn:turn1.localhost:3478",
+				"turn2.localhost:3478",
 			},
 		}
 		err := cfg.IsValid()

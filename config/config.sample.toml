@@ -11,6 +11,8 @@ security.admin_secret_key = ""
 ice_port_udp = 8443
 ice_host_override = ""
 ice_servers = []
+turn.static_auth_secret = ""
+turn.credentials_expiration_minutes = 1440
 
 [store]
 data_source = "/tmp/rtcd_db"

@@ -17,6 +17,7 @@ type ServerConfig struct {
 	ICEHostOverride string `toml:"ice_host_override"`
 	// A list of ICE server (STUN/TURN) configurations to use.
 	ICEServers ICEServers `toml:"ice_servers"`
+	TURNConfig TURNConfig `toml:"turn"`
 }
 
 func (c ServerConfig) IsValid() error {
@@ -26,6 +27,10 @@ func (c ServerConfig) IsValid() error {
 
 	if err := c.ICEServers.IsValid(); err != nil {
 		return fmt.Errorf("invalid ICEServers value: %w", err)
+	}
+
+	if err := c.TURNConfig.IsValid(); err != nil {
+		return fmt.Errorf("invalid TURNConfig: %w", err)
 	}
 
 	return nil
@@ -79,11 +84,29 @@ func (c ICEServerConfig) IsValid() error {
 			return fmt.Errorf("invalid empty URL")
 		}
 
-		if !strings.HasPrefix(u, "stun:") && !strings.HasPrefix(u, "turn:") {
+		if !c.IsSTUN() && !c.IsTURN() {
 			return fmt.Errorf("URL is not a valid STUN/TURN server")
 		}
 	}
 	return nil
+}
+
+func (c ICEServerConfig) IsTURN() bool {
+	for _, u := range c.URLs {
+		if !strings.HasPrefix(u, "turn:") {
+			return false
+		}
+	}
+	return len(c.URLs) > 0
+}
+
+func (c ICEServerConfig) IsSTUN() bool {
+	for _, u := range c.URLs {
+		if !strings.HasPrefix(u, "stun:") {
+			return false
+		}
+	}
+	return len(c.URLs) > 0
 }
 
 func (s ICEServers) IsValid() error {
@@ -97,10 +120,8 @@ func (s ICEServers) IsValid() error {
 
 func (s ICEServers) getSTUN() string {
 	for _, cfg := range s {
-		for _, u := range cfg.URLs {
-			if strings.HasPrefix(u, "stun:") {
-				return u
-			}
+		if cfg.IsSTUN() {
+			return cfg.URLs[0]
 		}
 	}
 	return ""

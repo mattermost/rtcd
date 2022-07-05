@@ -63,6 +63,10 @@ func (c Config) IsValid() error {
 		return err
 	}
 
+	if err := c.RTC.IsValid(); err != nil {
+		return err
+	}
+
 	if err := c.Store.IsValid(); err != nil {
 		return err
 	}
@@ -77,6 +81,7 @@ func (c Config) IsValid() error {
 func (c *Config) SetDefaults() {
 	c.API.HTTP.ListenAddress = ":8045"
 	c.RTC.ICEPortUDP = 8443
+	c.RTC.TURNConfig.CredentialsExpirationMinutes = 1440
 	c.Store.DataSource = "/tmp/rtcd_db"
 	c.Logger.EnableConsole = true
 	c.Logger.ConsoleJSON = false
