@@ -290,6 +290,22 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 		s.mut.Unlock()
 
 		return nil
+	case ClientMessageReconnect:
+		data, ok := cm.Data.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected data type: %T", cm.Data)
+		}
+		sessionID := data["sessionID"]
+		if sessionID == "" {
+			return fmt.Errorf("missing sessionID in client message")
+		}
+
+		s.log.Debug("reconnect message, updating connMap", mlog.String("sessionID", sessionID))
+		s.mut.Lock()
+		s.connMap[sessionID] = msg.ConnID
+		s.mut.Unlock()
+
+		return nil
 	case ClientMessageLeave:
 		data, ok := cm.Data.(map[string]string)
 		if !ok {

@@ -17,10 +17,11 @@ type ClientMessage struct {
 }
 
 const (
-	ClientMessageJoin  = "join"
-	ClientMessageLeave = "leave"
-	ClientMessageRTC   = "rtc"
-	ClientMessageHello = "hello"
+	ClientMessageJoin      = "join"
+	ClientMessageLeave     = "leave"
+	ClientMessageRTC       = "rtc"
+	ClientMessageHello     = "hello"
+	ClientMessageReconnect = "reconnect"
 )
 
 var _ msgpack.CustomEncoder = (*ClientMessage)(nil)
@@ -39,7 +40,7 @@ func (cm *ClientMessage) DecodeMsgpack(dec *msgpack.Decoder) error {
 	cm.Type = msgType
 
 	switch cm.Type {
-	case ClientMessageJoin, ClientMessageLeave, ClientMessageHello:
+	case ClientMessageJoin, ClientMessageLeave, ClientMessageHello, ClientMessageReconnect:
 		data, err := dec.DecodeTypedMap()
 		if err != nil {
 			return fmt.Errorf("failed to decode msg.Data: %w", err)
