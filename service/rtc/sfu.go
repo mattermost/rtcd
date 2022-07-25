@@ -367,6 +367,9 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		case <-time.After(signalingTimeout):
 			s.log.Error("timed out signaling", mlog.Any("sessionCfg", us.cfg))
 			s.metrics.IncRTCErrors(cfg.GroupID, "signaling")
+			if err := s.CloseSession(cfg.SessionID); err != nil {
+				s.log.Error("failed to close session", mlog.Any("sessionCfg", us.cfg))
+			}
 			return
 		}
 
