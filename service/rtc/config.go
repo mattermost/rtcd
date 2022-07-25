@@ -93,7 +93,7 @@ func (c ICEServerConfig) IsValid() error {
 
 func (c ICEServerConfig) IsTURN() bool {
 	for _, u := range c.URLs {
-		if !strings.HasPrefix(u, "turn:") {
+		if !strings.HasPrefix(u, "turn:") && !strings.HasPrefix(u, "turns:") {
 			return false
 		}
 	}
@@ -102,7 +102,7 @@ func (c ICEServerConfig) IsTURN() bool {
 
 func (c ICEServerConfig) IsSTUN() bool {
 	for _, u := range c.URLs {
-		if !strings.HasPrefix(u, "stun:") {
+		if !strings.HasPrefix(u, "stun:") && !strings.HasPrefix(u, "stuns:") {
 			return false
 		}
 	}

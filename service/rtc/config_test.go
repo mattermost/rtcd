@@ -142,11 +142,11 @@ func TestGetSTUN(t *testing.T) {
 				URLs: []string{"turn:localhost"},
 			},
 			ICEServerConfig{
-				URLs: []string{"stun:stun1.localhost", "stun:stun2.localhost"},
+				URLs: []string{"stuns:stun1.localhost", "stun:stun2.localhost"},
 			},
 		}
 		url := servers.getSTUN()
-		require.Equal(t, "stun:stun1.localhost", url)
+		require.Equal(t, "stuns:stun1.localhost", url)
 	})
 }
 
@@ -203,6 +203,16 @@ func TestICEServerConfigIsValid(t *testing.T) {
 		cfg := ICEServerConfig{
 			URLs: []string{
 				"stun:localhost:3478",
+			},
+		}
+		err := cfg.IsValid()
+		require.NoError(t, err)
+	})
+
+	t.Run("valid, secured", func(t *testing.T) {
+		cfg := ICEServerConfig{
+			URLs: []string{
+				"turns:localhost:3478",
 			},
 		}
 		err := cfg.IsValid()
