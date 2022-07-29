@@ -9,7 +9,7 @@ http.tls.cert_file = ""
 http.tls.cert_key = ""
 # A boolean controlling whether clients are allowed to self register.
 # If rtcd sits in the internal (private) network this can be safely
-# turn on to avoid the extra complexity of setting up credentials.
+# turned on to avoid the extra complexity of setting up credentials.
 security.allow_self_registration = false
 # A boolean controlling whether a superuser client should be allowed.
 # The admin client can be used to generate the aforementioned crendetials.
