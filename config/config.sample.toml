@@ -8,7 +8,7 @@ http.tls.cert_file = ""
 # A path to the certificate key used to serve the HTTP API.
 http.tls.cert_key = ""
 # A boolean controlling whether clients are allowed to self register.
-# Depending on whether rtcd sits in the internal (private) network this can be safely
+# If rtcd sits in the internal (private) network this can be safely
 # turn on to avoid the extra complexity of setting up credentials.
 security.allow_self_registration = false
 # A boolean controlling whether a superuser client should be allowed.
