@@ -1,29 +1,63 @@
 [api]
+# The address and port to which the HTTP (and WebSocket) API server will be listening on.
 http.listen_address = ":8045"
+# A boolean controlling whether the API should be served on a TLS secure connection.
 http.tls.enable = false
+# A path to the certificate file used to serve the HTTP API.
 http.tls.cert_file = ""
+# A path to the certificate key used to serve the HTTP API.
 http.tls.cert_key = ""
+# A boolean controlling whether clients are allowed to self register.
+# If rtcd sits in the internal (private) network this can be safely
+# turned on to avoid the extra complexity of setting up credentials.
 security.allow_self_registration = false
+# A boolean controlling whether a superuser client should be allowed.
+# The admin client can be used to generate the aforementioned crendetials.
+# Example:
+#   curl -H 'Authorization: Basic $(echo -n ':admin_secret_key' | base64)' \
+#   http://localhost:8045/register -d '{"clientID": "clientA", "authKey": "Ey4-H_BJA00_TVByPi8DozE12ekN3S7A"}'
 security.enable_admin = false
+# A key used to authenticate as the admin client.
 security.admin_secret_key = ""
 
 [rtc]
+# The UDP port used to route all the media (audio/screen/video tracks).
 ice_port_udp = 8443
+# An optional hostname used to override the default value. By default, the
+# service will try to guess its own public IP through STUN (if configured).
+# Depending on the network setup, it may be necessary to set an override. 
+# This is the host that gets advertised to clients and that will be used to connect them to calls.
 ice_host_override = ""
+# A list of ICE servers (STUN/TURN) to be used by the service. It supports
+# advanced configurations.
+# Example
+# ice_servers = [{urls = ["stun:localhost:3478"], username = "test", credential= "test"},
+# {urls = ["turn:localhost:3478"], username = "username", credential = "password"}]
 ice_servers = []
+# An optional static secret used to generate short-lived credentials for TURN servers.
 turn.static_auth_secret = ""
+# The expiration, in minutes, of the short-lived credentials generated for TURN servers.
 turn.credentials_expiration_minutes = 1440
 
 [store]
+# A path to a directory the service will use to store persistent data such as registered client IDs and hashed credentials.
 data_source = "/tmp/rtcd_db"
 
 [logger]
+# A boolean controlling whether to log to the console.
 enable_console = true
+# A boolean controlling whether to use the JSON format for logging to the console.
 console_json = false
+# The logging level for the console.
 console_level = "INFO"
+# A boolean controlling whether to log to a file.
 enable_file = true
+# A boolean controlling whether to use the JSON format for logging to file
 file_json = true
+# The logging level for the file.
 file_level = "DEBUG"
+# The path to the log file.
 file_location = "rtcd.log"
+# A boolean controlling whether to display colors when logging to the console.
 enable_color = true
 
