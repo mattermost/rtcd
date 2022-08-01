@@ -13,11 +13,7 @@ import (
 
 func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) (clientID string, code int, err error) {
 	defer func() {
-		data := &httpData{
-			reqData: map[string]string{},
-			resData: map[string]string{},
-		}
-
+		data := newHTTPData()
 		data.code = code
 		if err != nil {
 			data.err = err.Error()
@@ -54,10 +50,7 @@ func (s *Service) registerClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := &httpData{
-		reqData: map[string]string{},
-		resData: map[string]string{},
-	}
+	data := newHTTPData()
 	defer s.httpAudit("registerClient", data, w, r)
 
 	if !s.cfg.API.Security.AllowSelfRegistration {
@@ -94,10 +87,7 @@ func (s *Service) unregisterClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := &httpData{
-		reqData: map[string]string{},
-		resData: map[string]string{},
-	}
+	data := newHTTPData()
 	defer s.httpAudit("unregisterClient", data, w, r)
 
 	_, code, err := s.authHandler(w, r)

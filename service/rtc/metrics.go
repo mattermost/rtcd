@@ -4,8 +4,10 @@
 package rtc
 
 type Metrics interface {
-	IncRTCSessions(groupID string, callID string)
-	DecRTCSessions(groupID string, callID string)
+	IncRTCSessions(groupID string)
+	DecRTCSessions(groupID string)
+	IncRTCCalls(groupID string)
+	DecRTCCalls(groupID string)
 	IncRTCConnState(state string)
 	IncRTPPackets(direction, trackType string)
 	AddRTPPacketBytes(direction, trackType string, value int)
