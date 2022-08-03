@@ -22,6 +22,7 @@ const (
 	ClientMessageRTC       = "rtc"
 	ClientMessageHello     = "hello"
 	ClientMessageReconnect = "reconnect"
+	ClientMessageClose     = "close"
 )
 
 var _ msgpack.CustomEncoder = (*ClientMessage)(nil)
@@ -40,7 +41,7 @@ func (cm *ClientMessage) DecodeMsgpack(dec *msgpack.Decoder) error {
 	cm.Type = msgType
 
 	switch cm.Type {
-	case ClientMessageJoin, ClientMessageLeave, ClientMessageHello, ClientMessageReconnect:
+	case ClientMessageJoin, ClientMessageLeave, ClientMessageHello, ClientMessageReconnect, ClientMessageClose:
 		data, err := dec.DecodeTypedMap()
 		if err != nil {
 			return fmt.Errorf("failed to decode msg.Data: %w", err)
@@ -68,6 +69,15 @@ func NewClientMessage(msgType string, data interface{}) *ClientMessage {
 		Type: msgType,
 		Data: data,
 	}
+}
+
+func NewPackedClientMessage(msgType string, data interface{}) ([]byte, error) {
+	cm := NewClientMessage(msgType, data)
+	packed, err := cm.Pack()
+	if err != nil {
+		return nil, fmt.Errorf("failed to pack client message: %s", err)
+	}
+	return packed, nil
 }
 
 func (cm *ClientMessage) Pack() ([]byte, error) {

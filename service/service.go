@@ -120,25 +120,16 @@ func (s *Service) Start() error {
 				s.log.Debug("connect", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
 				s.metrics.IncWSConnections(msg.ClientID)
 
-				cm := NewClientMessage(ClientMessageHello, map[string]string{
+				data, err := NewPackedClientMessage(ClientMessageHello, map[string]string{
 					"clientID": msg.ClientID,
 					"connID":   msg.ConnID,
 				})
-
-				data, err := cm.Pack()
 				if err != nil {
 					s.log.Error("failed to pack hello message", mlog.Err(err))
 					continue
 				}
 
-				wsMsg := ws.Message{
-					ConnID:   msg.ConnID,
-					ClientID: msg.ClientID,
-					Type:     ws.BinaryMessage,
-					Data:     data,
-				}
-
-				if err := s.wsServer.Send(wsMsg); err != nil {
+				if err := s.sendClientMessage(msg.ConnID, msg.ClientID, data); err != nil {
 					s.log.Error("failed to send hello message", mlog.Err(err))
 					continue
 				}
@@ -271,6 +262,18 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 			s.mut.Lock()
 			defer s.mut.Unlock()
 			delete(s.connMap, sessionID)
+
+			data, err := NewPackedClientMessage(ClientMessageClose, map[string]string{
+				"sessionID": sessionID,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to pack close message: %w", err)
+			}
+
+			if err := s.sendClientMessage(msg.ConnID, msg.ClientID, data); err != nil {
+				return fmt.Errorf("failed to send close message: %w", err)
+			}
+
 			return nil
 		}
 
@@ -334,6 +337,21 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 
 	if err := s.rtcServer.Send(rtcMsg); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (s *Service) sendClientMessage(connID, clientID string, data []byte) error {
+	wsMsg := ws.Message{
+		ConnID:   connID,
+		ClientID: clientID,
+		Type:     ws.BinaryMessage,
+		Data:     data,
+	}
+
+	if err := s.wsServer.Send(wsMsg); err != nil {
+		return fmt.Errorf("failed to send client message: %w", err)
 	}
 
 	return nil
