@@ -154,10 +154,11 @@ func (s *Server) Start() error {
 		}
 
 		conns = append(conns, udpConn)
-		s.udpConn, err = newMultiConn(conns)
-		if err != nil {
-			return fmt.Errorf("failed to create multiconn: %w", err)
-		}
+	}
+	var err error
+	s.udpConn, err = newMultiConn(conns)
+	if err != nil {
+		return fmt.Errorf("failed to create multiconn: %w", err)
 	}
 
 	s.udpMux = webrtc.NewICEUDPMux(nil, s.udpConn)
