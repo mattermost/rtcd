@@ -50,7 +50,7 @@ This should return a JSON object with basic information about the service such a
 
 ## Configuration
 
-Configuration for the service is fully documented in-place through the [`config.sample.toml`](config/config.sample.toml) file.
+Configuration for the service is fully documented in-place through the [`config.sample.toml`](../config/config.sample.toml) file.
 
 ## Running calls
 
