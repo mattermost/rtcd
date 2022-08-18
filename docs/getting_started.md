@@ -43,7 +43,7 @@ docker run --name rtcd -v /path/to/rtcd/config:/config mattermost/rtcd -config /
 Finally, to verify that the service is correctly running we can try calling the HTTP API:
 
 ```sh
-curl http://172.17.0.1:8045/version
+curl http://localhost:8045/version
 ```
 
 This should return a JSON object with basic information about the service such as its build version.
@@ -54,7 +54,7 @@ Configuration for the service is fully documented in-place through the [`config.
 
 ## Running calls
 
-The last step to get calls working through `rtcd` is to configure the Calls side to use the service. This is done via the **Admin Console -> Plugins -> Calls -> RTCD service URL** setting, which in this example will be set to `http://testClient:@172.17.0.1:8045`.
+The last step to get calls working through `rtcd` is to configure the Calls side to use the service. This is done via the **Admin Console -> Plugins -> Calls -> RTCD service URL** setting, which in this example will be set to `http://testClient:@localhost:8045`.
 
 **Note**
 
