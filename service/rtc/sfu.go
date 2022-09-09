@@ -16,6 +16,7 @@ import (
 	"github.com/pion/ice/v2"
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/nack"
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -139,7 +140,11 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		sEngine.SetNAT1To1IPs([]string{hostIP}, webrtc.ICECandidateTypeHost)
 	}
 
-	api := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithSettingEngine(sEngine), webrtc.WithInterceptorRegistry(i))
+	api := webrtc.NewAPI(
+		webrtc.WithMediaEngine(m),
+		webrtc.WithSettingEngine(sEngine),
+		webrtc.WithInterceptorRegistry(i),
+	)
 	peerConn, err := api.NewPeerConnection(peerConnConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create peer connection: %w", err)
@@ -254,9 +259,17 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			})
 
 			for {
-				rtp, _, readErr := remoteTrack.ReadRTP()
-				if readErr != nil {
-					s.log.Error("failed to read RTP packet", mlog.Err(readErr))
+				buf := s.bufPool.Get().([]byte)
+				i, _, err := remoteTrack.Read(buf)
+				if err != nil {
+					s.log.Error("failed to read RTP packet", mlog.Err(err))
+					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
+					return
+				}
+
+				rtp := &rtp.Packet{}
+				if err := rtp.Unmarshal(buf[:i]); err != nil {
+					s.log.Error("failed to unmarshal RTP packet", mlog.Err(err))
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
@@ -278,13 +291,15 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
+				pLen := len(rtp.Payload)
+				s.bufPool.Put(buf)
 
 				call.iterSessions(func(ss *session) {
 					if ss.cfg.UserID == us.cfg.UserID {
 						return
 					}
 					s.metrics.IncRTPPackets("out", trackType)
-					s.metrics.AddRTPPacketBytes("out", trackType, len(rtp.Payload))
+					s.metrics.AddRTPPacketBytes("out", trackType, pLen)
 				})
 			}
 		} else if remoteTrack.Codec().MimeType == rtpVideoCodecVP8.MimeType {

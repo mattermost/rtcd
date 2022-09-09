@@ -41,6 +41,7 @@ type Server struct {
 	sendCh    chan Message
 	receiveCh chan Message
 	drainCh   chan struct{}
+	bufPool   *sync.Pool
 
 	mut sync.RWMutex
 }
@@ -64,6 +65,7 @@ func NewServer(cfg ServerConfig, log mlog.LoggerIFace, metrics Metrics) (*Server
 		sessions:  map[string]SessionConfig{},
 		sendCh:    make(chan Message, msgChSize),
 		receiveCh: make(chan Message, msgChSize),
+		bufPool:   &sync.Pool{New: func() interface{} { return make([]byte, receiveMTU) }},
 	}
 
 	return s, nil
