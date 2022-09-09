@@ -54,9 +54,9 @@ Configuration for the service is fully documented in-place through the [`config.
 
 ## Running calls
 
-The last step to get calls working through `rtcd` is to configure the Calls side to use the service. This is done via the **Admin Console -> Plugins -> Calls -> RTCD service URL** setting, which in this example will be set to `http://testClient:@localhost:8045`.
+The last step to get calls working through `rtcd` is to configure the Calls side to use the service. This is done via the **Admin Console -> Plugins -> Calls -> RTCD service URL** setting, which in this example will be set to `http://localhost:8045`.
 
 **Note**
 
-1. `testClient` is a unique identifier of the Mattermost instance and will be used to authenticate to the service. It can be any alphanumeric string.
-2. The `:` after the client id is necessary as it means there's no auth key. The client will self-register the first time it connects to the service and store the authentication key in the database.
+1. The client will self-register the first time it connects to the service and store the authentication key in the database. If no client ID is explicitly provided, the diagnostic ID of the instance will be used.
+2. The RTCD service URL supports credentials in the form `http://clientID:authKey@hostname`. Alternitevly these can be passed through environment overrides, namely `MM_CALLS_RTCD_CLIENT_ID` and `MM_CALLS_RTCD_AUTH_KEY`.
