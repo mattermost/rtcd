@@ -11,6 +11,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// newRandomToken returns a secure token with a fixed length of 32 characters.
+func newRandomToken() (string, error) {
+	return newRandomString(MinKeyLen)
+}
+
 // newRandomString returns a secure random string of the given length.
 // The resulting entropy will be (6 * length) bits.
 func newRandomString(length int) (string, error) {

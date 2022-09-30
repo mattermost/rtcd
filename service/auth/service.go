@@ -13,15 +13,20 @@ import (
 const MinKeyLen = 32
 
 type Service struct {
-	store store.Store
+	sessionCache *SessionCache
+	store        store.Store
 }
 
-func NewService(store store.Store) (*Service, error) {
+func NewService(store store.Store, sessionCache *SessionCache) (*Service, error) {
 	if store == nil {
-		return nil, fmt.Errorf("invalid store")
+		return nil, errors.New("invalid store")
+	}
+	if sessionCache == nil {
+		return nil, errors.New("invalid session cache")
 	}
 	return &Service{
-		store: store,
+		sessionCache: sessionCache,
+		store:        store,
 	}, nil
 }
 
@@ -31,18 +36,18 @@ func (s *Service) Authenticate(id, authToken string) error {
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 	if err := compareKeyHash(hash, authToken); err != nil {
-		return fmt.Errorf("authentication failed")
+		return errors.New("authentication failed")
 	}
 	return nil
 }
 
 func (s *Service) Register(id, key string) error {
 	if len(key) < MinKeyLen {
-		return fmt.Errorf("registration failed: key not long enough")
+		return errors.New("registration failed: key not long enough")
 	}
 
 	if _, err := s.store.Get(id); err == nil {
-		return fmt.Errorf("registration failed: already registered")
+		return errors.New("registration failed: already registered")
 	} else if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("registration failed: %w", err)
 	}
@@ -53,7 +58,7 @@ func (s *Service) Register(id, key string) error {
 	}
 
 	if err := s.store.Put(id, hash); errors.Is(err, store.ErrConflict) {
-		return fmt.Errorf("registration failed: already registered")
+		return errors.New("registration failed: already registered")
 	} else if err != nil {
 		return fmt.Errorf("registration failed: %w", err)
 	}
@@ -71,5 +76,22 @@ func (s *Service) Unregister(id string) error {
 		return fmt.Errorf("unregister failed: %w", err)
 	}
 
+	// Invalidate token when unregistering
+	s.sessionCache.Delete(id)
+
 	return nil
+}
+
+func (s *Service) Login(id, key string) (string, error) {
+	if err := s.Authenticate(id, key); err != nil {
+		return "", fmt.Errorf("login failed: %w", err)
+	}
+	bearerToken, err := newRandomToken()
+	if err != nil {
+		return "", fmt.Errorf("login failed: %w", err)
+	}
+	if err = s.sessionCache.Put(id, bearerToken); err != nil {
+		return "", fmt.Errorf("login failed: %w", err)
+	}
+	return bearerToken, nil
 }

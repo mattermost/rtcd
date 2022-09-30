@@ -21,15 +21,15 @@ import (
 )
 
 type Service struct {
-	cfg       Config
-	apiServer *api.Server
-	wsServer  *ws.Server
-	rtcServer *rtc.Server
-	store     store.Store
-	auth      *auth.Service
-	metrics   *perf.Metrics
-	log       *mlog.Logger
-
+	cfg          Config
+	apiServer    *api.Server
+	wsServer     *ws.Server
+	rtcServer    *rtc.Server
+	store        store.Store
+	auth         *auth.Service
+	metrics      *perf.Metrics
+	log          *mlog.Logger
+	sessionCache *auth.SessionCache
 	// connMap maps user sessions to the websocket connection they originated
 	// from. This is needed to keep track of the MM instance end users are
 	// connected to in order to route any message to it and avoid the additional
@@ -63,7 +63,12 @@ func New(cfg Config) (*Service, error) {
 	}
 	s.log.Info("initiated data store", mlog.String("DataSource", cfg.Store.DataSource))
 
-	s.auth, err = auth.NewService(s.store)
+	s.sessionCache, err = auth.NewSessionCache(cfg.API.Security.SessionCache)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create session cache: %w", err)
+	}
+
+	s.auth, err = auth.NewService(s.store, s.sessionCache)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create auth service: %w", err)
 	}
@@ -90,6 +95,7 @@ func New(cfg Config) (*Service, error) {
 	}
 
 	s.apiServer.RegisterHandleFunc("/version", s.getVersion)
+	s.apiServer.RegisterHandleFunc("/login", s.loginClient)
 	s.apiServer.RegisterHandleFunc("/register", s.registerClient)
 	s.apiServer.RegisterHandleFunc("/unregister", s.unregisterClient)
 	s.apiServer.RegisterHandler("/ws", s.wsServer)
