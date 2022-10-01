@@ -360,6 +360,18 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		}
 	})
 
+	peerConn.OnDataChannel(func(d *webrtc.DataChannel) {
+		s.log.Debug(fmt.Sprintf("Got Data Channel %s %d", d.Label(), d.ID()))
+
+		d.OnOpen(func() {
+			s.log.Debug(fmt.Sprintf("Data Channel %s %d open.", d.Label(), d.ID()))
+		})
+
+		d.OnMessage(func(msg webrtc.DataChannelMessage) {
+			d.SendText(fmt.Sprintf("Hello, you sent: %s", msg.Data))
+		})
+	})
+
 	go func() {
 		select {
 		case msg, ok := <-us.sdpInCh:
