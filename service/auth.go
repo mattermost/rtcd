@@ -100,7 +100,17 @@ func (s *Service) unregisterClient(w http.ResponseWriter, r *http.Request) {
 	}
 	defer s.httpAudit("unregisterClient", data, w, r)
 
-	_, code, err := s.authHandler(w, r)
+	// If an admin client is not enabled, and self registration is not allowed,
+	// clients cannot unregister themselves.
+	if !s.cfg.API.Security.EnableAdmin && !s.cfg.API.Security.AllowSelfRegistration {
+		s.log.Warn("/unregister was called, but enable_admin and allow_self_registration are both false")
+		data.err = "unregister not enabled"
+		data.code = http.StatusForbidden
+		return
+	}
+
+	// Check if admin authKey or clientID + authKey have been provided
+	authedClientID, code, err := s.authHandler(w, r)
 	if err != nil {
 		data.err = err.Error()
 		data.code = code
@@ -117,6 +127,14 @@ func (s *Service) unregisterClient(w http.ResponseWriter, r *http.Request) {
 	if clientID == "" {
 		data.err = "client id should not be empty"
 		data.code = http.StatusBadRequest
+		return
+	}
+
+	// an authedClientID == "" means admin. So if there is an authedClientID,
+	// then the requested clientID needs to be the same.
+	if authedClientID != "" && authedClientID != clientID {
+		data.err = "client id not valid"
+		data.code = http.StatusForbidden
 		return
 	}
 

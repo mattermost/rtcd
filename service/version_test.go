@@ -13,7 +13,7 @@ import (
 )
 
 func TestGetVersion(t *testing.T) {
-	th := SetupTestHelper(t)
+	th := SetupTestHelper(t, nil)
 	defer th.Teardown()
 
 	t.Run("invalid method", func(t *testing.T) {
