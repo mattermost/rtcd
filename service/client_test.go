@@ -84,7 +84,7 @@ func TestNewClient(t *testing.T) {
 }
 
 func TestClientRegister(t *testing.T) {
-	th := SetupTestHelper(t)
+	th := SetupTestHelper(t, nil)
 	defer th.Teardown()
 
 	c, err := NewClient(ClientConfig{
@@ -159,7 +159,7 @@ func TestClientRegister(t *testing.T) {
 }
 
 func TestClientUnregister(t *testing.T) {
-	th := SetupTestHelper(t)
+	th := SetupTestHelper(t, nil)
 	defer th.Teardown()
 
 	c, err := NewClient(ClientConfig{
@@ -209,7 +209,7 @@ func TestClientUnregister(t *testing.T) {
 }
 
 func TestClientConnect(t *testing.T) {
-	th := SetupTestHelper(t)
+	th := SetupTestHelper(t, nil)
 	defer th.Teardown()
 
 	c, err := NewClient(ClientConfig{URL: th.apiURL})
@@ -263,7 +263,7 @@ func TestClientConnect(t *testing.T) {
 }
 
 func TestClientSend(t *testing.T) {
-	th := SetupTestHelper(t)
+	th := SetupTestHelper(t, nil)
 	defer th.Teardown()
 
 	clientID := "clientA"
@@ -327,7 +327,7 @@ func TestClientSend(t *testing.T) {
 }
 
 func TestClientReceive(t *testing.T) {
-	th := SetupTestHelper(t)
+	th := SetupTestHelper(t, nil)
 	defer th.Teardown()
 
 	clientID := "clientA"
@@ -393,7 +393,7 @@ func TestClientReceive(t *testing.T) {
 }
 
 func TestClientReconnect(t *testing.T) {
-	th := SetupTestHelper(t)
+	th := SetupTestHelper(t, nil)
 	defer th.Teardown()
 
 	clientID := "clientA"
@@ -500,7 +500,7 @@ func TestClientReconnect(t *testing.T) {
 }
 
 func TestClientCloseReconnectRace(t *testing.T) {
-	th := SetupTestHelper(t)
+	th := SetupTestHelper(t, nil)
 	defer th.Teardown()
 
 	clientID := "clientA"
@@ -545,7 +545,7 @@ func TestClientCloseReconnectRace(t *testing.T) {
 }
 
 func TestClientConcurrency(t *testing.T) {
-	th := SetupTestHelper(t)
+	th := SetupTestHelper(t, nil)
 	defer th.Teardown()
 
 	clientID := "clientA"

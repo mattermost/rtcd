@@ -4,13 +4,12 @@
 package service
 
 import (
-	"net"
-	"os"
-	"testing"
-
 	"github.com/mattermost/rtcd/logger"
 	"github.com/mattermost/rtcd/service/api"
 	"github.com/mattermost/rtcd/service/rtc"
+	"net"
+	"os"
+	"testing"
 
 	"github.com/stretchr/testify/require"
 )
@@ -24,37 +23,19 @@ type TestHelper struct {
 	dbDir       string
 }
 
-func SetupTestHelper(tb testing.TB) *TestHelper {
+// SetupTestHelper takes a *cfg, pass nil to use the default config.
+func SetupTestHelper(tb testing.TB, cfg *Config) *TestHelper {
 	tb.Helper()
 	var err error
 
-	dbDir, err := os.MkdirTemp("", "db")
-	require.NoError(tb, err)
+	if cfg == nil {
+		cfg = MakeDefaultCfg(tb)
+	}
 
 	th := &TestHelper{
-		cfg: Config{
-			API: APIConfig{
-				HTTP: api.Config{
-					ListenAddress: ":0",
-				},
-				Security: SecurityConfig{
-					EnableAdmin:    true,
-					AdminSecretKey: "admin_secret_key",
-				},
-			},
-			RTC: rtc.ServerConfig{
-				ICEPortUDP: 30443,
-			},
-			Store: StoreConfig{
-				DataSource: dbDir,
-			},
-			Logger: logger.Config{
-				EnableConsole: true,
-				ConsoleLevel:  "ERROR",
-			},
-		},
+		cfg:   *cfg,
 		tb:    tb,
-		dbDir: dbDir,
+		dbDir: cfg.Store.DataSource,
 	}
 
 	th.srvc, err = New(th.cfg)
@@ -76,6 +57,35 @@ func SetupTestHelper(tb testing.TB) *TestHelper {
 	require.NotNil(th.tb, th.adminClient)
 
 	return th
+}
+
+func MakeDefaultCfg(tb testing.TB) *Config {
+	tb.Helper()
+
+	dbDir, err := os.MkdirTemp("", "db")
+	require.NoError(tb, err)
+
+	return &Config{
+		API: APIConfig{
+			HTTP: api.Config{
+				ListenAddress: ":0",
+			},
+			Security: SecurityConfig{
+				EnableAdmin:    true,
+				AdminSecretKey: "admin_secret_key",
+			},
+		},
+		RTC: rtc.ServerConfig{
+			ICEPortUDP: 30443,
+		},
+		Store: StoreConfig{
+			DataSource: dbDir,
+		},
+		Logger: logger.Config{
+			EnableConsole: true,
+			ConsoleLevel:  "ERROR",
+		},
+	}
 }
 
 func (th *TestHelper) Teardown() {
