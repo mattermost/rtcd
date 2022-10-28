@@ -279,11 +279,25 @@ func (s *Server) msgReader() {
 			}
 			call.mut.Unlock()
 		case MuteMessage, UnmuteMessage:
-			select {
-			case session.trackEnableCh <- (msg.Type == MuteMessage):
-			default:
-				s.log.Error("failed to send track enable message: channel is full")
+			session.mut.RLock()
+			track := session.outVoiceTrack
+			session.mut.RUnlock()
+			if track == nil {
+				continue
 			}
+
+			var enabled bool
+			if msg.Type == UnmuteMessage {
+				enabled = true
+			}
+
+			s.log.Debug("setting voice track state",
+				mlog.Bool("enabled", enabled),
+				mlog.String("sessionID", session.cfg.SessionID))
+
+			session.mut.Lock()
+			session.outVoiceTrackEnabled = enabled
+			session.mut.Unlock()
 		default:
 			s.log.Error("received unexpected message type")
 		}

@@ -164,19 +164,19 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		}
 		msg, err := newICEMessage(us, candidate)
 		if err != nil {
-			s.log.Error("failed to create ICE message", mlog.Err(err))
+			s.log.Error("failed to create ICE message", mlog.Err(err), mlog.String("sessionID", cfg.SessionID))
 			return
 		}
 		select {
 		case s.receiveCh <- msg:
 		default:
-			s.log.Error("failed to send ICE message: channel is full")
+			s.log.Error("failed to send ICE message: channel is full", mlog.String("sessionID", cfg.SessionID))
 		}
 	})
 
 	peerConn.OnICEGatheringStateChange(func(state webrtc.ICEGathererState) {
 		if state == webrtc.ICEGathererStateComplete {
-			s.log.Debug("ice gathering complete")
+			s.log.Debug("ice gathering complete", mlog.String("sessionID", cfg.SessionID))
 		}
 	})
 
@@ -213,27 +213,34 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 	})
 
 	peerConn.OnTrack(func(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		s.log.Debug("Got remote track!!!")
-		s.log.Debug(fmt.Sprintf("%+v", remoteTrack.Codec().RTPCodecCapability))
-		s.log.Debug(fmt.Sprintf("Track has started, of type %d: %s", remoteTrack.PayloadType(), remoteTrack.Codec().MimeType))
-
 		streamID := remoteTrack.StreamID()
+		trackType := remoteTrack.Codec().MimeType
+
+		s.log.Debug("new track received",
+			mlog.Any("codec", remoteTrack.Codec().RTPCodecCapability),
+			mlog.Int("payload", int(remoteTrack.PayloadType())),
+			mlog.String("type", trackType),
+			mlog.String("streamID", streamID),
+			mlog.String("remoteTrackID", remoteTrack.ID()),
+			mlog.Int("SSRC", int(remoteTrack.SSRC())),
+			mlog.String("sessionID", us.cfg.SessionID),
+		)
 
 		var screenStreamID string
 		if screenSession := call.getScreenSession(); screenSession != nil {
 			screenStreamID = screenSession.getScreenStreamID()
 		}
 
-		if remoteTrack.Codec().MimeType == rtpAudioCodec.MimeType {
+		if trackType == rtpAudioCodec.MimeType {
 			trackType := "voice"
 			if streamID == screenStreamID {
-				s.log.Debug("received screen sharing audio track")
+				s.log.Debug("received screen sharing audio track", mlog.String("sessionID", us.cfg.SessionID))
 				trackType = "screen-audio"
 			}
 
-			outAudioTrack, err := webrtc.NewTrackLocalStaticRTP(rtpAudioCodec, trackType, random.NewID())
+			outAudioTrack, err := webrtc.NewTrackLocalStaticRTP(rtpAudioCodec, genTrackID(trackType, us.cfg.SessionID), random.NewID())
 			if err != nil {
-				s.log.Error("failed to create local track", mlog.Err(err))
+				s.log.Error("failed to create local track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 				return
 			}
 
@@ -262,14 +269,16 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				buf := s.bufPool.Get().([]byte)
 				i, _, err := remoteTrack.Read(buf)
 				if err != nil {
-					s.log.Error("failed to read RTP packet", mlog.Err(err))
+					s.log.Error("failed to read RTP packet",
+						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
 
 				rtp := &rtp.Packet{}
 				if err := rtp.Unmarshal(buf[:i]); err != nil {
-					s.log.Error("failed to unmarshal RTP packet", mlog.Err(err))
+					s.log.Error("failed to unmarshal RTP packet",
+						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
@@ -282,12 +291,14 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					isEnabled := us.outVoiceTrackEnabled
 					us.mut.RUnlock()
 					if !isEnabled {
+						s.bufPool.Put(buf)
 						continue
 					}
 				}
 
 				if err := outAudioTrack.WriteRTP(rtp); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-					s.log.Error("failed to write RTP packet", mlog.Err(err))
+					s.log.Error("failed to write RTP packet",
+						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
@@ -302,17 +313,19 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					s.metrics.AddRTPPacketBytes("out", trackType, pLen)
 				})
 			}
-		} else if remoteTrack.Codec().MimeType == rtpVideoCodecVP8.MimeType {
+		} else if trackType == rtpVideoCodecVP8.MimeType {
 			if screenStreamID != "" && screenStreamID != streamID {
-				s.log.Error("received unexpected video track", mlog.String("streamID", streamID))
+				s.log.Error("received unexpected video track",
+					mlog.String("streamID", streamID), mlog.String("sessionID", us.cfg.SessionID))
 				return
 			}
 
-			s.log.Debug("received screen sharing stream", mlog.String("streamID", streamID))
+			s.log.Debug("received screen sharing stream", mlog.String("streamID", streamID), mlog.String("sessionID", us.cfg.SessionID))
 
-			outScreenTrack, err := webrtc.NewTrackLocalStaticRTP(rtpVideoCodecVP8, "screen", random.NewID())
+			outScreenTrack, err := webrtc.NewTrackLocalStaticRTP(rtpVideoCodecVP8, genTrackID("screen", us.cfg.SessionID), random.NewID())
 			if err != nil {
-				s.log.Error("failed to create local track", mlog.Err(err))
+				s.log.Error("failed to create local track",
+					mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 				return
 			}
 			us.mut.Lock()
@@ -328,14 +341,19 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				case ss.tracksCh <- outScreenTrack:
 				default:
 					s.log.Error("failed to send screen track: channel is full",
-						mlog.String("UserID", us.cfg.UserID), mlog.String("trackUserID", ss.cfg.UserID))
+						mlog.String("UserID", us.cfg.UserID),
+						mlog.String("sessionID", us.cfg.SessionID),
+						mlog.String("trackUserID", ss.cfg.UserID),
+						mlog.String("trackSessionID", ss.cfg.SessionID),
+					)
 				}
 			})
 
 			for {
 				rtp, _, readErr := remoteTrack.ReadRTP()
 				if readErr != nil {
-					s.log.Error("failed to read RTP packet", mlog.Err(readErr))
+					s.log.Error("failed to read RTP packet",
+						mlog.Err(readErr), mlog.String("sessionID", us.cfg.SessionID))
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
@@ -344,7 +362,8 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				s.metrics.AddRTPPacketBytes("in", "screen", len(rtp.Payload))
 
 				if err := outScreenTrack.WriteRTP(rtp); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-					s.log.Error("failed to write RTP packet", mlog.Err(err))
+					s.log.Error("failed to write RTP packet",
+						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
@@ -392,7 +411,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 		go func() {
 			if err := s.handleTracks(call, us); err != nil {
-				s.log.Error("handleTracks failed", mlog.Err(err))
+				s.log.Error("handleTracks failed", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 			}
 		}()
 	}()
@@ -469,25 +488,24 @@ func (s *Server) handleTracks(call *call, us *session) error {
 
 		ss.mut.RLock()
 		outVoiceTrack := ss.outVoiceTrack
-		isEnabled := ss.outVoiceTrackEnabled
 		outScreenTrack := ss.outScreenTrack
 		outScreenAudioTrack := ss.outScreenAudioTrack
 		ss.mut.RUnlock()
 
 		if outVoiceTrack != nil {
-			if err := us.addTrack(s.log, call, s.receiveCh, outVoiceTrack, isEnabled); err != nil {
+			if err := us.addTrack(s.log, call, s.receiveCh, outVoiceTrack); err != nil {
 				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 				s.log.Error("failed to add voice track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 			}
 		}
 		if outScreenTrack != nil {
-			if err := us.addTrack(s.log, call, s.receiveCh, outScreenTrack, true); err != nil {
+			if err := us.addTrack(s.log, call, s.receiveCh, outScreenTrack); err != nil {
 				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 				s.log.Error("failed to add screen track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 			}
 		}
 		if outScreenAudioTrack != nil {
-			if err := us.addTrack(s.log, call, s.receiveCh, outScreenAudioTrack, true); err != nil {
+			if err := us.addTrack(s.log, call, s.receiveCh, outScreenAudioTrack); err != nil {
 				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 				s.log.Error("failed to add screen audio track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 			}
@@ -501,7 +519,7 @@ func (s *Server) handleTracks(call *call, us *session) error {
 			if !ok {
 				return nil
 			}
-			if err := us.addTrack(s.log, call, s.receiveCh, track, true); err != nil {
+			if err := us.addTrack(s.log, call, s.receiveCh, track); err != nil {
 				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 				s.log.Error("failed to add track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 				continue
@@ -514,61 +532,15 @@ func (s *Server) handleTracks(call *call, us *session) error {
 			sdp, err := us.signaling(msg)
 			if err != nil {
 				s.metrics.IncRTCErrors(us.cfg.GroupID, "signaling")
-				s.log.Error("failed to signal", mlog.Err(err))
+				s.log.Error("failed to signal", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 				continue
 			}
 
 			select {
 			case s.receiveCh <- newMessage(us, SDPMessage, sdp):
 			default:
-				s.log.Error("failed to send SDP message: channel is full")
+				s.log.Error("failed to send SDP message: channel is full", mlog.String("sessionID", us.cfg.SessionID))
 			}
-		case muted, ok := <-us.trackEnableCh:
-			if !ok {
-				return nil
-			}
-
-			us.mut.RLock()
-			track := us.outVoiceTrack
-			us.mut.RUnlock()
-
-			if track == nil {
-				continue
-			}
-
-			us.mut.Lock()
-			us.outVoiceTrackEnabled = !muted
-			us.mut.Unlock()
-
-			dummyTrack, err := webrtc.NewTrackLocalStaticRTP(rtpAudioCodec, "voice", random.NewID())
-			if err != nil {
-				s.log.Error("failed to create local track", mlog.Err(err))
-				continue
-			}
-
-			call.iterSessions(func(ss *session) {
-				if ss.cfg.UserID == us.cfg.UserID {
-					return
-				}
-
-				ss.mut.RLock()
-				sender := ss.rtpSendersMap[track]
-				ss.mut.RUnlock()
-
-				var replacingTrack *webrtc.TrackLocalStaticRTP
-				if muted {
-					replacingTrack = dummyTrack
-				} else {
-					replacingTrack = track
-				}
-
-				if sender != nil {
-					s.log.Debug("replacing track on sender")
-					if err := sender.ReplaceTrack(replacingTrack); err != nil {
-						s.log.Error("failed to replace track", mlog.Err(err), mlog.String("sessionID", ss.cfg.SessionID))
-					}
-				}
-			})
 		case <-us.closeCh:
 			return nil
 		}
