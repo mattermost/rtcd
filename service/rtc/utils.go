@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net"
 	"time"
+
+	"github.com/mattermost/rtcd/service/random"
 )
 
 func resolveHost(host string, timeout time.Duration) (string, error) {
@@ -23,4 +25,8 @@ func resolveHost(host string, timeout time.Duration) (string, error) {
 		ip = addrs[0].String()
 	}
 	return ip, err
+}
+
+func genTrackID(trackType, baseID string) string {
+	return trackType + "_" + baseID + "_" + random.NewID()[0:8]
 }

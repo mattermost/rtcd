@@ -9,8 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mattermost/rtcd/service/random"
-
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 
@@ -35,8 +33,6 @@ type session struct {
 	remoteScreenTrack    *webrtc.TrackRemote
 	rtcConn              *webrtc.PeerConnection
 	tracksCh             chan *webrtc.TrackLocalStaticRTP
-	trackEnableCh        chan bool
-	rtpSendersMap        map[*webrtc.TrackLocalStaticRTP]*webrtc.RTPSender
 	iceInCh              chan []byte
 	sdpInCh              chan []byte
 
@@ -113,7 +109,7 @@ func (s *session) handleICE(log mlog.LoggerIFace, m Metrics) {
 
 			var candidate webrtc.ICECandidateInit
 			if err := json.Unmarshal(data, &candidate); err != nil {
-				log.Error("failed to encode ice candidate", mlog.Err(err))
+				log.Error("failed to encode ice candidate", mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
 				continue
 			}
 
@@ -121,10 +117,10 @@ func (s *session) handleICE(log mlog.LoggerIFace, m Metrics) {
 				continue
 			}
 
-			log.Debug("setting ICE candidate for remote")
+			log.Debug("setting ICE candidate for remote", mlog.String("sessionID", s.cfg.SessionID))
 
 			if err := s.rtcConn.AddICECandidate(candidate); err != nil {
-				log.Error("failed to add ice candidate", mlog.Err(err))
+				log.Error("failed to add ice candidate", mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
 				m.IncRTCErrors(s.cfg.GroupID, "ice")
 				continue
 			}
@@ -141,25 +137,26 @@ func (s *session) handlePLI(log mlog.LoggerIFace, call *call, sender *webrtc.RTP
 	for {
 		pkts, _, err := sender.ReadRTCP()
 		if err != nil {
-			log.Error("failed to read RTCP packet", mlog.Err(err))
+			log.Error("failed to read RTCP packet",
+				mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
 			return
 		}
 		for _, pkt := range pkts {
 			if _, ok := pkt.(*rtcp.PictureLossIndication); ok {
 				screenSession := call.getScreenSession()
 				if screenSession == nil {
-					log.Error("screenSession should not be nil")
+					log.Error("screenSession should not be nil", mlog.String("sessionID", s.cfg.SessionID))
 					return
 				}
 
 				screenTrack := screenSession.getRemoteScreenTrack()
 				if screenTrack == nil {
-					log.Error("screenTrack should not be nil")
+					log.Error("screenTrack should not be nil", mlog.String("sessionID", s.cfg.SessionID))
 					return
 				}
 
 				if err := screenSession.rtcConn.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(screenTrack.SSRC())}}); err != nil {
-					log.Error("failed to write RTCP packet", mlog.Err(err))
+					log.Error("failed to write RTCP packet", mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
 					return
 				}
 			}
@@ -168,20 +165,11 @@ func (s *session) handlePLI(log mlog.LoggerIFace, call *call, sender *webrtc.RTP
 }
 
 // addTrack adds the given track to the peer and starts negotiation.
-func (s *session) addTrack(log mlog.LoggerIFace, c *call, sdpOutCh chan<- Message, track *webrtc.TrackLocalStaticRTP, enabled bool) error {
-	t := track
-	if !enabled {
-		dummyTrack, err := webrtc.NewTrackLocalStaticRTP(rtpAudioCodec, "voice", random.NewID())
-		if err != nil {
-			return fmt.Errorf("failed to create new static track: %w", err)
-		}
-		t = dummyTrack
-	}
-
-	sender, err := s.rtcConn.AddTrack(t)
+func (s *session) addTrack(log mlog.LoggerIFace, c *call, sdpOutCh chan<- Message, track *webrtc.TrackLocalStaticRTP) error {
+	sender, err := s.rtcConn.AddTrack(track)
 	if err != nil {
 		return fmt.Errorf("failed to add track: %w", err)
-	} else if t.Kind() == webrtc.RTPCodecTypeVideo {
+	} else if track.Kind() == webrtc.RTPCodecTypeVideo {
 		go s.handlePLI(log, c, sender)
 	}
 
@@ -222,10 +210,6 @@ func (s *session) addTrack(log mlog.LoggerIFace, c *call, sdpOutCh chan<- Messag
 	if err := s.rtcConn.SetRemoteDescription(answer); err != nil {
 		return fmt.Errorf("failed to set remote description: %w", err)
 	}
-
-	s.mut.Lock()
-	s.rtpSendersMap[track] = sender
-	s.mut.Unlock()
 
 	return nil
 }
