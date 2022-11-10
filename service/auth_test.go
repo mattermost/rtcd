@@ -195,6 +195,55 @@ func TestUnregisterClient(t *testing.T) {
 	})
 }
 
+func TestLoginClient(t *testing.T) {
+	th := SetupTestHelper(t, nil)
+	defer th.Teardown()
+
+	t.Run("invalid method", func(t *testing.T) {
+		resp, err := http.Get(th.apiURL + "/login")
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	})
+
+	t.Run("bad request", func(t *testing.T) {
+		req, err := http.NewRequest("POST", th.apiURL+"/login", bytes.NewBuffer(nil))
+		require.NoError(t, err)
+		req.SetBasicAuth("", th.srvc.cfg.API.Security.AdminSecretKey)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		defer resp.Body.Close()
+	})
+
+	t.Run("valid response", func(t *testing.T) {
+		clientID := "clientA"
+		authKey := "Ey4-H_BJA00_TVByPi8DozE12ekN3S7L"
+		err := th.srvc.auth.Register(clientID, authKey)
+		buf := bytes.NewBuffer([]byte(fmt.Sprintf(`{"clientID": "%s", "authKey": "%s"}`, clientID, authKey)))
+		require.NoError(t, err)
+		req, err := http.NewRequest("POST", th.apiURL+"/login", buf)
+		require.NoError(t, err)
+		req.SetBasicAuth("", th.srvc.cfg.API.Security.AdminSecretKey)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		defer resp.Body.Close()
+		var response map[string]string
+		err = json.NewDecoder(resp.Body).Decode(&response)
+		require.NoError(t, err)
+
+		token := response["bearerToken"]
+		require.NotEmpty(t, token)
+		buf = bytes.NewBuffer([]byte(fmt.Sprintf(`{"clientID": "%s"}`, clientID)))
+		req, err = http.NewRequest("POST", th.apiURL+"/unregister", buf)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+		resp, err = http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+}
+
 func TestWSAuthHandler(t *testing.T) {
 	th := SetupTestHelper(t, nil)
 	defer th.Teardown()

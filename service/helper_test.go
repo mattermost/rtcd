@@ -6,6 +6,7 @@ package service
 import (
 	"github.com/mattermost/rtcd/logger"
 	"github.com/mattermost/rtcd/service/api"
+	"github.com/mattermost/rtcd/service/auth"
 	"github.com/mattermost/rtcd/service/rtc"
 	"net"
 	"os"
@@ -73,6 +74,9 @@ func MakeDefaultCfg(tb testing.TB) *Config {
 			Security: SecurityConfig{
 				EnableAdmin:    true,
 				AdminSecretKey: "admin_secret_key",
+				SessionCache: auth.SessionCacheConfig{
+					ExpirationMinutes: 1440,
+				},
 			},
 		},
 		RTC: rtc.ServerConfig{

@@ -26,18 +26,33 @@ func newTestDBStore(t *testing.T) (store.Store, func()) {
 	}
 }
 
+func newTestSessionCache(t *testing.T) *SessionCache {
+	t.Helper()
+	sessionCache, err := NewSessionCache(SessionCacheConfig{ExpirationMinutes: 1440})
+	require.NoError(t, err)
+	require.NotNil(t, sessionCache)
+	return sessionCache
+}
+
 func TestNewService(t *testing.T) {
 	dbStore, teardown := newTestDBStore(t)
 	defer teardown()
+	sessionCache := newTestSessionCache(t)
 
 	t.Run("missing store", func(t *testing.T) {
-		s, err := NewService(nil)
+		s, err := NewService(nil, sessionCache)
+		require.Error(t, err)
+		require.Nil(t, s)
+	})
+
+	t.Run("missing session cache", func(t *testing.T) {
+		s, err := NewService(dbStore, nil)
 		require.Error(t, err)
 		require.Nil(t, s)
 	})
 
 	t.Run("valid", func(t *testing.T) {
-		s, err := NewService(dbStore)
+		s, err := NewService(dbStore, sessionCache)
 		require.NoError(t, err)
 		require.NotNil(t, s)
 	})
@@ -46,8 +61,9 @@ func TestNewService(t *testing.T) {
 func TestRegister(t *testing.T) {
 	dbStore, teardown := newTestDBStore(t)
 	defer teardown()
+	sessionCache := newTestSessionCache(t)
 
-	s, err := NewService(dbStore)
+	s, err := NewService(dbStore, sessionCache)
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
@@ -78,8 +94,9 @@ func TestRegister(t *testing.T) {
 func TestAuthenticate(t *testing.T) {
 	dbStore, teardown := newTestDBStore(t)
 	defer teardown()
+	sessionCache := newTestSessionCache(t)
 
-	s, err := NewService(dbStore)
+	s, err := NewService(dbStore, sessionCache)
 	require.NoError(t, err)
 	require.NotNil(t, s)
 

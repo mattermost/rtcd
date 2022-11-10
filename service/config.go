@@ -5,6 +5,7 @@ package service
 
 import (
 	"fmt"
+	"github.com/mattermost/rtcd/service/auth"
 	"net/url"
 	"time"
 
@@ -19,7 +20,8 @@ type SecurityConfig struct {
 	// The secret key used to authenticate admin requests.
 	AdminSecretKey string `toml:"admin_secret_key"`
 	// Whether or not to allow clients to self-register.
-	AllowSelfRegistration bool `toml:"allow_self_registration"`
+	AllowSelfRegistration bool                    `toml:"allow_self_registration"`
+	SessionCache          auth.SessionCacheConfig `toml:"session_cache"`
 }
 
 func (c SecurityConfig) IsValid() error {
@@ -80,6 +82,7 @@ func (c Config) IsValid() error {
 
 func (c *Config) SetDefaults() {
 	c.API.HTTP.ListenAddress = ":8045"
+	c.API.Security.SessionCache.ExpirationMinutes = 1440
 	c.RTC.ICEPortUDP = 8443
 	c.RTC.TURNConfig.CredentialsExpirationMinutes = 1440
 	c.Store.DataSource = "/tmp/rtcd_db"

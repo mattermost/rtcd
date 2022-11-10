@@ -19,6 +19,8 @@ security.allow_self_registration = false
 security.enable_admin = false
 # A key used to authenticate as the admin client.
 security.admin_secret_key = ""
+# The expiration, in minutes, of the cached auth session and their tokens.
+security.session_cache.expiration_minutes = 1440
 
 [rtc]
 # The UDP port used to route all the media (audio/screen/video tracks).
