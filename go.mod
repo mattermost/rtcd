@@ -1,24 +1,25 @@
 module github.com/mattermost/rtcd
 
-go 1.17
+go 1.18
 
 require (
 	git.mills.io/prologic/bitcask v1.0.2
 	github.com/BurntSushi/toml v1.0.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/mattermost/mattermost-server/v6 v6.4.0
+	github.com/mattermost/mattermost-server/v6 v6.0.0-20221121180800-8e9e9f4ee1ca
 	github.com/pborman/uuid v1.2.1
 	github.com/pion/ice/v2 v2.2.6
 	github.com/pion/interceptor v0.1.11
 	github.com/pion/rtcp v1.2.9
+	github.com/pion/rtp v1.7.13
 	github.com/pion/stun v0.3.5
 	github.com/pion/webrtc/v3 v3.1.40
 	github.com/prometheus/client_golang v1.13.0
-	github.com/stretchr/testify v1.7.1
+	github.com/stretchr/testify v1.8.1
 	github.com/vmihailenco/msgpack/v5 v5.3.5
-	golang.org/x/crypto v0.0.0-20220517005047-85d78b3ac167
-	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a
+	golang.org/x/crypto v0.2.0
+	golang.org/x/sys v0.2.0
 )
 
 require (
@@ -37,7 +38,6 @@ require (
 	github.com/pion/logging v0.2.2 // indirect
 	github.com/pion/mdns v0.0.5 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
-	github.com/pion/rtp v1.7.13 // indirect
 	github.com/pion/sctp v1.8.2 // indirect
 	github.com/pion/sdp/v3 v3.0.5 // indirect
 	github.com/pion/srtp/v2 v2.0.7 // indirect
@@ -50,13 +50,13 @@ require (
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
-	github.com/sirupsen/logrus v1.8.1 // indirect
+	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
-	github.com/wiggin77/merror v1.0.3 // indirect
+	github.com/wiggin77/merror v1.0.4 // indirect
 	github.com/wiggin77/srslog v1.0.1 // indirect
 	golang.org/x/exp v0.0.0-20200908183739-ae8ad444f925 // indirect
-	golang.org/x/net v0.0.0-20220516155154-20f960328961 // indirect
+	golang.org/x/net v0.2.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
