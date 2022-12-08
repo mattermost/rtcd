@@ -14,13 +14,14 @@ import (
 )
 
 func TestLoadConfig(t *testing.T) {
+	var defaultCfg service.Config
+	defaultCfg.SetDefaults()
+
 	t.Run("non existant file", func(t *testing.T) {
-		var testCfg service.Config
-		testCfg.SetDefaults()
 		cfg, err := loadConfig("")
 		require.NoError(t, err)
 		require.NotEmpty(t, cfg)
-		require.Equal(t, testCfg, cfg)
+		require.Equal(t, defaultCfg, cfg)
 	})
 
 	t.Run("empty file", func(t *testing.T) {
@@ -32,7 +33,7 @@ func TestLoadConfig(t *testing.T) {
 
 		cfg, err := loadConfig(file.Name())
 		require.NoError(t, err)
-		require.Empty(t, cfg)
+		require.Equal(t, defaultCfg, cfg)
 	})
 
 	t.Run("invalid config", func(t *testing.T) {
@@ -47,7 +48,7 @@ func TestLoadConfig(t *testing.T) {
 
 		cfg, err := loadConfig(file.Name())
 		require.NoError(t, err)
-		require.Empty(t, cfg)
+		require.Equal(t, defaultCfg, cfg)
 	})
 
 	t.Run("valid config", func(t *testing.T) {
