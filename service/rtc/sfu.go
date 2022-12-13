@@ -381,21 +381,13 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 	go func() {
 		select {
-		case msg, ok := <-us.sdpInCh:
+		case offer, ok := <-us.sdpOfferInCh:
 			if !ok {
 				return
 			}
-			sdp, err := us.signaling(msg)
-			if err != nil {
+			if err := us.signaling(offer, s.receiveCh); err != nil {
 				s.metrics.IncRTCErrors(cfg.GroupID, "signaling")
 				s.log.Error("failed to signal", mlog.Err(err), mlog.Any("sessionCfg", us.cfg))
-				return
-			}
-
-			select {
-			case s.receiveCh <- newMessage(us, SDPMessage, sdp):
-			default:
-				s.log.Error("failed to send SDP message: channel is full")
 				return
 			}
 		case <-time.After(signalingTimeout):
@@ -510,7 +502,6 @@ func (s *Server) handleTracks(call *call, us *session) error {
 				s.log.Error("failed to add screen audio track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 			}
 		}
-
 	})
 
 	for {
@@ -524,22 +515,15 @@ func (s *Server) handleTracks(call *call, us *session) error {
 				s.log.Error("failed to add track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 				continue
 			}
-		case msg, ok := <-us.sdpInCh:
+		case offer, ok := <-us.sdpOfferInCh:
 			if !ok {
 				return nil
 			}
 
-			sdp, err := us.signaling(msg)
-			if err != nil {
+			if err := us.signaling(offer, s.receiveCh); err != nil {
 				s.metrics.IncRTCErrors(us.cfg.GroupID, "signaling")
 				s.log.Error("failed to signal", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 				continue
-			}
-
-			select {
-			case s.receiveCh <- newMessage(us, SDPMessage, sdp):
-			default:
-				s.log.Error("failed to send SDP message: channel is full", mlog.String("sessionID", us.cfg.SessionID))
 			}
 		case <-us.closeCh:
 			return nil
