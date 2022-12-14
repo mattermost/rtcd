@@ -248,13 +248,35 @@ func (s *Server) msgReader() {
 			select {
 			case session.iceInCh <- msg.Data:
 			default:
-				s.log.Error("failed to send sdp message: channel is full")
+				s.log.Error("failed to send sdp message: channel is full", mlog.Any("session", session.cfg))
 			}
 		case SDPMessage:
+			var sdp webrtc.SessionDescription
+			if err := json.Unmarshal(msg.Data, &sdp); err != nil {
+				s.log.Error("failed to unmarshal sdp", mlog.Err(err), mlog.Any("session", session.cfg))
+				continue
+			}
+
+			s.log.Debug("signaling", mlog.Int("sdpType", int(sdp.Type)), mlog.Any("session", session.cfg))
+
+			if sdp.Type == webrtc.SDPTypeOffer && session.HasSignalingConflict() {
+				s.log.Debug("signaling conflict detected, ignoring offer", mlog.Any("session", session.cfg))
+				continue
+			}
+
+			var sdpCh chan webrtc.SessionDescription
+			if sdp.Type == webrtc.SDPTypeOffer {
+				sdpCh = session.sdpOfferInCh
+			} else if sdp.Type == webrtc.SDPTypeAnswer {
+				sdpCh = session.sdpAnswerInCh
+			} else {
+				s.log.Error("unexpected sdp type", mlog.Int("type", int(sdp.Type)), mlog.Any("session", session.cfg))
+				return
+			}
 			select {
-			case session.sdpInCh <- msg.Data:
+			case sdpCh <- sdp:
 			default:
-				s.log.Error("failed to send sdp message: channel is full")
+				s.log.Error("failed to send sdp message: channel is full", mlog.Any("session", session.cfg))
 			}
 		case ScreenOnMessage:
 			data := map[string]string{}

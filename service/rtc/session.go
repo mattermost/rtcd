@@ -34,10 +34,13 @@ type session struct {
 	rtcConn              *webrtc.PeerConnection
 	tracksCh             chan *webrtc.TrackLocalStaticRTP
 	iceInCh              chan []byte
-	sdpInCh              chan []byte
+	sdpOfferInCh         chan webrtc.SessionDescription
+	sdpAnswerInCh        chan webrtc.SessionDescription
 
 	closeCh chan struct{}
 	closeCb func() error
+
+	makingOffer bool
 
 	mut sync.RWMutex
 }
@@ -166,6 +169,15 @@ func (s *session) handlePLI(log mlog.LoggerIFace, call *call, sender *webrtc.RTP
 
 // addTrack adds the given track to the peer and starts negotiation.
 func (s *session) addTrack(log mlog.LoggerIFace, c *call, sdpOutCh chan<- Message, track *webrtc.TrackLocalStaticRTP) error {
+	s.mut.Lock()
+	s.makingOffer = true
+	s.mut.Unlock()
+	defer func() {
+		s.mut.Lock()
+		s.makingOffer = false
+		s.mut.Unlock()
+	}()
+
 	sender, err := s.rtcConn.AddTrack(track)
 	if err != nil {
 		return fmt.Errorf("failed to add track: %w", err)
@@ -194,50 +206,55 @@ func (s *session) addTrack(log mlog.LoggerIFace, c *call, sdpOutCh chan<- Messag
 		return fmt.Errorf("failed to send SDP message: channel is full")
 	}
 
-	var answer webrtc.SessionDescription
 	select {
-	case msg, ok := <-s.sdpInCh:
+	case answer, ok := <-s.sdpAnswerInCh:
 		if !ok {
 			return nil
 		}
-		if err := json.Unmarshal(msg, &answer); err != nil {
-			return fmt.Errorf("failed to unmarshal answer: %w", err)
+		if err := s.rtcConn.SetRemoteDescription(answer); err != nil {
+			return fmt.Errorf("failed to set remote description: %w", err)
 		}
 	case <-time.After(signalingTimeout):
 		return fmt.Errorf("timed out signaling")
-	}
-
-	if err := s.rtcConn.SetRemoteDescription(answer); err != nil {
-		return fmt.Errorf("failed to set remote description: %w", err)
 	}
 
 	return nil
 }
 
 // signaling handles incoming SDP offers.
-func (s *session) signaling(msg []byte) ([]byte, error) {
-	var offer webrtc.SessionDescription
-	if err := json.Unmarshal(msg, &offer); err != nil {
-		return nil, err
-	}
-
+func (s *session) signaling(offer webrtc.SessionDescription, sdpOutCh chan<- Message) error {
 	if err := s.rtcConn.SetRemoteDescription(offer); err != nil {
-		return nil, err
+		return err
 	}
 
 	answer, err := s.rtcConn.CreateAnswer(nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if err := s.rtcConn.SetLocalDescription(answer); err != nil {
-		return nil, err
+		return err
 	}
 
 	sdp, err := json.Marshal(s.rtcConn.LocalDescription())
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return sdp, nil
+	select {
+	case sdpOutCh <- newMessage(s, SDPMessage, sdp):
+	default:
+		return fmt.Errorf("failed to send SDP message: channel is full")
+	}
+
+	return nil
+}
+
+func (s *session) HasSignalingConflict() bool {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+	if s.rtcConn == nil {
+		return false
+	}
+	return s.makingOffer || s.rtcConn.SignalingState() != webrtc.SignalingStateStable
 }

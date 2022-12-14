@@ -31,13 +31,14 @@ func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection, clo
 	}
 
 	s := &session{
-		cfg:      cfg,
-		rtcConn:  rtcConn,
-		iceInCh:  make(chan []byte, signalChSize*2),
-		sdpInCh:  make(chan []byte, signalChSize),
-		closeCh:  make(chan struct{}),
-		closeCb:  closeCb,
-		tracksCh: make(chan *webrtc.TrackLocalStaticRTP, tracksChSize),
+		cfg:           cfg,
+		rtcConn:       rtcConn,
+		iceInCh:       make(chan []byte, signalChSize*2),
+		sdpOfferInCh:  make(chan webrtc.SessionDescription, signalChSize),
+		sdpAnswerInCh: make(chan webrtc.SessionDescription, signalChSize),
+		closeCh:       make(chan struct{}),
+		closeCb:       closeCb,
+		tracksCh:      make(chan *webrtc.TrackLocalStaticRTP, tracksChSize),
 	}
 
 	c.sessions[cfg.SessionID] = s
