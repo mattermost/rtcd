@@ -5,7 +5,9 @@ package rtc
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -133,15 +135,32 @@ func (s *session) handleICE(log mlog.LoggerIFace, m Metrics) {
 	}
 }
 
+func (s *session) handleReceiverRTCP(log mlog.LoggerIFace, call *call, sender *webrtc.RTPReceiver) {
+	for {
+		// TODO: consider using a pool to optimize allocations.
+		rtcpBuf := make([]byte, receiveMTU)
+		_, _, err := sender.Read(rtcpBuf)
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				log.Error("failed to read RTCP packet",
+					mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
+			}
+			return
+		}
+	}
+}
+
 // handlePLI is used to listen for for PLI (Picture Loss Indication) packet requests
 // from a peer receiving a video track (e.g. screen). When one is received
 // the request is forwarded to the peer generating the track (e.g. presenter).
-func (s *session) handlePLI(log mlog.LoggerIFace, call *call, sender *webrtc.RTPSender) {
+func (s *session) handleSenderRTCP(log mlog.LoggerIFace, call *call, sender *webrtc.RTPSender) {
 	for {
 		pkts, _, err := sender.ReadRTCP()
 		if err != nil {
-			log.Error("failed to read RTCP packet",
-				mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
+			if !errors.Is(err, io.EOF) {
+				log.Error("failed to read RTCP packet",
+					mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
+			}
 			return
 		}
 		for _, pkt := range pkts {
@@ -181,9 +200,9 @@ func (s *session) addTrack(log mlog.LoggerIFace, c *call, sdpOutCh chan<- Messag
 	sender, err := s.rtcConn.AddTrack(track)
 	if err != nil {
 		return fmt.Errorf("failed to add track: %w", err)
-	} else if track.Kind() == webrtc.RTPCodecTypeVideo {
-		go s.handlePLI(log, c, sender)
 	}
+
+	go s.handleSenderRTCP(log, c, sender)
 
 	offer, err := s.rtcConn.CreateOffer(nil)
 	if err != nil {

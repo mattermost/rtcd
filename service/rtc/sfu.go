@@ -231,6 +231,8 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			screenStreamID = screenSession.getScreenStreamID()
 		}
 
+		go us.handleReceiverRTCP(s.log, call, receiver)
+
 		if trackType == rtpAudioCodec.MimeType {
 			trackType := "voice"
 			if streamID == screenStreamID {
@@ -267,11 +269,13 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 			for {
 				buf := s.bufPool.Get().([]byte)
-				i, _, err := remoteTrack.Read(buf)
-				if err != nil {
-					s.log.Error("failed to read RTP packet",
-						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
-					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
+				i, _, readErr := remoteTrack.Read(buf)
+				if readErr != nil {
+					if !errors.Is(readErr, io.EOF) {
+						s.log.Error("failed to read RTP packet",
+							mlog.Err(readErr), mlog.String("sessionID", us.cfg.SessionID))
+						s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
+					}
 					return
 				}
 
@@ -352,9 +356,11 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			for {
 				rtp, _, readErr := remoteTrack.ReadRTP()
 				if readErr != nil {
-					s.log.Error("failed to read RTP packet",
-						mlog.Err(readErr), mlog.String("sessionID", us.cfg.SessionID))
-					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
+					if !errors.Is(readErr, io.EOF) {
+						s.log.Error("failed to read RTP packet",
+							mlog.Err(readErr), mlog.String("sessionID", us.cfg.SessionID))
+						s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
+					}
 					return
 				}
 
