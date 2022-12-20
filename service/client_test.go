@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -598,5 +599,39 @@ func TestClientConcurrency(t *testing.T) {
 		wg.Wait()
 
 		require.Equal(t, n-1, int(nErrors))
+	})
+}
+
+func TestClientGetVersionInfo(t *testing.T) {
+	th := SetupTestHelper(t, nil)
+	defer th.Teardown()
+
+	c, err := NewClient(ClientConfig{
+		URL:     th.apiURL,
+		AuthKey: th.srvc.cfg.API.Security.AdminSecretKey,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, c)
+	defer c.Close()
+
+	t.Run("success", func(t *testing.T) {
+		buildHash = "432dad0"
+		buildDate = "2022-05-12 09:05"
+		buildVersion = "v0.1.0"
+		defer func() {
+			buildHash = ""
+			buildDate = ""
+			buildVersion = ""
+		}()
+
+		info, err := c.GetVersionInfo()
+		require.NoError(t, err)
+		require.NotEmpty(t, info)
+		require.Equal(t, VersionInfo{
+			BuildHash:    buildHash,
+			BuildDate:    buildDate,
+			BuildVersion: buildVersion,
+			GoVersion:    runtime.Version(),
+		}, info)
 	})
 }

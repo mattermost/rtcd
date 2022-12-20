@@ -36,10 +36,10 @@ func TestGetVersion(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 		defer resp.Body.Close()
-		var info versionInfo
+		var info VersionInfo
 		err = json.NewDecoder(resp.Body).Decode(&info)
 		require.NoError(t, err)
-		require.Equal(t, versionInfo{
+		require.Equal(t, VersionInfo{
 			BuildHash:    buildHash,
 			BuildDate:    buildDate,
 			BuildVersion: buildVersion,
@@ -53,10 +53,10 @@ func TestGetVersion(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 		defer resp.Body.Close()
-		var info versionInfo
+		var info VersionInfo
 		err = json.NewDecoder(resp.Body).Decode(&info)
 		require.NoError(t, err)
-		require.Equal(t, versionInfo{
+		require.Equal(t, VersionInfo{
 			GoVersion: goVersion,
 		}, info)
 	})
