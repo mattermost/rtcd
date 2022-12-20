@@ -133,9 +133,6 @@ func (m *Monitor) PushAudioLevel(level uint8) {
 	avg := getAvg(m.voiceLevelsSample)
 	dev := getStdDev(m.voiceLevelsSample, avg)
 
-	fmt.Printf("avg: %d\n", avg)
-	fmt.Printf("dev: %d\n", dev)
-
 	var newState bool
 	if !m.voiceState && int(dev) > m.cfg.VoiceActivationThreshold {
 		newState = true
