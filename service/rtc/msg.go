@@ -19,12 +19,15 @@ const (
 	UnmuteMessage
 	ScreenOnMessage
 	ScreenOffMessage
+	VoiceOnMessage
+	VoiceOffMessage
 )
 
 type Message struct {
 	GroupID   string      `msgpack:"group_id"`
 	UserID    string      `msgpack:"user_id"`
 	SessionID string      `msgpack:"session_id"`
+	CallID    string      `msgpack:"call_id"`
 	Type      MessageType `msgpack:"type"`
 	Data      []byte      `msgpack:"data,omitempty"`
 }
@@ -45,7 +48,8 @@ func newMessage(s *session, msgType MessageType, data []byte) Message {
 		GroupID:   s.cfg.GroupID,
 		UserID:    s.cfg.UserID,
 		SessionID: s.cfg.SessionID,
-		Type:      ICEMessage,
+		CallID:    s.cfg.CallID,
+		Type:      msgType,
 		Data:      data,
 	}
 }

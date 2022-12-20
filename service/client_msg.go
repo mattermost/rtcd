@@ -23,6 +23,7 @@ const (
 	ClientMessageHello     = "hello"
 	ClientMessageReconnect = "reconnect"
 	ClientMessageClose     = "close"
+	ClientMessageVAD       = "vad"
 )
 
 var _ msgpack.CustomEncoder = (*ClientMessage)(nil)
@@ -47,7 +48,7 @@ func (cm *ClientMessage) DecodeMsgpack(dec *msgpack.Decoder) error {
 			return fmt.Errorf("failed to decode msg.Data: %w", err)
 		}
 		cm.Data = data
-	case ClientMessageRTC:
+	case ClientMessageRTC, ClientMessageVAD:
 		var rtcMsg rtc.Message
 		if err = dec.Decode(&rtcMsg); err != nil {
 			return fmt.Errorf("failed to decode rtc.Message: %w", err)

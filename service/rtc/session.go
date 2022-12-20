@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mattermost/rtcd/service/rtc/vad"
+
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 
@@ -39,6 +41,8 @@ type session struct {
 
 	closeCh chan struct{}
 	closeCb func() error
+
+	vadMonitor *vad.Monitor
 
 	makingOffer bool
 
@@ -257,4 +261,33 @@ func (s *session) HasSignalingConflict() bool {
 		return false
 	}
 	return s.makingOffer || s.rtcConn.SignalingState() != webrtc.SignalingStateStable
+}
+
+func (s *session) InitVAD(log mlog.LoggerIFace, msgCh chan<- Message) error {
+	monitor, err := vad.NewMonitor((vad.MonitorConfig{}).SetDefaults(), func(voice bool) {
+		log.Debug("vad", mlog.Bool("voice", voice), mlog.String("sessionID", s.cfg.SessionID))
+
+		var msgType MessageType
+		if voice {
+			msgType = VoiceOnMessage
+		} else {
+			msgType = VoiceOffMessage
+		}
+
+		select {
+		case msgCh <- newMessage(s, msgType, nil):
+		default:
+			log.Error("failed to send VAD message: channel is full")
+		}
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to create vad monitor: %w", err)
+	}
+
+	s.mut.Lock()
+	s.vadMonitor = monitor
+	s.mut.Unlock()
+
+	return nil
 }

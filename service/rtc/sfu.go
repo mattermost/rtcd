@@ -44,6 +44,7 @@ var (
 
 const (
 	nackResponderBufferSize = 256
+	audioLevelExtensionURI  = "urn:ietf:params:rtp-hdrext:ssrc-audio-level"
 )
 
 func initMediaEngine() (*webrtc.MediaEngine, error) {
@@ -127,6 +128,12 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 	i, err := initInterceptors(m)
 	if err != nil {
 		return fmt.Errorf("failed to init interceptors: %w", err)
+	}
+
+	if err := m.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{
+		URI: audioLevelExtensionURI,
+	}, webrtc.RTPCodecTypeAudio); err != nil {
+		return fmt.Errorf("failed to register header extension: %w", err)
 	}
 
 	sEngine := webrtc.SettingEngine{}
@@ -265,6 +272,21 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				}
 			})
 
+			var audioLevelExtensionID int
+			for _, ext := range receiver.GetParameters().HeaderExtensions {
+				if ext.URI == audioLevelExtensionURI {
+					s.log.Debug("found audio level extension", mlog.Any("ext", ext), mlog.String("sessionID", us.cfg.SessionID))
+					audioLevelExtensionID = ext.ID
+					break
+				}
+			}
+
+			if audioLevelExtensionID > 0 {
+				if err := us.InitVAD(s.log, s.receiveCh); err != nil {
+					s.log.Error("failed to init VAD", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+				}
+			}
+
 			for {
 				buf := s.bufPool.Get().([]byte)
 				i, _, err := remoteTrack.Read(buf)
@@ -275,16 +297,26 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					return
 				}
 
-				rtp := &rtp.Packet{}
-				if err := rtp.Unmarshal(buf[:i]); err != nil {
+				packet := &rtp.Packet{}
+				if err := packet.Unmarshal(buf[:i]); err != nil {
 					s.log.Error("failed to unmarshal RTP packet",
 						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
 
+				if us.vadMonitor != nil && audioLevelExtensionID > 0 {
+					var ext rtp.AudioLevelExtension
+					audioExtData := packet.GetExtension(uint8(audioLevelExtensionID))
+					if err := ext.Unmarshal(audioExtData); err != nil {
+						s.log.Error("failed to unmarshal audio level extension",
+							mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+					}
+					us.vadMonitor.PushAudioLevel(ext.Level)
+				}
+
 				s.metrics.IncRTPPackets("in", trackType)
-				s.metrics.AddRTPPacketBytes("in", trackType, len(rtp.Payload))
+				s.metrics.AddRTPPacketBytes("in", trackType, len(packet.Payload))
 
 				if trackType == "voice" {
 					us.mut.RLock()
@@ -296,13 +328,13 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					}
 				}
 
-				if err := outAudioTrack.WriteRTP(rtp); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+				if err := outAudioTrack.WriteRTP(packet); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 					s.log.Error("failed to write RTP packet",
 						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
-				pLen := len(rtp.Payload)
+				pLen := len(packet.Payload)
 				s.bufPool.Put(buf)
 
 				call.iterSessions(func(ss *session) {
