@@ -34,6 +34,9 @@ func (s *bitcaskStore) Set(key, value string) error {
 		return ErrEmptyKey
 	}
 
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
 	err := s.db.Put([]byte(key), []byte(value))
 	if err != nil {
 		return fmt.Errorf("failed to set key: %w", err)
@@ -47,11 +50,12 @@ func (s *bitcaskStore) Set(key, value string) error {
 }
 
 func (s *bitcaskStore) Put(key, value string) error {
-	s.mut.Lock()
-	defer s.mut.Unlock()
 	if key == "" {
 		return ErrEmptyKey
 	}
+
+	s.mut.Lock()
+	defer s.mut.Unlock()
 
 	if s.db.Has([]byte(key)) {
 		return ErrConflict
@@ -73,6 +77,10 @@ func (s *bitcaskStore) Get(key string) (string, error) {
 	if key == "" {
 		return "", ErrEmptyKey
 	}
+
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+
 	val, err := s.db.Get([]byte(key))
 	if errors.Is(err, bitcask.ErrKeyNotFound) {
 		return "", ErrNotFound
@@ -87,6 +95,9 @@ func (s *bitcaskStore) Delete(key string) error {
 		return ErrEmptyKey
 	}
 
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
 	err := s.db.Delete([]byte(key))
 	if err != nil {
 		return fmt.Errorf("failed to delete key: %w", err)
@@ -100,6 +111,9 @@ func (s *bitcaskStore) Delete(key string) error {
 }
 
 func (s *bitcaskStore) Close() error {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
 	err := s.db.Close()
 	if err != nil {
 		return fmt.Errorf("failed to close store: %w", err)
