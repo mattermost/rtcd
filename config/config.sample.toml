@@ -23,6 +23,8 @@ security.admin_secret_key = ""
 security.session_cache.expiration_minutes = 1440
 
 [rtc]
+# The IP address used to listen for UDP packets.
+ice_address_udp = ""
 # The UDP port used to route all the media (audio/screen/video tracks).
 ice_port_udp = 8443
 # An optional hostname used to override the default value. By default, the
