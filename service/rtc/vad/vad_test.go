@@ -165,3 +165,53 @@ func TestPushAudioLevel(t *testing.T) {
 	require.True(t, voiceOff)
 	require.False(t, m.voiceState)
 }
+
+func TestReset(t *testing.T) {
+	cfg := MonitorConfig{
+		VoiceLevelsSampleSize:      10,
+		ActivationDuration:         250 * time.Millisecond,
+		VoiceActivationThreshold:   10,
+		VoiceDeactivationThreshold: 5,
+	}
+
+	var activated bool
+	var deactivated bool
+	m, err := NewMonitor(cfg, func(voice bool) {
+		if voice {
+			activated = true
+		} else {
+			deactivated = true
+		}
+	})
+	require.NoError(t, err)
+	require.NotNil(t, m)
+	require.Empty(t, m.voiceLevelsSample)
+	require.Zero(t, m.voiceLevelsSamplePtr)
+	require.False(t, m.voiceState)
+	require.Zero(t, m.lastActivationTime)
+
+	for i := 0; i < cfg.VoiceLevelsSampleSize; i++ {
+		m.PushAudioLevel(45)
+	}
+
+	require.False(t, activated)
+	require.False(t, deactivated)
+
+	m.PushAudioLevel(100)
+
+	require.True(t, m.voiceState)
+	require.NotZero(t, m.lastActivationTime)
+	require.Len(t, m.voiceLevelsSample, cfg.VoiceLevelsSampleSize)
+	require.Equal(t, 1, m.voiceLevelsSamplePtr)
+	require.True(t, activated)
+	require.False(t, deactivated)
+
+	m.Reset()
+
+	require.Empty(t, m.voiceLevelsSample)
+	require.Zero(t, m.voiceLevelsSamplePtr)
+	require.False(t, m.voiceState)
+	require.Zero(t, m.lastActivationTime)
+	require.True(t, activated)
+	require.True(t, deactivated)
+}

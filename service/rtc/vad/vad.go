@@ -150,3 +150,11 @@ func (m *Monitor) PushAudioLevel(level uint8) {
 	m.cb(newState)
 	m.voiceState = newState
 }
+
+func (m *Monitor) Reset() {
+	m.voiceLevelsSamplePtr = 0
+	m.voiceLevelsSample = m.voiceLevelsSample[:0]
+	m.lastActivationTime = time.Time{}
+	m.voiceState = false
+	m.cb(false)
+}
