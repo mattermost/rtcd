@@ -17,15 +17,15 @@ var (
 	buildDate    string
 )
 
-type versionInfo struct {
+type VersionInfo struct {
 	BuildDate    string `json:"buildDate"`
 	BuildVersion string `json:"buildVersion"`
 	BuildHash    string `json:"buildHash"`
 	GoVersion    string `json:"goVersion"`
 }
 
-func getVersionInfo() versionInfo {
-	return versionInfo{
+func getVersionInfo() VersionInfo {
+	return VersionInfo{
 		BuildDate:    buildDate,
 		BuildVersion: buildVersion,
 		BuildHash:    buildHash,
@@ -33,7 +33,7 @@ func getVersionInfo() versionInfo {
 	}
 }
 
-func (v versionInfo) logFields() []mlog.Field {
+func (v VersionInfo) logFields() []mlog.Field {
 	return []mlog.Field{
 		mlog.String("buildDate", v.BuildDate),
 		mlog.String("buildVersion", v.BuildVersion),

@@ -340,3 +340,31 @@ func (c *Client) reconnectHandler() {
 		c.sendError(fmt.Errorf("failed to re-connect: %w", err))
 	}
 }
+
+func (c *Client) GetVersionInfo() (VersionInfo, error) {
+	if c.httpClient == nil {
+		return VersionInfo{}, fmt.Errorf("http client is not initialized")
+	}
+
+	req, err := http.NewRequest("GET", c.cfg.httpURL+"/version", nil)
+	if err != nil {
+		return VersionInfo{}, fmt.Errorf("failed to build request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return VersionInfo{}, fmt.Errorf("http request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var info VersionInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return VersionInfo{}, fmt.Errorf("decoding http response failed: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return VersionInfo{}, fmt.Errorf("request failed with status %s", resp.Status)
+	}
+
+	return info, nil
+}
