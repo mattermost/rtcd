@@ -7,6 +7,8 @@ import (
 	"sync"
 
 	"github.com/pion/webrtc/v3"
+
+	"github.com/mattermost/mattermost-server/v6/shared/mlog"
 )
 
 type call struct {
@@ -23,7 +25,7 @@ func (c *call) getSession(sessionID string) *session {
 	return c.sessions[sessionID]
 }
 
-func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection, closeCb func() error) (*session, bool) {
+func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection, closeCb func() error, log mlog.LoggerIFace) (*session, bool) {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 	if s := c.sessions[cfg.SessionID]; s != nil {
@@ -31,14 +33,18 @@ func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection, clo
 	}
 
 	s := &session{
-		cfg:           cfg,
-		rtcConn:       rtcConn,
-		iceInCh:       make(chan []byte, signalChSize*2),
-		sdpOfferInCh:  make(chan webrtc.SessionDescription, signalChSize),
-		sdpAnswerInCh: make(chan webrtc.SessionDescription, signalChSize),
-		closeCh:       make(chan struct{}),
-		closeCb:       closeCb,
-		tracksCh:      make(chan *webrtc.TrackLocalStaticRTP, tracksChSize),
+		cfg:                cfg,
+		rtcConn:            rtcConn,
+		iceInCh:            make(chan []byte, signalChSize*2),
+		sdpOfferInCh:       make(chan webrtc.SessionDescription, signalChSize),
+		sdpAnswerInCh:      make(chan webrtc.SessionDescription, signalChSize),
+		closeCh:            make(chan struct{}),
+		closeCb:            closeCb,
+		tracksCh:           make(chan *webrtc.TrackLocalStaticRTP, tracksChSize),
+		outScreenTracks:    make(map[string]*webrtc.TrackLocalStaticRTP),
+		remoteScreenTracks: make(map[string]*webrtc.TrackRemote),
+		log:                log,
+		call:               c,
 	}
 
 	c.sessions[cfg.SessionID] = s

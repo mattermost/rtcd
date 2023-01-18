@@ -260,7 +260,7 @@ func (s *Server) msgReader() {
 
 			s.log.Debug("signaling", mlog.Int("sdpType", int(sdp.Type)), mlog.Any("session", session.cfg))
 
-			if sdp.Type == webrtc.SDPTypeOffer && session.HasSignalingConflict() {
+			if sdp.Type == webrtc.SDPTypeOffer && session.hasSignalingConflict() {
 				s.log.Debug("signaling conflict detected, ignoring offer", mlog.Any("session", session.cfg))
 				continue
 			}
@@ -299,6 +299,7 @@ func (s *Server) msgReader() {
 			call.mut.Lock()
 			if session == call.screenSession {
 				call.screenSession = nil
+				session.clearScreenState()
 			}
 			call.mut.Unlock()
 		case MuteMessage, UnmuteMessage:

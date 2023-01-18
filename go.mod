@@ -10,8 +10,8 @@ require (
 	github.com/mattermost/mattermost-server/v6 v6.0.0-20221122212622-0509e78744bf
 	github.com/pborman/uuid v1.2.1
 	github.com/pion/ice/v2 v2.2.6
-	github.com/pion/interceptor v0.1.11
-	github.com/pion/rtcp v1.2.9
+	github.com/pion/interceptor v0.1.12
+	github.com/pion/rtcp v1.2.10
 	github.com/pion/rtp v1.7.13
 	github.com/pion/stun v0.3.5
 	github.com/pion/webrtc/v3 v3.1.40

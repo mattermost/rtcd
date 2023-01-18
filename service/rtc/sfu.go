@@ -15,6 +15,8 @@ import (
 
 	"github.com/pion/ice/v2"
 	"github.com/pion/interceptor"
+	"github.com/pion/interceptor/pkg/cc"
+	"github.com/pion/interceptor/pkg/gcc"
 	"github.com/pion/interceptor/pkg/nack"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
@@ -40,6 +42,11 @@ var (
 			{Type: "nack", Parameter: "pli"},
 		},
 	}
+	rtpVideoExtensions = []string{
+		"urn:ietf:params:rtp-hdrext:sdes:mid",
+		"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id",
+		"urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id",
+	}
 )
 
 const (
@@ -61,20 +68,25 @@ func initMediaEngine() (*webrtc.MediaEngine, error) {
 	}, webrtc.RTPCodecTypeVideo); err != nil {
 		return nil, err
 	}
+	for _, ext := range rtpVideoExtensions {
+		if err := m.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: ext}, webrtc.RTPCodecTypeVideo); err != nil {
+			return nil, err
+		}
+	}
 	return &m, nil
 }
 
-func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, error) {
+func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, <-chan cc.BandwidthEstimator, error) {
 	var i interceptor.Registry
 	generator, err := nack.NewGeneratorInterceptor()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// NACK
 	responder, err := nack.NewResponderInterceptor(nack.ResponderSize(nackResponderBufferSize))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	m.RegisterFeedback(webrtc.RTCPFeedback{Type: "nack"}, webrtc.RTPCodecTypeVideo)
 	m.RegisterFeedback(webrtc.RTCPFeedback{Type: "nack", Parameter: "pli"}, webrtc.RTPCodecTypeVideo)
@@ -83,10 +95,35 @@ func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, error) {
 
 	// RTCP Reports
 	if err := webrtc.ConfigureRTCPReports(&i); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return &i, nil
+	// TWCC
+	if err := webrtc.ConfigureTWCCSender(m, &i); err != nil {
+		return nil, nil, err
+	}
+
+	// Congestion Controller
+	bwEstimatorCh := make(chan cc.BandwidthEstimator, 1)
+	congestionController, err := cc.NewInterceptor(func() (cc.BandwidthEstimator, error) {
+		return gcc.NewSendSideBWE(
+			gcc.SendSideBWEInitialBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelDefault))*1.25)),
+			gcc.SendSideBWEMinBitrate(getRateForSimulcastLevel(SimulcastLevelLow)),
+			gcc.SendSideBWEMaxBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelHigh))*1.25)),
+		)
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to init congestion controller: %w", err)
+	}
+	congestionController.OnNewPeerConnection(func(id string, estimator cc.BandwidthEstimator) {
+		bwEstimatorCh <- estimator
+	})
+	i.Add(congestionController)
+	if err = webrtc.ConfigureTWCCHeaderExtensionSender(m, &i); err != nil {
+		return nil, nil, fmt.Errorf("failed to add TWCC extensions: %w", err)
+	}
+
+	return &i, bwEstimatorCh, nil
 }
 
 func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
@@ -125,7 +162,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		return fmt.Errorf("failed to init media engine: %w", err)
 	}
 
-	i, err := initInterceptors(m)
+	i, bwEstimatorCh, err := initInterceptors(m)
 	if err != nil {
 		return fmt.Errorf("failed to init interceptors: %w", err)
 	}
@@ -164,6 +201,8 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 	}
 	group := s.getGroup(cfg.GroupID)
 	call := group.getCall(cfg.CallID)
+
+	us.initBWEstimator(<-bwEstimatorCh)
 
 	peerConn.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if candidate == nil {
@@ -229,8 +268,9 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			mlog.String("type", trackType),
 			mlog.String("streamID", streamID),
 			mlog.String("remoteTrackID", remoteTrack.ID()),
-			mlog.Int("SSRC", int(remoteTrack.SSRC())),
+			mlog.Int("ssrc", int(remoteTrack.SSRC())),
 			mlog.String("sessionID", us.cfg.SessionID),
+			mlog.String("rid", remoteTrack.RID()),
 		)
 
 		var screenStreamID string
@@ -238,7 +278,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			screenStreamID = screenSession.getScreenStreamID()
 		}
 
-		go us.handleReceiverRTCP(s.log, call, receiver)
+		go us.handleReceiverRTCP(receiver, remoteTrack.RID())
 
 		if trackType == rtpAudioCodec.MimeType {
 			trackType := "voice"
@@ -358,26 +398,47 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 			s.log.Debug("received screen sharing stream", mlog.String("streamID", streamID), mlog.String("sessionID", us.cfg.SessionID))
 
-			outScreenTrack, err := webrtc.NewTrackLocalStaticRTP(rtpVideoCodecVP8, genTrackID("screen", us.cfg.SessionID), random.NewID())
+			outScreenTrack, err := webrtc.NewTrackLocalStaticRTP(rtpVideoCodecVP8, genTrackID("screen", us.cfg.SessionID), random.NewID(), webrtc.WithRTPStreamID(remoteTrack.RID()))
 			if err != nil {
 				s.log.Error("failed to create local track",
 					mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 				return
 			}
+
+			rid := remoteTrack.RID()
+			if rid == "" {
+				rid = SimulcastLevelDefault
+			}
+
 			us.mut.Lock()
-			us.outScreenTrack = outScreenTrack
-			us.remoteScreenTrack = remoteTrack
+			us.outScreenTracks[rid] = outScreenTrack
+			us.remoteScreenTracks[rid] = remoteTrack
 			us.mut.Unlock()
 
 			call.iterSessions(func(ss *session) {
 				if ss.cfg.UserID == us.cfg.UserID {
 					return
 				}
+
+				expectedLevel := SimulcastLevelDefault
+				if remoteTrack.RID() != "" {
+					expectedLevel = ss.getExpectedSimulcastLevel()
+				}
+
+				if rid != expectedLevel {
+					return
+				}
+
+				s.log.Debug("received track matches expected level, sending",
+					mlog.String("lvl", expectedLevel),
+					mlog.String("sessionID", us.cfg.SessionID),
+				)
+
 				select {
 				case ss.tracksCh <- outScreenTrack:
 				default:
 					s.log.Error("failed to send screen track: channel is full",
-						mlog.String("UserID", us.cfg.UserID),
+						mlog.String("userID", us.cfg.UserID),
 						mlog.String("sessionID", us.cfg.SessionID),
 						mlog.String("trackUserID", ss.cfg.UserID),
 						mlog.String("trackSessionID", ss.cfg.SessionID),
@@ -437,7 +498,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			return
 		}
 
-		go us.handleICE(s.log, s.metrics)
+		go us.handleICE(s.metrics)
 
 		go func() {
 			if err := s.handleTracks(call, us); err != nil {
@@ -518,24 +579,24 @@ func (s *Server) handleTracks(call *call, us *session) error {
 
 		ss.mut.RLock()
 		outVoiceTrack := ss.outVoiceTrack
-		outScreenTrack := ss.outScreenTrack
+		outScreenTrack := ss.outScreenTracks[SimulcastLevelDefault]
 		outScreenAudioTrack := ss.outScreenAudioTrack
 		ss.mut.RUnlock()
 
 		if outVoiceTrack != nil {
-			if err := us.addTrack(s.log, call, s.receiveCh, outVoiceTrack); err != nil {
+			if err := us.addTrack(s.receiveCh, outVoiceTrack); err != nil {
 				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 				s.log.Error("failed to add voice track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 			}
 		}
 		if outScreenTrack != nil {
-			if err := us.addTrack(s.log, call, s.receiveCh, outScreenTrack); err != nil {
+			if err := us.addTrack(s.receiveCh, outScreenTrack); err != nil {
 				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 				s.log.Error("failed to add screen track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 			}
 		}
 		if outScreenAudioTrack != nil {
-			if err := us.addTrack(s.log, call, s.receiveCh, outScreenAudioTrack); err != nil {
+			if err := us.addTrack(s.receiveCh, outScreenAudioTrack); err != nil {
 				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 				s.log.Error("failed to add screen audio track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 			}
@@ -548,7 +609,7 @@ func (s *Server) handleTracks(call *call, us *session) error {
 			if !ok {
 				return nil
 			}
-			if err := us.addTrack(s.log, call, s.receiveCh, track); err != nil {
+			if err := us.addTrack(s.receiveCh, track); err != nil {
 				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 				s.log.Error("failed to add track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 				continue
