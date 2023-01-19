@@ -6,10 +6,13 @@ package rtc
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"strings"
 )
 
 type ServerConfig struct {
+	// ICEAddressUDP specifies the UDP address the RTC service should listen on.
+	ICEAddressUDP string `toml:"ice_address_udp"`
 	// ICEPortUDP specifies the UDP port the RTC service should listen to.
 	ICEPortUDP int `toml:"ice_port_udp"`
 	// ICEHostOverride optionally specifies an IP address (or hostname)
@@ -21,6 +24,10 @@ type ServerConfig struct {
 }
 
 func (c ServerConfig) IsValid() error {
+	if c.ICEAddressUDP != "" && net.ParseIP(c.ICEAddressUDP) == nil {
+		return fmt.Errorf("invalid ICEAddressUDP value: not a valid address")
+	}
+
 	if c.ICEPortUDP < 80 || c.ICEPortUDP > 49151 {
 		return fmt.Errorf("invalid ICEPortUDP value: %d is not in allowed range [80, 49151]", c.ICEPortUDP)
 	}
