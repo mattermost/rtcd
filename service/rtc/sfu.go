@@ -23,6 +23,12 @@ import (
 )
 
 var (
+	videoRTCPFeedback = []webrtc.RTCPFeedback{
+		{Type: "goog-remb", Parameter: ""},
+		{Type: "ccm", Parameter: "fir"},
+		{Type: "nack", Parameter: ""},
+		{Type: "nack", Parameter: "pli"},
+	}
 	rtpAudioCodec = webrtc.RTPCodecCapability{
 		MimeType:     "audio/opus",
 		ClockRate:    48000,
@@ -30,16 +36,15 @@ var (
 		SDPFmtpLine:  "minptime=10;useinbandfec=1",
 		RTCPFeedback: nil,
 	}
-	rtpVideoCodecVP8 = webrtc.RTPCodecCapability{
-		MimeType:    "video/VP8",
-		ClockRate:   90000,
-		Channels:    0,
-		SDPFmtpLine: "",
-		RTCPFeedback: []webrtc.RTCPFeedback{
-			{Type: "goog-remb", Parameter: ""},
-			{Type: "ccm", Parameter: "fir"},
-			{Type: "nack", Parameter: ""},
-			{Type: "nack", Parameter: "pli"},
+	rtpVideoCodecs = map[string]webrtc.RTPCodecParameters{
+		"video/VP8": {
+			RTPCodecCapability: webrtc.RTPCodecCapability{
+				MimeType:     "video/VP8",
+				ClockRate:    90000,
+				SDPFmtpLine:  "",
+				RTCPFeedback: videoRTCPFeedback,
+			},
+			PayloadType: 96,
 		},
 	}
 	rtpVideoExtensions = []string{
@@ -62,11 +67,10 @@ func initMediaEngine() (*webrtc.MediaEngine, error) {
 	}, webrtc.RTPCodecTypeAudio); err != nil {
 		return nil, err
 	}
-	if err := m.RegisterCodec(webrtc.RTPCodecParameters{
-		RTPCodecCapability: rtpVideoCodecVP8,
-		PayloadType:        96,
-	}, webrtc.RTPCodecTypeVideo); err != nil {
-		return nil, err
+	for _, params := range rtpVideoCodecs {
+		if err := m.RegisterCodec(params, webrtc.RTPCodecTypeVideo); err != nil {
+			return nil, err
+		}
 	}
 	for _, ext := range rtpVideoExtensions {
 		if err := m.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: ext}, webrtc.RTPCodecTypeVideo); err != nil {
@@ -389,7 +393,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					s.metrics.AddRTPPacketBytes("out", trackType, pLen)
 				})
 			}
-		} else if trackType == rtpVideoCodecVP8.MimeType {
+		} else if params, ok := rtpVideoCodecs[trackType]; ok {
 			if screenStreamID != "" && screenStreamID != streamID {
 				s.log.Error("received unexpected video track",
 					mlog.String("streamID", streamID), mlog.String("sessionID", us.cfg.SessionID))
@@ -398,7 +402,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 			s.log.Debug("received screen sharing stream", mlog.String("streamID", streamID), mlog.String("sessionID", us.cfg.SessionID))
 
-			outScreenTrack, err := webrtc.NewTrackLocalStaticRTP(rtpVideoCodecVP8, genTrackID("screen", us.cfg.SessionID), random.NewID(), webrtc.WithRTPStreamID(remoteTrack.RID()))
+			outScreenTrack, err := webrtc.NewTrackLocalStaticRTP(params.RTPCodecCapability, genTrackID("screen", us.cfg.SessionID), random.NewID(), webrtc.WithRTPStreamID(remoteTrack.RID()))
 			if err != nil {
 				s.log.Error("failed to create local track",
 					mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
