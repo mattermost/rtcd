@@ -628,6 +628,15 @@ func (s *Server) handleTracks(call *call, us *session) error {
 				s.log.Error("failed to signal", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 				continue
 			}
+		case answer, ok := <-us.sdpAnswerInCh:
+			if !ok {
+				return nil
+			}
+
+			if err := us.rtcConn.SetRemoteDescription(answer); err != nil {
+				s.log.Error("failed to set remote description", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+				continue
+			}
 		case <-us.closeCh:
 			return nil
 		}

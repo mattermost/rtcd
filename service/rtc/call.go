@@ -76,3 +76,30 @@ func (c *call) iterSessions(cb func(s *session)) {
 	}
 	c.mut.RUnlock()
 }
+
+func (c *call) clearScreenState(log mlog.LoggerIFace, sdpOutCh chan<- Message, screenSession *session) {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
+	if screenSession == nil || c.screenSession != screenSession {
+		return
+	}
+
+	for _, s := range c.sessions {
+		if s == c.screenSession {
+			s.clearScreenState()
+			c.screenSession = nil
+		} else if s.screenTrackSender != nil {
+
+			if err := s.rtcConn.RemoveTrack(s.screenTrackSender); err != nil {
+				log.Error("failed to remove track", mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
+			}
+
+			if err := s.sendOffer(sdpOutCh); err != nil {
+				log.Error("failed to send offer", mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
+			}
+
+			s.screenTrackSender = nil
+		}
+	}
+}

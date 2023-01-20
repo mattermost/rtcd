@@ -228,6 +228,31 @@ func (s *session) handleSenderRTCP(sender *webrtc.RTPSender) {
 	}
 }
 
+// sendOffer creates and sends out a new SDP offer.
+func (s *session) sendOffer(sdpOutCh chan<- Message) error {
+	offer, err := s.rtcConn.CreateOffer(nil)
+	if err != nil {
+		return fmt.Errorf("failed to create offer: %w", err)
+	}
+
+	err = s.rtcConn.SetLocalDescription(offer)
+	if err != nil {
+		return fmt.Errorf("failed to set local description: %w", err)
+	}
+
+	sdp, err := json.Marshal(s.rtcConn.LocalDescription())
+	if err != nil {
+		return fmt.Errorf("failed to marshal sdp: %w", err)
+	}
+
+	select {
+	case sdpOutCh <- newMessage(s, SDPMessage, sdp):
+		return nil
+	default:
+		return fmt.Errorf("failed to send SDP message: channel is full")
+	}
+}
+
 // addTrack adds the given track to the peer and starts negotiation.
 func (s *session) addTrack(sdpOutCh chan<- Message, track *webrtc.TrackLocalStaticRTP) error {
 	s.mut.Lock()
@@ -252,25 +277,8 @@ func (s *session) addTrack(sdpOutCh chan<- Message, track *webrtc.TrackLocalStat
 
 	go s.handleSenderRTCP(sender)
 
-	offer, err := s.rtcConn.CreateOffer(nil)
-	if err != nil {
-		return fmt.Errorf("failed to create offer: %w", err)
-	}
-
-	err = s.rtcConn.SetLocalDescription(offer)
-	if err != nil {
-		return fmt.Errorf("failed to set local description: %w", err)
-	}
-
-	sdp, err := json.Marshal(s.rtcConn.LocalDescription())
-	if err != nil {
-		return fmt.Errorf("failed to marshal sdp: %w", err)
-	}
-
-	select {
-	case sdpOutCh <- newMessage(s, SDPMessage, sdp):
-	default:
-		return fmt.Errorf("failed to send SDP message: channel is full")
+	if err := s.sendOffer(sdpOutCh); err != nil {
+		return fmt.Errorf("failed to send offer: %w", err)
 	}
 
 	select {
