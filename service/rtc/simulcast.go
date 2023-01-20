@@ -97,18 +97,18 @@ func (s *session) handleSenderBitrateChange(rate int) {
 		return
 	}
 
+	screenTrack := screenSession.getOutScreenTrack(newLevel)
+	if screenTrack == nil {
+		// if the desired track is not available we keep the current one
+		return
+	}
+
 	s.log.Debug("switching simulcast level",
 		mlog.String("sessionID", s.cfg.SessionID),
 		mlog.String("currLevel", currLevel),
 		mlog.String("newLevel", newLevel),
 		mlog.Int("rate", rate),
 	)
-
-	screenTrack := screenSession.getOutScreenTrack(newLevel)
-	if screenTrack == nil {
-		// if the desired track is not available we keep the current one
-		return
-	}
 
 	select {
 	case s.tracksCh <- screenTrack:
