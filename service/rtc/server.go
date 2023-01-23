@@ -193,12 +193,6 @@ func (s *Server) Stop() error {
 		}
 	}
 
-	if s.udpConn != nil {
-		if err := s.udpConn.Close(); err != nil {
-			return fmt.Errorf("failed to close udp conn: %w", err)
-		}
-	}
-
 	close(s.receiveCh)
 	close(s.sendCh)
 

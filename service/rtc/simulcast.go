@@ -74,7 +74,7 @@ func (s *session) handleSenderBitrateChange(rate int) {
 	s.mut.RUnlock()
 
 	if sender == nil {
-		s.log.Error("sender should not be nil", mlog.String("sessionID", s.cfg.SessionID))
+		// nothing to do if the session is not receiving a screen track
 		return
 	}
 
@@ -93,7 +93,7 @@ func (s *session) handleSenderBitrateChange(rate int) {
 
 	newLevel := getSimulcastLevelForRate(rate)
 	if newLevel == currLevel {
-		// nothing to do
+		// no level change, nothing to do
 		return
 	}
 
@@ -111,11 +111,13 @@ func (s *session) handleSenderBitrateChange(rate int) {
 	)
 
 	select {
-	case s.tracksCh <- screenTrack:
-		if err := sender.Stop(); err != nil {
-			s.log.Error("failed to stop sender", mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
-		}
-		return
+	case s.tracksCh <- trackActionContext{action: trackActionRemove, track: track}:
+	default:
+		s.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", s.cfg.SessionID))
+	}
+
+	select {
+	case s.tracksCh <- trackActionContext{action: trackActionAdd, track: screenTrack}:
 	default:
 		s.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", s.cfg.SessionID))
 	}

@@ -31,7 +31,7 @@ type session struct {
 
 	// WebRTC
 	rtcConn       *webrtc.PeerConnection
-	tracksCh      chan *webrtc.TrackLocalStaticRTP
+	tracksCh      chan trackActionContext
 	iceInCh       chan []byte
 	sdpOfferInCh  chan webrtc.SessionDescription
 	sdpAnswerInCh chan webrtc.SessionDescription
@@ -254,7 +254,7 @@ func (s *session) sendOffer(sdpOutCh chan<- Message) error {
 }
 
 // addTrack adds the given track to the peer and starts negotiation.
-func (s *session) addTrack(sdpOutCh chan<- Message, track *webrtc.TrackLocalStaticRTP) error {
+func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) error {
 	s.mut.Lock()
 	s.makingOffer = true
 	s.mut.Unlock()
@@ -276,6 +276,44 @@ func (s *session) addTrack(sdpOutCh chan<- Message, track *webrtc.TrackLocalStat
 	}
 
 	go s.handleSenderRTCP(sender)
+
+	if err := s.sendOffer(sdpOutCh); err != nil {
+		return fmt.Errorf("failed to send offer: %w", err)
+	}
+
+	select {
+	case answer, ok := <-s.sdpAnswerInCh:
+		if !ok {
+			return nil
+		}
+		if err := s.rtcConn.SetRemoteDescription(answer); err != nil {
+			return fmt.Errorf("failed to set remote description: %w", err)
+		}
+	case <-time.After(signalingTimeout):
+		return fmt.Errorf("timed out signaling")
+	}
+
+	return nil
+}
+
+// addTrack removes the given track to the peer and starts (re)negotiation.
+func (s *session) removeTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) error {
+	var sender *webrtc.RTPSender
+
+	for _, snd := range s.rtcConn.GetSenders() {
+		if snd.Track() == track {
+			sender = snd
+			break
+		}
+	}
+
+	if sender == nil {
+		return fmt.Errorf("failed to find sender for track")
+	}
+
+	if err := s.rtcConn.RemoveTrack(sender); err != nil {
+		return fmt.Errorf("failed to remove track: %w", err)
+	}
 
 	if err := s.sendOffer(sdpOutCh); err != nil {
 		return fmt.Errorf("failed to send offer: %w", err)

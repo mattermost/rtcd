@@ -40,7 +40,7 @@ func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection, clo
 		sdpAnswerInCh:      make(chan webrtc.SessionDescription, signalChSize),
 		closeCh:            make(chan struct{}),
 		closeCb:            closeCb,
-		tracksCh:           make(chan *webrtc.TrackLocalStaticRTP, tracksChSize),
+		tracksCh:           make(chan trackActionContext, tracksChSize),
 		outScreenTracks:    make(map[string]*webrtc.TrackLocalStaticRTP),
 		remoteScreenTracks: make(map[string]*webrtc.TrackRemote),
 		log:                log,
@@ -90,15 +90,11 @@ func (c *call) clearScreenState(log mlog.LoggerIFace, sdpOutCh chan<- Message, s
 			s.clearScreenState()
 			c.screenSession = nil
 		} else if s.screenTrackSender != nil {
-
-			if err := s.rtcConn.RemoveTrack(s.screenTrackSender); err != nil {
-				log.Error("failed to remove track", mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
+			select {
+			case s.tracksCh <- trackActionContext{action: trackActionRemove, track: s.screenTrackSender.Track()}:
+			default:
+				s.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", s.cfg.SessionID))
 			}
-
-			if err := s.sendOffer(sdpOutCh); err != nil {
-				log.Error("failed to send offer", mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
-			}
-
 			s.screenTrackSender = nil
 		}
 	}

@@ -311,7 +311,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					return
 				}
 				select {
-				case ss.tracksCh <- outAudioTrack:
+				case ss.tracksCh <- trackActionContext{action: trackActionAdd, track: outAudioTrack}:
 				default:
 					s.log.Error("failed to send audio track: channel is full",
 						mlog.String("UserID", us.cfg.UserID), mlog.String("TrackUserID", ss.cfg.UserID))
@@ -439,7 +439,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				)
 
 				select {
-				case ss.tracksCh <- outScreenTrack:
+				case ss.tracksCh <- trackActionContext{action: trackActionAdd, track: outScreenTrack}:
 				default:
 					s.log.Error("failed to send screen track: channel is full",
 						mlog.String("userID", us.cfg.UserID),
@@ -609,13 +609,25 @@ func (s *Server) handleTracks(call *call, us *session) error {
 
 	for {
 		select {
-		case track, ok := <-us.tracksCh:
+		case ctx, ok := <-us.tracksCh:
 			if !ok {
 				return nil
 			}
-			if err := us.addTrack(s.receiveCh, track); err != nil {
-				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
-				s.log.Error("failed to add track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+
+			if ctx.action == trackActionAdd {
+				if err := us.addTrack(s.receiveCh, ctx.track); err != nil {
+					s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
+					s.log.Error("failed to add track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+					continue
+				}
+			} else if ctx.action == trackActionRemove {
+				if err := us.removeTrack(s.receiveCh, ctx.track); err != nil {
+					s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
+					s.log.Error("failed to remove track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+					continue
+				}
+			} else {
+				s.log.Error("invalid track action", mlog.Int("action", int(ctx.action)), mlog.String("sessionID", us.cfg.SessionID))
 				continue
 			}
 		case offer, ok := <-us.sdpOfferInCh:
@@ -626,15 +638,6 @@ func (s *Server) handleTracks(call *call, us *session) error {
 			if err := us.signaling(offer, s.receiveCh); err != nil {
 				s.metrics.IncRTCErrors(us.cfg.GroupID, "signaling")
 				s.log.Error("failed to signal", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
-				continue
-			}
-		case answer, ok := <-us.sdpAnswerInCh:
-			if !ok {
-				return nil
-			}
-
-			if err := us.rtcConn.SetRemoteDescription(answer); err != nil {
-				s.log.Error("failed to set remote description", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 				continue
 			}
 		case <-us.closeCh:
