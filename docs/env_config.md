@@ -9,6 +9,8 @@ RTCD_API_HTTP_TLS_CERTKEY                           String
 RTCD_API_SECURITY_ENABLEADMIN                       True or False
 RTCD_API_SECURITY_ADMINSECRETKEY                    String
 RTCD_API_SECURITY_ALLOWSELFREGISTRATION             True or False
+RTCD_API_SECURITY_SESSIONCACHE_EXPIRATIONMINUTES    Integer
+RTCD_RTC_ICEADDRESSUDP                              String
 RTCD_RTC_ICEPORTUDP                                 Integer
 RTCD_RTC_ICEHOSTOVERRIDE                            String
 RTCD_RTC_ICESERVERS                                 Comma-separated list of 

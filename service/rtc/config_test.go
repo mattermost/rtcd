@@ -16,6 +16,19 @@ func TestServerConfigIsValid(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("invalid ICEAddressUDP", func(t *testing.T) {
+		var cfg ServerConfig
+		cfg.ICEAddressUDP = "not_an_address"
+		err := cfg.IsValid()
+		require.Error(t, err)
+		require.Equal(t, "invalid ICEAddressUDP value: not a valid address", err.Error())
+
+		cfg.ICEAddressUDP = "127.0.0.0.1"
+		err = cfg.IsValid()
+		require.Error(t, err)
+		require.Equal(t, "invalid ICEAddressUDP value: not a valid address", err.Error())
+	})
+
 	t.Run("invalid ICEPortUDP", func(t *testing.T) {
 		var cfg ServerConfig
 		cfg.ICEPortUDP = 22
@@ -44,6 +57,7 @@ func TestServerConfigIsValid(t *testing.T) {
 
 	t.Run("valid", func(t *testing.T) {
 		var cfg ServerConfig
+		cfg.ICEAddressUDP = "127.0.0.1"
 		cfg.ICEPortUDP = 8443
 		cfg.TURNConfig.CredentialsExpirationMinutes = 1440
 		err := cfg.IsValid()

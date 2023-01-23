@@ -113,12 +113,13 @@ func (s *Server) Start() error {
 			},
 		}
 
-		udpConn, err := listenConfig.ListenPacket(context.Background(), "udp4", fmt.Sprintf(":%d", s.cfg.ICEPortUDP))
+		listenAddress := fmt.Sprintf("%s:%d", s.cfg.ICEAddressUDP, s.cfg.ICEPortUDP)
+		udpConn, err := listenConfig.ListenPacket(context.Background(), "udp4", listenAddress)
 		if err != nil {
 			return fmt.Errorf("failed to listen on udp: %w", err)
 		}
 
-		s.log.Info(fmt.Sprintf("rtc: server is listening on udp %d", s.cfg.ICEPortUDP))
+		s.log.Info(fmt.Sprintf("rtc: server is listening on udp %s", listenAddress))
 
 		if err := udpConn.(*net.UDPConn).SetWriteBuffer(udpSocketBufferSize); err != nil {
 			s.log.Warn("rtc: failed to set udp send buffer", mlog.Err(err))
@@ -311,6 +312,14 @@ func (s *Server) msgReader() {
 			var enabled bool
 			if msg.Type == UnmuteMessage {
 				enabled = true
+			} else {
+				session.mut.Lock()
+				if session.vadMonitor != nil {
+					s.log.Debug("resetting vad monitor for session",
+						mlog.String("sessionID", session.cfg.SessionID))
+					session.vadMonitor.Reset()
+				}
+				session.mut.Unlock()
 			}
 
 			s.log.Debug("setting voice track state",
