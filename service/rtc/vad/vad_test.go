@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattermost/rtcd/service/rtc/math"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -49,54 +51,6 @@ func TestNewMonitor(t *testing.T) {
 	})
 }
 
-func TestGetAvg(t *testing.T) {
-	t.Run("no samples", func(t *testing.T) {
-		require.Equal(t, uint8(0), getAvg(nil))
-		require.Equal(t, uint8(0), getAvg([]uint8{}))
-	})
-
-	t.Run("with samples", func(t *testing.T) {
-		require.Equal(t, uint8(5), getAvg([]uint8{
-			2, 4, 4, 4, 5, 5, 7, 9,
-		}))
-	})
-
-	t.Run("rounded", func(t *testing.T) {
-		require.Equal(t, uint8(3), getAvg([]uint8{
-			1, 2, 3, 4,
-		}))
-
-		require.Equal(t, uint8(3), getAvg([]uint8{
-			1, 2, 3, 4,
-		}))
-
-		require.Equal(t, uint8(1), getAvg([]uint8{
-			9, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		}))
-
-		require.Equal(t, uint8(2), getAvg([]uint8{
-			24, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		}))
-	})
-}
-
-func TestGetStdDev(t *testing.T) {
-	t.Run("no samples", func(t *testing.T) {
-		require.Equal(t, uint8(0), getStdDev(nil, 0))
-		require.Equal(t, uint8(0), getStdDev([]uint8{}, 0))
-	})
-
-	t.Run("with samples", func(t *testing.T) {
-		samples := []uint8{2, 4, 4, 4, 5, 5, 7, 9}
-		require.Equal(t, uint8(2), getStdDev(samples, getAvg(samples)))
-	})
-
-	t.Run("rounded", func(t *testing.T) {
-		samples := []uint8{2, 4, 9, 4, 5, 5, 7, 9}
-		require.Equal(t, uint8(3), getStdDev(samples, getAvg(samples)))
-	})
-}
-
 func TestPushAudioLevel(t *testing.T) {
 	cfg := MonitorConfig{
 		VoiceLevelsSampleSize:      10,
@@ -131,8 +85,8 @@ func TestPushAudioLevel(t *testing.T) {
 		}
 	}
 
-	require.Equal(t, uint8(50), getAvg(m.voiceLevelsSample))
-	require.Equal(t, uint8(5), getStdDev(m.voiceLevelsSample, getAvg(m.voiceLevelsSample)))
+	require.Equal(t, uint8(50), math.Avg(m.voiceLevelsSample))
+	require.Equal(t, uint8(5), math.StdDev(m.voiceLevelsSample, math.Avg(m.voiceLevelsSample)))
 	require.False(t, m.voiceState)
 	require.False(t, voiceOn)
 	require.False(t, voiceOff)
