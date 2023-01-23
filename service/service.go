@@ -202,6 +202,8 @@ func (s *Service) handleRTCMsg(msg rtc.Message) error {
 	switch msg.Type {
 	case rtc.SDPMessage, rtc.ICEMessage:
 		cm.Type = ClientMessageRTC
+	case rtc.VoiceOnMessage, rtc.VoiceOffMessage:
+		cm.Type = ClientMessageVAD
 	default:
 		return fmt.Errorf("unexpected rtc message type: %s", cm.Type)
 	}

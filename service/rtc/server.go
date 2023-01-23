@@ -312,6 +312,14 @@ func (s *Server) msgReader() {
 			var enabled bool
 			if msg.Type == UnmuteMessage {
 				enabled = true
+			} else {
+				session.mut.Lock()
+				if session.vadMonitor != nil {
+					s.log.Debug("resetting vad monitor for session",
+						mlog.String("sessionID", session.cfg.SessionID))
+					session.vadMonitor.Reset()
+				}
+				session.mut.Unlock()
 			}
 
 			s.log.Debug("setting voice track state",
