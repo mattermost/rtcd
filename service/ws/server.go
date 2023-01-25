@@ -61,6 +61,13 @@ func NewServer(cfg ServerConfig, log mlog.LoggerIFace, opts ...ServerOption) (*S
 
 // SendCh queues a message to be sent through a ws connection.
 func (s *Server) Send(msg Message) error {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+
+	if s.closed {
+		return fmt.Errorf("server is closed")
+	}
+
 	select {
 	case s.sendCh <- msg:
 	default:

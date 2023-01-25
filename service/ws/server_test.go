@@ -477,3 +477,33 @@ func TestSendMessages(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestRaceSendClose(t *testing.T) {
+	s, _, shutdown := setupServer(t)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			_ = s.Send(Message{
+				ConnID: "connID",
+				Data:   []byte("some data"),
+				Type:   TextMessage,
+			})
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			s.Close()
+		}
+		shutdown()
+	}()
+
+	wg.Wait()
+
+	require.EqualError(t, s.Send(Message{}), "server is closed")
+}
