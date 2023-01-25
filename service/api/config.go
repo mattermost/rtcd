@@ -4,6 +4,7 @@
 package api
 
 import (
+	"crypto/tls"
 	"fmt"
 )
 
@@ -18,8 +19,13 @@ func (c TLSConfig) IsValid() error {
 		if c.CertFile == "" {
 			return fmt.Errorf("invalid CertFile value: should not be empty")
 		}
+
 		if c.CertKey == "" {
 			return fmt.Errorf("invalid CertKey value: should not be empty")
+		}
+
+		if _, err := tls.LoadX509KeyPair(c.CertFile, c.CertKey); err != nil {
+			return fmt.Errorf("failed to load cert files: %w", err)
 		}
 	}
 	return nil
