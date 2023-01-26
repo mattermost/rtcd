@@ -670,7 +670,8 @@ func TestRegisterClientHerd(t *testing.T) {
 	authKey, err := random.NewSecureString(auth.MinKeyLen)
 	require.NoError(t, err)
 
-	n := 100
+	// NOTE: this value needs to be bumped for any serious benchmarking.
+	n := 10
 	var wg sync.WaitGroup
 	wg.Add(n)
 
