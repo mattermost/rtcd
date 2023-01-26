@@ -4,17 +4,27 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"runtime"
+	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/mattermost/rtcd/service/store"
 )
 
-const MinKeyLen = 32
+const (
+	MinKeyLen                        = 32
+	authTimeout                      = 10 * time.Second
+	authRequestsPerSecond rate.Limit = 20
+)
 
 type Service struct {
 	sessionCache *SessionCache
 	store        store.Store
+	limiter      *rate.Limiter
 }
 
 func NewService(store store.Store, sessionCache *SessionCache) (*Service, error) {
@@ -27,6 +37,7 @@ func NewService(store store.Store, sessionCache *SessionCache) (*Service, error)
 	return &Service{
 		sessionCache: sessionCache,
 		store:        store,
+		limiter:      rate.NewLimiter(authRequestsPerSecond*rate.Limit(runtime.NumCPU()), 1),
 	}, nil
 }
 
@@ -35,6 +46,13 @@ func (s *Service) Authenticate(id, authToken string) error {
 	if err != nil {
 		return fmt.Errorf("authentication failed: %w", err)
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), authTimeout)
+	defer cancel()
+	if err := s.limiter.Wait(ctx); err != nil {
+		return fmt.Errorf("authentication failed: %w", err)
+	}
+
 	if err := compareKeyHash(hash, authToken); err != nil {
 		return errors.New("authentication failed")
 	}
@@ -49,6 +67,12 @@ func (s *Service) Register(id, key string) error {
 	if _, err := s.store.Get(id); err == nil {
 		return errors.New("registration failed: already registered")
 	} else if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("registration failed: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), authTimeout)
+	defer cancel()
+	if err := s.limiter.Wait(ctx); err != nil {
 		return fmt.Errorf("registration failed: %w", err)
 	}
 

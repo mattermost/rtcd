@@ -635,3 +635,58 @@ func TestClientGetVersionInfo(t *testing.T) {
 		}, info)
 	})
 }
+
+func BenchmarkRegisterClient(b *testing.B) {
+	th := SetupTestHelper(b, nil)
+	defer th.Teardown()
+
+	th.srvc.cfg.API.Security.AllowSelfRegistration = true
+
+	authKey, err := random.NewSecureString(auth.MinKeyLen)
+	require.NoError(b, err)
+
+	b.ResetTimer()
+
+	var i int32
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			c, _ := NewClient(ClientConfig{
+				URL: th.apiURL,
+			})
+			defer c.Close()
+			err := c.Register(fmt.Sprintf("client%d", atomic.AddInt32(&i, 1)), authKey)
+			require.NoError(b, err)
+		}
+	})
+}
+
+func TestRegisterClientHerd(t *testing.T) {
+	th := SetupTestHelper(t, nil)
+	defer th.Teardown()
+
+	th.srvc.cfg.API.Security.AllowSelfRegistration = true
+
+	authKey, err := random.NewSecureString(auth.MinKeyLen)
+	require.NoError(t, err)
+
+	// NOTE: this value needs to be bumped for any serious benchmarking.
+	n := 10
+	var wg sync.WaitGroup
+	wg.Add(n)
+
+	var i int32
+	for k := 0; k < n; k++ {
+		go func() {
+			defer wg.Done()
+			c, _ := NewClient(ClientConfig{
+				URL: th.apiURL,
+			})
+			defer c.Close()
+			err := c.Register(fmt.Sprintf("client%d", atomic.AddInt32(&i, 1)), authKey)
+			require.NoError(t, err)
+		}()
+	}
+
+	wg.Wait()
+}

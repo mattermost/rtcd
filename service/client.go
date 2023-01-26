@@ -55,7 +55,7 @@ func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
 	}
 
 	dialFn := (&net.Dialer{
-		Timeout:   5 * time.Second,
+		Timeout:   10 * time.Second,
 		KeepAlive: 30 * time.Second,
 		DualStack: true,
 	}).DialContext
@@ -70,7 +70,7 @@ func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
 		MaxConnsPerHost:       100,
 		MaxIdleConns:          100,
 		MaxIdleConnsPerHost:   100,
-		ResponseHeaderTimeout: 10 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   1 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
