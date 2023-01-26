@@ -486,6 +486,8 @@ func TestRaceSendClose(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
+		// looping a bunch of times to increase the chance of hitting
+		// a race between Send and Close.
 		for i := 0; i < 100; i++ {
 			_ = s.Send(Message{
 				ConnID: "connID",
@@ -497,9 +499,9 @@ func TestRaceSendClose(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 100; i++ {
-			s.Close()
-		}
+		// purposely closing twice to verify that works.
+		s.Close()
+		s.Close()
 		shutdown()
 	}()
 
