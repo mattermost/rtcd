@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mattermost/rtcd/service/rtc/math"
+	"github.com/mattermost/rtcd/service/rtc/stat"
 )
 
 const (
@@ -105,8 +105,8 @@ func (m *Monitor) PushAudioLevel(level uint8) {
 		m.voiceLevelsSamplePtr++
 	}
 
-	avg := math.Avg(m.voiceLevelsSample)
-	dev := math.StdDev(m.voiceLevelsSample, avg)
+	avg := stat.Avg(m.voiceLevelsSample)
+	dev := stat.StdDev(m.voiceLevelsSample, avg)
 
 	var newState bool
 	if !m.voiceState && int(dev) > m.cfg.VoiceActivationThreshold {

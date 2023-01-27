@@ -15,11 +15,11 @@ const (
 	SimulcastLevelHigh    string = "h"
 	SimulcastLevelMedium         = "m"
 	SimulcastLevelLow            = "l"
-	SimulcastLevelDefault        = SimulcastLevelMedium
+	SimulcastLevelDefault        = SimulcastLevelLow
 )
 
-var simulcastRates = []int{2_000_000, 1_000_000, 500_000}
-var simulcastLevels = []string{SimulcastLevelHigh, SimulcastLevelMedium, SimulcastLevelLow}
+var simulcastRates = []int{2_500_000, 500_000}
+var simulcastLevels = []string{SimulcastLevelHigh, SimulcastLevelLow}
 
 func getRateForSimulcastLevel(level string) int {
 	var rate int

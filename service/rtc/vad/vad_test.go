@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattermost/rtcd/service/rtc/math"
+	"github.com/mattermost/rtcd/service/rtc/stat"
 
 	"github.com/stretchr/testify/require"
 )
@@ -85,8 +85,8 @@ func TestPushAudioLevel(t *testing.T) {
 		}
 	}
 
-	require.Equal(t, uint8(50), math.Avg(m.voiceLevelsSample))
-	require.Equal(t, uint8(5), math.StdDev(m.voiceLevelsSample, math.Avg(m.voiceLevelsSample)))
+	require.Equal(t, uint8(50), stat.Avg(m.voiceLevelsSample))
+	require.Equal(t, uint8(5), stat.StdDev(m.voiceLevelsSample, stat.Avg(m.voiceLevelsSample)))
 	require.False(t, m.voiceState)
 	require.False(t, voiceOn)
 	require.False(t, voiceOff)

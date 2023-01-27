@@ -9,6 +9,8 @@ import (
 	"io"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/mattermost/rtcd/service/random"
 
 	"github.com/mattermost/mattermost-server/v6/shared/mlog"
@@ -111,8 +113,8 @@ func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, <-chan cc.B
 	bwEstimatorCh := make(chan cc.BandwidthEstimator, 1)
 	congestionController, err := cc.NewInterceptor(func() (cc.BandwidthEstimator, error) {
 		return gcc.NewSendSideBWE(
-			gcc.SendSideBWEInitialBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelDefault))*1.25)),
-			gcc.SendSideBWEMinBitrate(getRateForSimulcastLevel(SimulcastLevelLow)),
+			gcc.SendSideBWEInitialBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelHigh))*0.75)),
+			gcc.SendSideBWEMinBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelLow))*0.75)),
 			gcc.SendSideBWEMaxBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelHigh))*1.25)),
 		)
 	})
@@ -356,11 +358,13 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				if us.vadMonitor != nil && audioLevelExtensionID > 0 {
 					var ext rtp.AudioLevelExtension
 					audioExtData := packet.GetExtension(uint8(audioLevelExtensionID))
-					if err := ext.Unmarshal(audioExtData); err != nil {
-						s.log.Error("failed to unmarshal audio level extension",
-							mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+					if audioExtData != nil {
+						if err := ext.Unmarshal(audioExtData); err != nil {
+							s.log.Error("failed to unmarshal audio level extension",
+								mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+						}
+						us.vadMonitor.PushAudioLevel(ext.Level)
 					}
-					us.vadMonitor.PushAudioLevel(ext.Level)
 				}
 
 				s.metrics.IncRTPPackets("in", trackType)
@@ -450,8 +454,17 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				}
 			})
 
+			rm, err := NewRateMonitor(500, nil)
+			if err != nil {
+				s.log.Error("failed to create rate monitor", mlog.Err(err))
+				return
+			}
+
+			limiter := rate.NewLimiter(0.25, 1)
+
 			for {
-				rtp, _, readErr := remoteTrack.ReadRTP()
+				buf := s.bufPool.Get().([]byte)
+				i, _, readErr := remoteTrack.Read(buf)
 				if readErr != nil {
 					if !errors.Is(readErr, io.EOF) {
 						s.log.Error("failed to read RTP packet",
@@ -459,6 +472,20 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 						s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					}
 					return
+				}
+
+				rtp := &rtp.Packet{}
+				if err := rtp.Unmarshal(buf[:i]); err != nil {
+					s.log.Error("failed to unmarshal RTP packet",
+						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
+					return
+				}
+
+				rm.PushSample(i)
+
+				if limiter.Allow() {
+					s.log.Debug("rate monitor", mlog.String("RID", rid), mlog.Int("rate", rm.GetRate()), mlog.Float64("time", rm.GetSamplesDuration().Seconds()))
 				}
 
 				s.metrics.IncRTPPackets("in", "screen")
@@ -470,6 +497,8 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
+
+				s.bufPool.Put(buf)
 
 				call.iterSessions(func(ss *session) {
 					if ss.cfg.UserID == us.cfg.UserID {
