@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	receiveMTU = 8192
+	receiveMTU = 1460
 )
 
 type multiConn struct {

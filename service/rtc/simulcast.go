@@ -51,8 +51,8 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 	limiter := rate.NewLimiter(1, 1)
 	bwEstimator.OnTargetBitrateChange(func(rate int) {
 		stats := bwEstimator.GetStats()
-		lossRate, _ := stats["delayTargetBitrate"].(int)
-		delayRate, _ := stats["lossTargetBitrate"].(int)
+		lossRate, _ := stats["lossTargetBitrate"].(int)
+		delayRate, _ := stats["delayTargetBitrate"].(int)
 
 		if limiter.Allow() {
 			s.log.Debug("sender bwe", mlog.String("sessionID", s.cfg.SessionID), mlog.Int("delayRate", delayRate), mlog.Any("lossRate", lossRate))

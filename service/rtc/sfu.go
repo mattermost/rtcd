@@ -74,11 +74,19 @@ func initMediaEngine() (*webrtc.MediaEngine, error) {
 			return nil, err
 		}
 	}
+
+	if err := m.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{
+		URI: audioLevelExtensionURI,
+	}, webrtc.RTPCodecTypeAudio); err != nil {
+		return nil, fmt.Errorf("failed to register header extension: %w", err)
+	}
+
 	for _, ext := range rtpVideoExtensions {
 		if err := m.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: ext}, webrtc.RTPCodecTypeVideo); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to register header extension: %w", err)
 		}
 	}
+
 	return &m, nil
 }
 
@@ -160,7 +168,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 	peerConnConfig := webrtc.Configuration{
 		ICEServers:   iceServers,
-		SDPSemantics: webrtc.SDPSemanticsUnifiedPlanWithFallback,
+		SDPSemantics: webrtc.SDPSemanticsUnifiedPlan,
 	}
 
 	m, err := initMediaEngine()
@@ -171,12 +179,6 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 	i, bwEstimatorCh, err := initInterceptors(m)
 	if err != nil {
 		return fmt.Errorf("failed to init interceptors: %w", err)
-	}
-
-	if err := m.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{
-		URI: audioLevelExtensionURI,
-	}, webrtc.RTPCodecTypeAudio); err != nil {
-		return fmt.Errorf("failed to register header extension: %w", err)
 	}
 
 	sEngine := webrtc.SettingEngine{}
