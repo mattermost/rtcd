@@ -43,6 +43,7 @@ type session struct {
 	outScreenTracks      map[string]*webrtc.TrackLocalStaticRTP
 	outScreenAudioTrack  *webrtc.TrackLocalStaticRTP
 	remoteScreenTracks   map[string]*webrtc.TrackRemote
+	screenRateMonitors   map[string]*RateMonitor
 
 	// Receiver
 	bwEstimator       cc.BandwidthEstimator
@@ -120,6 +121,17 @@ func (s *session) getRemoteScreenTrack(rid string) *webrtc.TrackRemote {
 	}
 
 	return s.remoteScreenTracks[rid]
+}
+
+func (s *session) getRateMonitor(rid string) *RateMonitor {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+
+	if rid == "" {
+		rid = SimulcastLevelDefault
+	}
+
+	return s.screenRateMonitors[rid]
 }
 
 func (s *session) getOutScreenTrack(rid string) *webrtc.TrackLocalStaticRTP {
@@ -408,4 +420,5 @@ func (s *session) clearScreenState() {
 	s.outScreenTracks = make(map[string]*webrtc.TrackLocalStaticRTP)
 	s.outScreenAudioTrack = nil
 	s.remoteScreenTracks = make(map[string]*webrtc.TrackRemote)
+	s.screenRateMonitors = make(map[string]*RateMonitor)
 }

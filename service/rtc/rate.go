@@ -6,6 +6,7 @@ package rtc
 import (
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/mattermost/rtcd/service/rtc/stat"
@@ -17,6 +18,7 @@ type RateMonitor struct {
 	samplesPtr   int
 	samplingSize int
 	now          func() time.Time
+	mut          sync.RWMutex
 }
 
 func NewRateMonitor(samplingSize int, now func() time.Time) (*RateMonitor, error) {
@@ -37,6 +39,9 @@ func NewRateMonitor(samplingSize int, now func() time.Time) (*RateMonitor, error
 }
 
 func (m *RateMonitor) PushSample(size int) {
+	m.mut.Lock()
+	defer m.mut.Unlock()
+
 	if len(m.samples) < m.samplingSize {
 		m.samples = append(m.samples, size)
 		m.timestamps = append(m.timestamps, m.now())
@@ -50,6 +55,9 @@ func (m *RateMonitor) PushSample(size int) {
 }
 
 func (m *RateMonitor) GetSamplesDuration() time.Duration {
+	m.mut.RLock()
+	defer m.mut.RUnlock()
+
 	if len(m.samples) < m.samplingSize {
 		return -1
 	}
@@ -61,6 +69,9 @@ func (m *RateMonitor) GetSamplesDuration() time.Duration {
 }
 
 func (m *RateMonitor) GetRate() int {
+	m.mut.RLock()
+	defer m.mut.RUnlock()
+
 	if len(m.samples) < m.samplingSize {
 		return -1
 	}

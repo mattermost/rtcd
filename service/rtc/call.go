@@ -43,6 +43,7 @@ func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection, clo
 		tracksCh:           make(chan trackActionContext, tracksChSize),
 		outScreenTracks:    make(map[string]*webrtc.TrackLocalStaticRTP),
 		remoteScreenTracks: make(map[string]*webrtc.TrackRemote),
+		screenRateMonitors: make(map[string]*RateMonitor),
 		log:                log,
 		call:               c,
 	}

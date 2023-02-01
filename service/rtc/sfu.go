@@ -121,9 +121,9 @@ func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, <-chan cc.B
 	bwEstimatorCh := make(chan cc.BandwidthEstimator, 1)
 	congestionController, err := cc.NewInterceptor(func() (cc.BandwidthEstimator, error) {
 		return gcc.NewSendSideBWE(
-			gcc.SendSideBWEInitialBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelHigh))*0.75)),
-			gcc.SendSideBWEMinBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelLow))*0.75)),
-			gcc.SendSideBWEMaxBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelHigh))*1.25)),
+			gcc.SendSideBWEInitialBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelLow))*0.50)),
+			gcc.SendSideBWEMinBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelLow))*0.50)),
+			gcc.SendSideBWEMaxBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelHigh))*1.50)),
 		)
 	})
 	if err != nil {
@@ -420,9 +420,16 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				rid = SimulcastLevelDefault
 			}
 
+			rm, err := NewRateMonitor(250, nil)
+			if err != nil {
+				s.log.Error("failed to create rate monitor", mlog.Err(err))
+				return
+			}
+
 			us.mut.Lock()
 			us.outScreenTracks[rid] = outScreenTrack
 			us.remoteScreenTracks[rid] = remoteTrack
+			us.screenRateMonitors[rid] = rm
 			us.mut.Unlock()
 
 			call.iterSessions(func(ss *session) {
@@ -456,12 +463,6 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				}
 			})
 
-			rm, err := NewRateMonitor(500, nil)
-			if err != nil {
-				s.log.Error("failed to create rate monitor", mlog.Err(err))
-				return
-			}
-
 			limiter := rate.NewLimiter(0.25, 1)
 
 			for {
@@ -485,7 +486,6 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				}
 
 				rm.PushSample(i)
-
 				if limiter.Allow() {
 					s.log.Debug("rate monitor", mlog.String("RID", rid), mlog.Int("rate", rm.GetRate()), mlog.Float64("time", rm.GetSamplesDuration().Seconds()))
 				}

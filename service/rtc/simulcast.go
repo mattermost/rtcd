@@ -4,6 +4,9 @@
 package rtc
 
 import (
+	"sync/atomic"
+	"time"
+
 	"golang.org/x/time/rate"
 
 	"github.com/pion/interceptor/pkg/cc"
@@ -13,9 +16,9 @@ import (
 
 const (
 	SimulcastLevelHigh    string = "h"
-	SimulcastLevelMedium         = "m"
 	SimulcastLevelLow            = "l"
 	SimulcastLevelDefault        = SimulcastLevelLow
+	levelChangeBackoff           = 2 * time.Second
 )
 
 var simulcastRates = []int{2_500_000, 500_000}
@@ -32,15 +35,20 @@ func getRateForSimulcastLevel(level string) int {
 	return rate
 }
 
-func getSimulcastLevelForRate(rate int) string {
-	level := SimulcastLevelLow
-	for idx, r := range simulcastRates {
-		if rate >= r {
-			level = simulcastLevels[idx]
-			break
-		}
+func getSimulcastLevel(downRate, upRate int) string {
+	if upRate > 0 && downRate > int(float32(upRate)*0.9) {
+		return SimulcastLevelHigh
 	}
-	return level
+
+	return SimulcastLevelLow
+}
+
+func getSimulcastLevelForRate(rate int) string {
+	if rate >= simulcastRates[0] {
+		return SimulcastLevelHigh
+	}
+
+	return SimulcastLevelLow
 }
 
 func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
@@ -49,6 +57,8 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 
 	// TODO: consider removing both limiter and log statement once testing phase is over.
 	limiter := rate.NewLimiter(1, 1)
+	var lastLevelChangeAt atomic.Value
+	lastLevelChangeAt.Store(time.Now())
 	bwEstimator.OnTargetBitrateChange(func(rate int) {
 		stats := bwEstimator.GetStats()
 		lossRate, _ := stats["lossTargetBitrate"].(int)
@@ -58,15 +68,24 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 			s.log.Debug("sender bwe", mlog.String("sessionID", s.cfg.SessionID), mlog.Int("delayRate", delayRate), mlog.Any("lossRate", lossRate))
 		}
 
-		s.handleSenderBitrateChange(rate)
+		if time.Since(lastLevelChangeAt.Load().(time.Time)) < levelChangeBackoff {
+			s.log.Debug("skipping bitrate check")
+			return
+		}
+
+		if ok, newRate := s.handleSenderBitrateChange(rate); ok {
+			lastLevelChangeAt.Store(time.Now())
+			s.log.Debug("setting new target rate", mlog.Int("rate", newRate))
+			bwEstimator.SetTargetBitrate(newRate)
+		}
 	})
 	s.bwEstimator = bwEstimator
 }
 
-func (s *session) handleSenderBitrateChange(rate int) {
+func (s *session) handleSenderBitrateChange(rate int) (bool, int) {
 	screenSession := s.call.getScreenSession()
 	if screenSession == nil {
-		return
+		return false, 0
 	}
 
 	s.mut.RLock()
@@ -75,32 +94,45 @@ func (s *session) handleSenderBitrateChange(rate int) {
 
 	if sender == nil {
 		// nothing to do if the session is not receiving a screen track
-		return
+		return false, 0
 	}
 
 	track := sender.Track()
 
 	if track == nil {
 		s.log.Error("track should not be nil", mlog.String("sessionID", s.cfg.SessionID))
-		return
+		return false, 0
 	}
 
 	currLevel := track.RID()
 	if currLevel == "" {
 		// not a simulcast track
-		return
+		return false, 0
 	}
 
-	newLevel := getSimulcastLevelForRate(rate)
+	rm := screenSession.getRateMonitor(currLevel)
+	if rm == nil {
+		s.log.Warn("rate monitor should not be nil")
+		return false, 0
+	}
+
+	s.log.Debug("rates", mlog.Int("down", rate), mlog.Int("up", rm.GetRate()*1000))
+	newLevel := getSimulcastLevel(rate, rm.GetRate()*1000)
 	if newLevel == currLevel {
 		// no level change, nothing to do
-		return
+		return false, 0
 	}
 
 	screenTrack := screenSession.getOutScreenTrack(newLevel)
 	if screenTrack == nil {
 		// if the desired track is not available we keep the current one
-		return
+		return false, 0
+	}
+
+	rm = screenSession.getRateMonitor(newLevel)
+	if rm == nil {
+		s.log.Warn("rate monitor should not be nil")
+		return false, 0
 	}
 
 	s.log.Debug("switching simulcast level",
@@ -121,4 +153,6 @@ func (s *session) handleSenderBitrateChange(rate int) {
 	default:
 		s.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", s.cfg.SessionID))
 	}
+
+	return true, rm.GetRate() * 1000
 }
