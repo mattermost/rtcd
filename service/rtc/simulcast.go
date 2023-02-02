@@ -15,11 +15,11 @@ import (
 )
 
 const (
-	SimulcastLevelHigh     = "h"
-	SimulcastLevelLow      = "l"
-	SimulcastLevelDefault  = SimulcastLevelLow
-	levelChangeBackoffTime = 4 * time.Second
-	rateTolerance          = 0.9
+	SimulcastLevelHigh        = "h"
+	SimulcastLevelLow         = "l"
+	SimulcastLevelDefault     = SimulcastLevelLow
+	levelChangeInitialBackoff = 4 * time.Second
+	rateTolerance             = 0.9
 )
 
 var simulcastRates = []int{2_500_000, 500_000}
@@ -64,6 +64,9 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 	var lastRate int32
 	atomic.StoreInt32(&lastRate, int32(bwEstimator.GetTargetBitrate()))
 
+	var backoff atomic.Value
+	backoff.Store(time.Duration(0))
+
 	bwEstimator.OnTargetBitrateChange(func(rate int) {
 		diffRate := float32(rate) / float32(atomic.LoadInt32(&lastRate))
 		defer atomic.StoreInt32(&lastRate, int32(rate))
@@ -79,19 +82,34 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 				mlog.Int("lossRate", lossRate),
 				mlog.Float64("averageLoss", averageLoss),
 				mlog.Float32("diffRate", diffRate),
+				mlog.Float64("backoff", backoff.Load().(time.Duration).Seconds()),
 			)
 		}
 
 		// We want to give it some time for the rate estimation to stabilize when
 		// switching levels. Unless there was some decrease in estimated rate
 		// in which case we want to react as quickly as possible.
-		if time.Since(lastLevelChangeAt.Load().(time.Time)) < levelChangeBackoffTime && diffRate > 1 {
+		if time.Since(lastLevelChangeAt.Load().(time.Time)) < backoff.Load().(time.Duration) && diffRate > 1 {
 			s.log.Debug("skipping bitrate check", mlog.String("sessionID", s.cfg.SessionID))
 			return
 		}
 
 		if ok, newRate := s.handleSenderBitrateChange(rate); ok {
 			lastLevelChangeAt.Store(time.Now())
+
+			// Adding some exponential backoff to avoid switching levels like crazy
+			// if either client's bandwidth fluctuates too often or the client has
+			// not enough to handle the higher rate track.
+			if b := backoff.Load().(time.Duration); b == 0 {
+				backoff.Store(levelChangeInitialBackoff)
+			} else {
+				backoff.Store(b + b/2)
+			}
+
+			// We update the target bitrate for the estimator to better reflect the
+			// real rate of the source.
+			// TODO: consider tweaking maximum bitrate as well to avoid potentially
+			// plateauing on a higher than real value.
 			bwEstimator.SetTargetBitrate(newRate)
 		}
 	})
