@@ -12,20 +12,20 @@ import (
 
 func TestGetRate(t *testing.T) {
 	t.Run("not enough samples", func(t *testing.T) {
-		samplingSize := 100
-		rm, err := NewRateMonitor(100, nil)
+		samplingSize := time.Second
+		rm, err := NewRateMonitor(samplingSize, nil)
 		require.NoError(t, err)
 		require.NotNil(t, rm)
 
-		for i := 0; i < samplingSize-1; i++ {
-			rm.PushSample(1000)
-		}
+		rm.PushSample(1000)
+		rm.PushSample(1000)
+		rm.PushSample(1000)
 
 		require.Equal(t, -1, rm.GetRate())
 	})
 
 	t.Run("invalid timestamps", func(t *testing.T) {
-		samplingSize := 100
+		samplingSize := time.Second
 
 		tt := time.Now()
 		now := func() time.Time {
@@ -36,19 +36,17 @@ func TestGetRate(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, rm)
 
-		for i := 0; i < samplingSize; i++ {
-			rm.PushSample(1000)
-		}
+		rm.PushSample(1000)
 
 		require.Equal(t, -1, rm.GetRate())
 	})
 
 	t.Run("expected rate", func(t *testing.T) {
-		samplingSize := 100
+		samplingSize := time.Second
 
 		tt := time.Now()
 		now := func() time.Time {
-			tt = tt.Add(time.Millisecond * 1000)
+			tt = tt.Add(time.Millisecond * 100)
 			return tt
 		}
 
@@ -56,25 +54,27 @@ func TestGetRate(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, rm)
 
-		for i := 0; i < samplingSize; i++ {
-			if i != 0 {
+		for i := 0; i < 11; i++ {
+			if i > 0 {
 				rm.PushSample(1000)
 			} else {
 				rm.PushSample(0)
 			}
 		}
 
-		require.Len(t, rm.samples, samplingSize)
-		require.Len(t, rm.timestamps, samplingSize)
-		require.Equal(t, samplingSize, rm.samplesPtr)
+		require.Equal(t, samplingSize, rm.getSamplesDuration())
 
-		require.Equal(t, 8, rm.GetRate())
+		require.Len(t, rm.samples, 11)
+		require.Len(t, rm.timestamps, 11)
+		require.Equal(t, 11, rm.samplesPtr)
 
-		rm, err = NewRateMonitor(samplingSize+1, now)
+		require.Equal(t, 80000, rm.GetRate())
+
+		rm, err = NewRateMonitor(time.Second, now)
 		require.NoError(t, err)
 		require.NotNil(t, rm)
 
-		for i := 0; i < samplingSize+1; i++ {
+		for i := 0; i < 11; i++ {
 			if i%2 == 0 {
 				rm.PushSample(0)
 			} else {
@@ -82,6 +82,6 @@ func TestGetRate(t *testing.T) {
 			}
 		}
 
-		require.Equal(t, 4, rm.GetRate())
+		require.Equal(t, 40000, rm.GetRate())
 	})
 }

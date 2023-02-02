@@ -420,7 +420,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				rid = SimulcastLevelDefault
 			}
 
-			rm, err := NewRateMonitor(250, nil)
+			rm, err := NewRateMonitor(2*time.Second, nil)
 			if err != nil {
 				s.log.Error("failed to create rate monitor", mlog.Err(err))
 				return
@@ -487,7 +487,12 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 				rm.PushSample(i)
 				if limiter.Allow() {
-					s.log.Debug("rate monitor", mlog.String("RID", rid), mlog.Int("rate", rm.GetRate()), mlog.Float64("time", rm.GetSamplesDuration().Seconds()))
+					s.log.Debug("rate monitor",
+						mlog.String("sessionID", us.cfg.SessionID),
+						mlog.String("RID", rid),
+						mlog.Int("rate", rm.GetRate()),
+						mlog.Float64("time", rm.GetSamplesDuration().Seconds()),
+					)
 				}
 
 				s.metrics.IncRTPPackets("in", "screen")
