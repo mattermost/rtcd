@@ -193,12 +193,6 @@ func (s *Server) Stop() error {
 		}
 	}
 
-	if s.udpConn != nil {
-		if err := s.udpConn.Close(); err != nil {
-			return fmt.Errorf("failed to close udp conn: %w", err)
-		}
-	}
-
 	close(s.receiveCh)
 	close(s.sendCh)
 
@@ -260,7 +254,7 @@ func (s *Server) msgReader() {
 
 			s.log.Debug("signaling", mlog.Int("sdpType", int(sdp.Type)), mlog.Any("session", session.cfg))
 
-			if sdp.Type == webrtc.SDPTypeOffer && session.HasSignalingConflict() {
+			if sdp.Type == webrtc.SDPTypeOffer && session.hasSignalingConflict() {
 				s.log.Debug("signaling conflict detected, ignoring offer", mlog.Any("session", session.cfg))
 				continue
 			}
@@ -296,11 +290,7 @@ func (s *Server) msgReader() {
 				s.log.Error("screen session should not be set")
 			}
 		case ScreenOffMessage:
-			call.mut.Lock()
-			if session == call.screenSession {
-				call.screenSession = nil
-			}
-			call.mut.Unlock()
+			call.clearScreenState(s.log, s.receiveCh, session)
 		case MuteMessage, UnmuteMessage:
 			session.mut.RLock()
 			track := session.outVoiceTrack

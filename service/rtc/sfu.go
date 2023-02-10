@@ -9,18 +9,28 @@ import (
 	"io"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/mattermost/rtcd/service/random"
 
 	"github.com/mattermost/mattermost-server/v6/shared/mlog"
 
 	"github.com/pion/ice/v2"
 	"github.com/pion/interceptor"
+	"github.com/pion/interceptor/pkg/cc"
+	"github.com/pion/interceptor/pkg/gcc"
 	"github.com/pion/interceptor/pkg/nack"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 )
 
 var (
+	videoRTCPFeedback = []webrtc.RTCPFeedback{
+		{Type: "goog-remb", Parameter: ""},
+		{Type: "ccm", Parameter: "fir"},
+		{Type: "nack", Parameter: ""},
+		{Type: "nack", Parameter: "pli"},
+	}
 	rtpAudioCodec = webrtc.RTPCodecCapability{
 		MimeType:     "audio/opus",
 		ClockRate:    48000,
@@ -28,17 +38,21 @@ var (
 		SDPFmtpLine:  "minptime=10;useinbandfec=1",
 		RTCPFeedback: nil,
 	}
-	rtpVideoCodecVP8 = webrtc.RTPCodecCapability{
-		MimeType:    "video/VP8",
-		ClockRate:   90000,
-		Channels:    0,
-		SDPFmtpLine: "",
-		RTCPFeedback: []webrtc.RTCPFeedback{
-			{Type: "goog-remb", Parameter: ""},
-			{Type: "ccm", Parameter: "fir"},
-			{Type: "nack", Parameter: ""},
-			{Type: "nack", Parameter: "pli"},
+	rtpVideoCodecs = map[string]webrtc.RTPCodecParameters{
+		"video/VP8": {
+			RTPCodecCapability: webrtc.RTPCodecCapability{
+				MimeType:     "video/VP8",
+				ClockRate:    90000,
+				SDPFmtpLine:  "",
+				RTCPFeedback: videoRTCPFeedback,
+			},
+			PayloadType: 96,
 		},
+	}
+	rtpVideoExtensions = []string{
+		"urn:ietf:params:rtp-hdrext:sdes:mid",
+		"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id",
+		"urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id",
 	}
 )
 
@@ -55,26 +69,38 @@ func initMediaEngine() (*webrtc.MediaEngine, error) {
 	}, webrtc.RTPCodecTypeAudio); err != nil {
 		return nil, err
 	}
-	if err := m.RegisterCodec(webrtc.RTPCodecParameters{
-		RTPCodecCapability: rtpVideoCodecVP8,
-		PayloadType:        96,
-	}, webrtc.RTPCodecTypeVideo); err != nil {
-		return nil, err
+	for _, params := range rtpVideoCodecs {
+		if err := m.RegisterCodec(params, webrtc.RTPCodecTypeVideo); err != nil {
+			return nil, err
+		}
 	}
+
+	if err := m.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{
+		URI: audioLevelExtensionURI,
+	}, webrtc.RTPCodecTypeAudio); err != nil {
+		return nil, fmt.Errorf("failed to register header extension: %w", err)
+	}
+
+	for _, ext := range rtpVideoExtensions {
+		if err := m.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: ext}, webrtc.RTPCodecTypeVideo); err != nil {
+			return nil, fmt.Errorf("failed to register header extension: %w", err)
+		}
+	}
+
 	return &m, nil
 }
 
-func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, error) {
+func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, <-chan cc.BandwidthEstimator, error) {
 	var i interceptor.Registry
 	generator, err := nack.NewGeneratorInterceptor()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// NACK
 	responder, err := nack.NewResponderInterceptor(nack.ResponderSize(nackResponderBufferSize))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	m.RegisterFeedback(webrtc.RTCPFeedback{Type: "nack"}, webrtc.RTPCodecTypeVideo)
 	m.RegisterFeedback(webrtc.RTCPFeedback{Type: "nack", Parameter: "pli"}, webrtc.RTPCodecTypeVideo)
@@ -83,10 +109,35 @@ func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, error) {
 
 	// RTCP Reports
 	if err := webrtc.ConfigureRTCPReports(&i); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return &i, nil
+	// TWCC
+	if err := webrtc.ConfigureTWCCSender(m, &i); err != nil {
+		return nil, nil, err
+	}
+
+	// Congestion Controller
+	bwEstimatorCh := make(chan cc.BandwidthEstimator, 1)
+	congestionController, err := cc.NewInterceptor(func() (cc.BandwidthEstimator, error) {
+		return gcc.NewSendSideBWE(
+			gcc.SendSideBWEInitialBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelLow))*0.50)),
+			gcc.SendSideBWEMinBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelLow))*0.50)),
+			gcc.SendSideBWEMaxBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelHigh))*1.50)),
+		)
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to init congestion controller: %w", err)
+	}
+	congestionController.OnNewPeerConnection(func(id string, estimator cc.BandwidthEstimator) {
+		bwEstimatorCh <- estimator
+	})
+	i.Add(congestionController)
+	if err = webrtc.ConfigureTWCCHeaderExtensionSender(m, &i); err != nil {
+		return nil, nil, fmt.Errorf("failed to add TWCC extensions: %w", err)
+	}
+
+	return &i, bwEstimatorCh, nil
 }
 
 func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
@@ -117,7 +168,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 	peerConnConfig := webrtc.Configuration{
 		ICEServers:   iceServers,
-		SDPSemantics: webrtc.SDPSemanticsUnifiedPlanWithFallback,
+		SDPSemantics: webrtc.SDPSemanticsUnifiedPlan,
 	}
 
 	m, err := initMediaEngine()
@@ -125,15 +176,9 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		return fmt.Errorf("failed to init media engine: %w", err)
 	}
 
-	i, err := initInterceptors(m)
+	i, bwEstimatorCh, err := initInterceptors(m)
 	if err != nil {
 		return fmt.Errorf("failed to init interceptors: %w", err)
-	}
-
-	if err := m.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{
-		URI: audioLevelExtensionURI,
-	}, webrtc.RTPCodecTypeAudio); err != nil {
-		return fmt.Errorf("failed to register header extension: %w", err)
 	}
 
 	sEngine := webrtc.SettingEngine{}
@@ -164,6 +209,8 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 	}
 	group := s.getGroup(cfg.GroupID)
 	call := group.getCall(cfg.CallID)
+
+	us.initBWEstimator(<-bwEstimatorCh)
 
 	peerConn.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if candidate == nil {
@@ -229,14 +276,17 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			mlog.String("type", trackType),
 			mlog.String("streamID", streamID),
 			mlog.String("remoteTrackID", remoteTrack.ID()),
-			mlog.Int("SSRC", int(remoteTrack.SSRC())),
+			mlog.Int("ssrc", int(remoteTrack.SSRC())),
 			mlog.String("sessionID", us.cfg.SessionID),
+			mlog.String("rid", remoteTrack.RID()),
 		)
 
 		var screenStreamID string
 		if screenSession := call.getScreenSession(); screenSession != nil {
 			screenStreamID = screenSession.getScreenStreamID()
 		}
+
+		go us.handleReceiverRTCP(receiver, remoteTrack.RID())
 
 		if trackType == rtpAudioCodec.MimeType {
 			trackType := "voice"
@@ -265,7 +315,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					return
 				}
 				select {
-				case ss.tracksCh <- outAudioTrack:
+				case ss.tracksCh <- trackActionContext{action: trackActionAdd, track: outAudioTrack}:
 				default:
 					s.log.Error("failed to send audio track: channel is full",
 						mlog.String("UserID", us.cfg.UserID), mlog.String("TrackUserID", ss.cfg.UserID))
@@ -289,11 +339,13 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 			for {
 				buf := s.bufPool.Get().([]byte)
-				i, _, err := remoteTrack.Read(buf)
-				if err != nil {
-					s.log.Error("failed to read RTP packet",
-						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
-					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
+				i, _, readErr := remoteTrack.Read(buf)
+				if readErr != nil {
+					if !errors.Is(readErr, io.EOF) {
+						s.log.Error("failed to read RTP packet",
+							mlog.Err(readErr), mlog.String("sessionID", us.cfg.SessionID))
+						s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
+					}
 					return
 				}
 
@@ -308,11 +360,13 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				if us.vadMonitor != nil && audioLevelExtensionID > 0 {
 					var ext rtp.AudioLevelExtension
 					audioExtData := packet.GetExtension(uint8(audioLevelExtensionID))
-					if err := ext.Unmarshal(audioExtData); err != nil {
-						s.log.Error("failed to unmarshal audio level extension",
-							mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+					if audioExtData != nil {
+						if err := ext.Unmarshal(audioExtData); err != nil {
+							s.log.Error("failed to unmarshal audio level extension",
+								mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+						}
+						us.vadMonitor.PushAudioLevel(ext.Level)
 					}
-					us.vadMonitor.PushAudioLevel(ext.Level)
 				}
 
 				s.metrics.IncRTPPackets("in", trackType)
@@ -345,7 +399,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					s.metrics.AddRTPPacketBytes("out", trackType, pLen)
 				})
 			}
-		} else if trackType == rtpVideoCodecVP8.MimeType {
+		} else if params, ok := rtpVideoCodecs[trackType]; ok {
 			if screenStreamID != "" && screenStreamID != streamID {
 				s.log.Error("received unexpected video track",
 					mlog.String("streamID", streamID), mlog.String("sessionID", us.cfg.SessionID))
@@ -354,26 +408,54 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 			s.log.Debug("received screen sharing stream", mlog.String("streamID", streamID), mlog.String("sessionID", us.cfg.SessionID))
 
-			outScreenTrack, err := webrtc.NewTrackLocalStaticRTP(rtpVideoCodecVP8, genTrackID("screen", us.cfg.SessionID), random.NewID())
+			outScreenTrack, err := webrtc.NewTrackLocalStaticRTP(params.RTPCodecCapability, genTrackID("screen", us.cfg.SessionID), random.NewID(), webrtc.WithRTPStreamID(remoteTrack.RID()))
 			if err != nil {
 				s.log.Error("failed to create local track",
 					mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 				return
 			}
+
+			rid := remoteTrack.RID()
+			if rid == "" {
+				rid = SimulcastLevelDefault
+			}
+
+			rm, err := NewRateMonitor(2*time.Second, nil)
+			if err != nil {
+				s.log.Error("failed to create rate monitor", mlog.Err(err))
+				return
+			}
+
 			us.mut.Lock()
-			us.outScreenTrack = outScreenTrack
-			us.remoteScreenTrack = remoteTrack
+			us.outScreenTracks[rid] = outScreenTrack
+			us.remoteScreenTracks[rid] = remoteTrack
+			us.screenRateMonitors[rid] = rm
 			us.mut.Unlock()
 
 			call.iterSessions(func(ss *session) {
 				if ss.cfg.UserID == us.cfg.UserID {
 					return
 				}
+
+				expectedLevel := SimulcastLevelDefault
+				if remoteTrack.RID() != "" {
+					expectedLevel = ss.getExpectedSimulcastLevel()
+				}
+
+				if rid != expectedLevel {
+					return
+				}
+
+				s.log.Debug("received track matches expected level, sending",
+					mlog.String("lvl", expectedLevel),
+					mlog.String("sessionID", us.cfg.SessionID),
+				)
+
 				select {
-				case ss.tracksCh <- outScreenTrack:
+				case ss.tracksCh <- trackActionContext{action: trackActionAdd, track: outScreenTrack}:
 				default:
 					s.log.Error("failed to send screen track: channel is full",
-						mlog.String("UserID", us.cfg.UserID),
+						mlog.String("userID", us.cfg.UserID),
 						mlog.String("sessionID", us.cfg.SessionID),
 						mlog.String("trackUserID", ss.cfg.UserID),
 						mlog.String("trackSessionID", ss.cfg.SessionID),
@@ -381,13 +463,36 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				}
 			})
 
+			limiter := rate.NewLimiter(0.25, 1)
+
 			for {
-				rtp, _, readErr := remoteTrack.ReadRTP()
+				buf := s.bufPool.Get().([]byte)
+				i, _, readErr := remoteTrack.Read(buf)
 				if readErr != nil {
-					s.log.Error("failed to read RTP packet",
-						mlog.Err(readErr), mlog.String("sessionID", us.cfg.SessionID))
+					if !errors.Is(readErr, io.EOF) {
+						s.log.Error("failed to read RTP packet",
+							mlog.Err(readErr), mlog.String("sessionID", us.cfg.SessionID))
+						s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
+					}
+					return
+				}
+
+				rtp := &rtp.Packet{}
+				if err := rtp.Unmarshal(buf[:i]); err != nil {
+					s.log.Error("failed to unmarshal RTP packet",
+						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
+				}
+
+				rm.PushSample(i)
+				if limiter.Allow() {
+					s.log.Debug("rate monitor",
+						mlog.String("sessionID", us.cfg.SessionID),
+						mlog.String("RID", rid),
+						mlog.Int("rate", rm.GetRate()),
+						mlog.Float64("time", rm.GetSamplesDuration().Seconds()),
+					)
 				}
 
 				s.metrics.IncRTPPackets("in", "screen")
@@ -399,6 +504,8 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
+
+				s.bufPool.Put(buf)
 
 				call.iterSessions(func(ss *session) {
 					if ss.cfg.UserID == us.cfg.UserID {
@@ -431,7 +538,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			return
 		}
 
-		go us.handleICE(s.log, s.metrics)
+		go us.handleICE(s.metrics)
 
 		go func() {
 			if err := s.handleTracks(call, us); err != nil {
@@ -512,24 +619,24 @@ func (s *Server) handleTracks(call *call, us *session) error {
 
 		ss.mut.RLock()
 		outVoiceTrack := ss.outVoiceTrack
-		outScreenTrack := ss.outScreenTrack
+		outScreenTrack := ss.outScreenTracks[SimulcastLevelDefault]
 		outScreenAudioTrack := ss.outScreenAudioTrack
 		ss.mut.RUnlock()
 
 		if outVoiceTrack != nil {
-			if err := us.addTrack(s.log, call, s.receiveCh, outVoiceTrack); err != nil {
+			if err := us.addTrack(s.receiveCh, outVoiceTrack); err != nil {
 				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 				s.log.Error("failed to add voice track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 			}
 		}
 		if outScreenTrack != nil {
-			if err := us.addTrack(s.log, call, s.receiveCh, outScreenTrack); err != nil {
+			if err := us.addTrack(s.receiveCh, outScreenTrack); err != nil {
 				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 				s.log.Error("failed to add screen track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 			}
 		}
 		if outScreenAudioTrack != nil {
-			if err := us.addTrack(s.log, call, s.receiveCh, outScreenAudioTrack); err != nil {
+			if err := us.addTrack(s.receiveCh, outScreenAudioTrack); err != nil {
 				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 				s.log.Error("failed to add screen audio track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 			}
@@ -538,13 +645,25 @@ func (s *Server) handleTracks(call *call, us *session) error {
 
 	for {
 		select {
-		case track, ok := <-us.tracksCh:
+		case ctx, ok := <-us.tracksCh:
 			if !ok {
 				return nil
 			}
-			if err := us.addTrack(s.log, call, s.receiveCh, track); err != nil {
-				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
-				s.log.Error("failed to add track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+
+			if ctx.action == trackActionAdd {
+				if err := us.addTrack(s.receiveCh, ctx.track); err != nil {
+					s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
+					s.log.Error("failed to add track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+					continue
+				}
+			} else if ctx.action == trackActionRemove {
+				if err := us.removeTrack(s.receiveCh, ctx.track); err != nil {
+					s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
+					s.log.Error("failed to remove track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+					continue
+				}
+			} else {
+				s.log.Error("invalid track action", mlog.Int("action", int(ctx.action)), mlog.String("sessionID", us.cfg.SessionID))
 				continue
 			}
 		case offer, ok := <-us.sdpOfferInCh:

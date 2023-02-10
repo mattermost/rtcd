@@ -5,8 +5,9 @@ package vad
 
 import (
 	"fmt"
-	"math"
 	"time"
+
+	"github.com/mattermost/rtcd/service/rtc/stat"
 )
 
 const (
@@ -91,32 +92,6 @@ func NewMonitor(cfg MonitorConfig, cb VoiceCB) (*Monitor, error) {
 	}, nil
 }
 
-func getAvg(samples []uint8) uint8 {
-	if len(samples) == 0 {
-		return 0
-	}
-
-	var total float64
-	for _, sample := range samples {
-		total += float64(sample)
-	}
-	return uint8(math.Round(total / float64(len(samples))))
-}
-
-func getStdDev(samples []uint8, avg uint8) uint8 {
-	if len(samples) == 0 {
-		return 0
-	}
-
-	var total float64
-	for _, sample := range samples {
-		total += math.Pow(float64(int(sample)-int(avg)), 2)
-	}
-
-	// Applying Bessel's correction as we are dealing with just a subset of samples.
-	return uint8(math.Round(math.Sqrt(total / float64(len(samples)-1))))
-}
-
 func (m *Monitor) PushAudioLevel(level uint8) {
 	if len(m.voiceLevelsSample) < m.cfg.VoiceLevelsSampleSize {
 		m.voiceLevelsSample = append(m.voiceLevelsSample, level)
@@ -130,8 +105,8 @@ func (m *Monitor) PushAudioLevel(level uint8) {
 		m.voiceLevelsSamplePtr++
 	}
 
-	avg := getAvg(m.voiceLevelsSample)
-	dev := getStdDev(m.voiceLevelsSample, avg)
+	avg := stat.Avg(m.voiceLevelsSample)
+	dev := stat.StdDev(m.voiceLevelsSample, avg)
 
 	var newState bool
 	if !m.voiceState && int(dev) > m.cfg.VoiceActivationThreshold {
