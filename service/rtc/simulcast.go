@@ -19,18 +19,13 @@ const (
 	rateTolerance             = 0.9
 )
 
-var simulcastRates = []int{2_500_000, 500_000}
-var simulcastLevels = []string{SimulcastLevelHigh, SimulcastLevelLow}
+var simulcastRates = map[string]int{
+	SimulcastLevelHigh: 2_500_000,
+	SimulcastLevelLow:  500_000,
+}
 
 func getRateForSimulcastLevel(level string) int {
-	var rate int
-	for idx, lvl := range simulcastLevels {
-		if lvl == level {
-			rate = simulcastRates[idx]
-			break
-		}
-	}
-	return rate
+	return simulcastRates[level]
 }
 
 func getSimulcastLevel(downRate, sourceRate int) string {
@@ -42,7 +37,7 @@ func getSimulcastLevel(downRate, sourceRate int) string {
 }
 
 func getSimulcastLevelForRate(rate int) string {
-	if rate >= int(float32(simulcastRates[0])*rateTolerance) {
+	if rate >= int(float32(simulcastRates[SimulcastLevelHigh])*rateTolerance) {
 		return SimulcastLevelHigh
 	}
 
