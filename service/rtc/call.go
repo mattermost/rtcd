@@ -87,6 +87,7 @@ func (c *call) clearScreenState(log mlog.LoggerIFace, sdpOutCh chan<- Message, s
 	}
 
 	for _, s := range c.sessions {
+		s.mut.Lock()
 		if s == c.screenSession {
 			s.clearScreenState()
 			c.screenSession = nil
@@ -98,5 +99,6 @@ func (c *call) clearScreenState(log mlog.LoggerIFace, sdpOutCh chan<- Message, s
 			}
 			s.screenTrackSender = nil
 		}
+		s.mut.Unlock()
 	}
 }

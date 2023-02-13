@@ -414,8 +414,6 @@ func (s *session) InitVAD(log mlog.LoggerIFace, msgCh chan<- Message) error {
 }
 
 func (s *session) clearScreenState() {
-	s.mut.Lock()
-	defer s.mut.Unlock()
 	s.screenStreamID = ""
 	s.outScreenTracks = make(map[string]*webrtc.TrackLocalStaticRTP)
 	s.outScreenAudioTrack = nil
