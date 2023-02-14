@@ -4,6 +4,7 @@
 package rtc
 
 import (
+	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -109,13 +110,18 @@ func TestStartServer(t *testing.T) {
 		require.NoError(t, err)
 		defer udpConn.Close()
 
+		ips, err := getSystemIPs(log)
+		require.NoError(t, err)
+		require.NotEmpty(t, ips)
+
 		err = s.Start()
 		defer func() {
 			err := s.Stop()
 			require.NoError(t, err)
 		}()
 		require.Error(t, err)
-		require.Equal(t, "failed to listen on udp: listen udp4 :30433: bind: address already in use", err.Error())
+		require.Equal(t, fmt.Sprintf("failed to create UDP connections: failed to listen on udp: listen udp4 %s:%d: bind: address already in use",
+			ips[0], cfg.ICEPortUDP), err.Error())
 	})
 
 	t.Run("started", func(t *testing.T) {
