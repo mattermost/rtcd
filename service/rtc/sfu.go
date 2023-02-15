@@ -331,9 +331,12 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				}
 			}
 
+			var hasVAD bool
 			if audioLevelExtensionID > 0 {
 				if err := us.InitVAD(s.log, s.receiveCh); err != nil {
 					s.log.Error("failed to init VAD", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+				} else {
+					hasVAD = true
 				}
 			}
 
@@ -357,7 +360,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					return
 				}
 
-				if us.vadMonitor != nil && audioLevelExtensionID > 0 {
+				if hasVAD {
 					var ext rtp.AudioLevelExtension
 					audioExtData := packet.GetExtension(uint8(audioLevelExtensionID))
 					if audioExtData != nil {
@@ -365,7 +368,9 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 							s.log.Error("failed to unmarshal audio level extension",
 								mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 						}
+						us.mut.RLock()
 						us.vadMonitor.PushAudioLevel(ext.Level)
+						us.mut.RUnlock()
 					}
 				}
 
