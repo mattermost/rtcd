@@ -116,6 +116,7 @@ func (s *Server) Start() error {
 		}
 
 		muxes = append(muxes, ice.NewUDPMuxDefault(ice.UDPMuxParams{
+			Logger:  newPionLeveledLogger(s.log),
 			UDPConn: udpConn,
 		}))
 	}
