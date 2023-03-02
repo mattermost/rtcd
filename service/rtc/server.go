@@ -106,6 +106,8 @@ func (s *Server) Start() error {
 				return fmt.Errorf("failed to resolve UDP address: %w", err)
 			}
 
+			// TODO: consider making this logic concurrent to lower total time taken
+			// in case of multiple interfaces.
 			addr, err := getPublicIP(udpAddr, s.cfg.ICEServers.getSTUN())
 			if err != nil {
 				s.log.Warn("failed to get public IP address for local interface", mlog.String("localAddr", ip), mlog.Err(err))
