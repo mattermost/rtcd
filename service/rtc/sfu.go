@@ -184,12 +184,13 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 	sEngine := webrtc.SettingEngine{}
 	sEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
 	sEngine.SetICEUDPMux(s.udpMux)
-	if s.cfg.ICEHostOverride != "" {
-		hostIP, err := resolveHost(s.cfg.ICEHostOverride, time.Second)
-		if err != nil {
-			return fmt.Errorf("failed to resolve host: %w", err)
-		}
-		sEngine.SetNAT1To1IPs([]string{hostIP}, webrtc.ICECandidateTypeHost)
+
+	pairs, err := generateAddrsPairs(s.localIPs, s.publicAddrsMap, s.cfg.ICEHostOverride)
+	if err != nil {
+		return fmt.Errorf("failed to generate addresses pairs: %w", err)
+	} else if len(pairs) > 0 {
+		s.log.Debug("generated remote/local addrs pairs", mlog.Any("pairs", pairs))
+		sEngine.SetNAT1To1IPs(pairs, webrtc.ICECandidateTypeHost)
 	}
 
 	api := webrtc.NewAPI(

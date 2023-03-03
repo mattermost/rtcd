@@ -6,6 +6,7 @@ package rtc
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
@@ -29,7 +30,9 @@ type Server struct {
 	groups   map[string]*group
 	sessions map[string]SessionConfig
 
-	udpMux ice.UDPMux
+	udpMux         ice.UDPMux
+	publicAddrsMap map[string]string
+	localIPs       []string
 
 	sendCh    chan Message
 	receiveCh chan Message
@@ -51,14 +54,15 @@ func NewServer(cfg ServerConfig, log mlog.LoggerIFace, metrics Metrics) (*Server
 	}
 
 	s := &Server{
-		cfg:       cfg,
-		log:       log,
-		metrics:   metrics,
-		groups:    map[string]*group{},
-		sessions:  map[string]SessionConfig{},
-		sendCh:    make(chan Message, msgChSize),
-		receiveCh: make(chan Message, msgChSize),
-		bufPool:   &sync.Pool{New: func() interface{} { return make([]byte, receiveMTU) }},
+		cfg:            cfg,
+		log:            log,
+		metrics:        metrics,
+		groups:         map[string]*group{},
+		sessions:       map[string]SessionConfig{},
+		sendCh:         make(chan Message, msgChSize),
+		receiveCh:      make(chan Message, msgChSize),
+		bufPool:        &sync.Pool{New: func() interface{} { return make([]byte, receiveMTU) }},
+		publicAddrsMap: make(map[string]string),
 	}
 
 	return s, nil
@@ -78,33 +82,42 @@ func (s *Server) ReceiveCh() <-chan Message {
 }
 
 func (s *Server) Start() error {
-	if s.cfg.ICEHostOverride == "" && len(s.cfg.ICEServers) > 0 {
-		addr, err := getPublicIP(s.cfg.ICEPortUDP, s.cfg.ICEServers.getSTUN())
-		if err != nil {
-			return fmt.Errorf("failed to get public IP address: %w", err)
-		}
-		s.cfg.ICEHostOverride = addr
-		s.log.Info("got public IP address", mlog.String("addr", addr))
-	}
-
 	var err error
-	var ips []string
 	var muxes []ice.UDPMux
 	if s.cfg.ICEAddressUDP == "" {
 		s.log.Debug("no address specified, going to listen on all supported interfaces")
-		ips, err = getSystemIPs(s.log)
+		s.localIPs, err = getSystemIPs(s.log)
 		if err != nil {
 			return fmt.Errorf("failed to get system IPs: %w", err)
 		}
-		if len(ips) == 0 {
+		if len(s.localIPs) == 0 {
 			return fmt.Errorf("no valid address to listen on was found")
 		}
 	} else {
-		ips = append(ips, s.cfg.ICEAddressUDP)
+		s.localIPs = append(s.localIPs, s.cfg.ICEAddressUDP)
 	}
 
-	for _, ip := range ips {
+	for _, ip := range s.localIPs {
 		listenAddress := fmt.Sprintf("%s:%d", ip, s.cfg.ICEPortUDP)
+
+		if s.cfg.ICEHostOverride == "" && len(s.cfg.ICEServers) > 0 {
+			udpAddr, err := net.ResolveUDPAddr("udp4", listenAddress)
+			if err != nil {
+				return fmt.Errorf("failed to resolve UDP address: %w", err)
+			}
+
+			// TODO: consider making this logic concurrent to lower total time taken
+			// in case of multiple interfaces.
+			addr, err := getPublicIP(udpAddr, s.cfg.ICEServers.getSTUN())
+			if err != nil {
+				s.log.Warn("failed to get public IP address for local interface", mlog.String("localAddr", ip), mlog.Err(err))
+			} else {
+				s.log.Info("got public IP address for local interface", mlog.String("localAddr", ip), mlog.String("remoteAddr", addr))
+			}
+
+			s.publicAddrsMap[ip] = addr
+		}
+
 		conns, err := createUDPConnsForAddr(s.log, listenAddress)
 		if err != nil {
 			return fmt.Errorf("failed to create UDP connections: %w", err)
