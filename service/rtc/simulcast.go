@@ -118,7 +118,6 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 				rateChangeHandler(rate)
 			case <-s.closeCh:
 				return
-			default:
 			}
 		}
 	}()
