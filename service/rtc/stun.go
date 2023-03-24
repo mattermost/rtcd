@@ -12,14 +12,12 @@ import (
 	"github.com/pion/stun"
 )
 
-func getPublicIP(port int, stunURL string) (string, error) {
+func getPublicIP(addr *net.UDPAddr, stunURL string) (string, error) {
 	if stunURL == "" {
 		return "", fmt.Errorf("no STUN server URL was provided")
 	}
 
-	conn, err := net.ListenUDP("udp4", &net.UDPAddr{
-		Port: port,
-	})
+	conn, err := net.ListenUDP("udp4", addr)
 	if err != nil {
 		return "", err
 	}

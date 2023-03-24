@@ -344,7 +344,7 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 	}
 
 	if err := s.rtcServer.Send(rtcMsg); err != nil {
-		return err
+		return fmt.Errorf("failed to send message: %w", err)
 	}
 
 	return nil

@@ -36,6 +36,17 @@ func TestIsValid(t *testing.T) {
 		require.Equal(t, "invalid TLS config: invalid CertKey value: should not be empty", err.Error())
 	})
 
+	t.Run("missing cert files", func(t *testing.T) {
+		var cfg Config
+		cfg.ListenAddress = ":8080"
+		cfg.TLS.Enable = true
+		cfg.TLS.CertFile = "cert.pem"
+		cfg.TLS.CertKey = "key.pem"
+		err := cfg.IsValid()
+		require.Error(t, err)
+		require.Equal(t, "invalid TLS config: failed to load cert files: open cert.pem: no such file or directory", err.Error())
+	})
+
 	t.Run("valid no tls", func(t *testing.T) {
 		var cfg Config
 		cfg.ListenAddress = ":8080"
@@ -47,8 +58,8 @@ func TestIsValid(t *testing.T) {
 		var cfg Config
 		cfg.ListenAddress = ":8080"
 		cfg.TLS.Enable = true
-		cfg.TLS.CertFile = "cert.pem"
-		cfg.TLS.CertKey = "key.pem"
+		cfg.TLS.CertFile = "../../testfiles/tls_test_cert.pem"
+		cfg.TLS.CertKey = "../../testfiles/tls_test_key.pem"
 		err := cfg.IsValid()
 		require.NoError(t, err)
 	})
