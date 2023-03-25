@@ -21,7 +21,10 @@ func TestGetRate(t *testing.T) {
 		rm.PushSample(1000)
 		rm.PushSample(1000)
 
-		require.Equal(t, -1, rm.GetRate())
+		rate, dur := rm.GetRate()
+
+		require.Equal(t, -1, rate)
+		require.Equal(t, time.Duration(0), dur)
 	})
 
 	t.Run("invalid timestamps", func(t *testing.T) {
@@ -38,7 +41,10 @@ func TestGetRate(t *testing.T) {
 
 		rm.PushSample(1000)
 
-		require.Equal(t, -1, rm.GetRate())
+		rate, dur := rm.GetRate()
+
+		require.Equal(t, -1, rate)
+		require.Equal(t, time.Duration(0), dur)
 	})
 
 	t.Run("expected rate", func(t *testing.T) {
@@ -54,27 +60,25 @@ func TestGetRate(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, rm)
 
-		for i := 0; i < 11; i++ {
-			if i > 0 {
-				rm.PushSample(1000)
-			} else {
-				rm.PushSample(0)
-			}
+		for i := 0; i < 22; i++ {
+			rm.PushSample(1000)
 		}
 
-		require.Equal(t, samplingSize, rm.getSamplesDuration())
+		require.Equal(t, samplingSize*2, rm.getSamplesDuration())
 
-		require.Len(t, rm.samples, 11)
-		require.Len(t, rm.timestamps, 11)
-		require.Equal(t, 11, rm.samplesPtr)
+		require.Len(t, rm.samples, 21)
+		require.Len(t, rm.timestamps, 21)
+		require.Equal(t, 22, rm.samplesPtr)
 
-		require.Equal(t, 80000, rm.GetRate())
+		rate, dur := rm.GetRate()
+		require.Equal(t, 80000, rate)
+		require.Equal(t, samplingSize, dur)
 
 		rm, err = NewRateMonitor(time.Second, now)
 		require.NoError(t, err)
 		require.NotNil(t, rm)
 
-		for i := 0; i < 11; i++ {
+		for i := 0; i < 22; i++ {
 			if i%2 == 0 {
 				rm.PushSample(0)
 			} else {
@@ -82,6 +86,8 @@ func TestGetRate(t *testing.T) {
 			}
 		}
 
-		require.Equal(t, 40000, rm.GetRate())
+		rate, dur = rm.GetRate()
+		require.Equal(t, 40000, rate)
+		require.Equal(t, samplingSize, dur)
 	})
 }

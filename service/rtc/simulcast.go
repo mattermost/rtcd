@@ -15,13 +15,19 @@ const (
 	SimulcastLevelHigh        = "h"
 	SimulcastLevelLow         = "l"
 	SimulcastLevelDefault     = SimulcastLevelLow
-	levelChangeInitialBackoff = 4 * time.Second
+	levelChangeInitialBackoff = 10 * time.Second
 	rateTolerance             = 0.9
+	lossThreshold             = 0.01
 )
 
 var simulcastRates = map[string]int{
 	SimulcastLevelHigh: 2_500_000,
 	SimulcastLevelLow:  500_000,
+}
+
+var simulcastRateMonitorSampleSizes = map[string]time.Duration{
+	SimulcastLevelHigh: 2 * time.Second,
+	SimulcastLevelLow:  5 * time.Second,
 }
 
 func getRateForSimulcastLevel(level string) int {
@@ -90,7 +96,14 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 			return
 		}
 
-		if ok, newRate, newLevel := s.handleSenderBitrateChange(rate); ok {
+		// If there's minimal loss we avoid potentially downgrading the level due
+		// to fluctuating rate estimatiob.
+		if averageLoss < lossThreshold && currLevel == SimulcastLevelHigh {
+			s.log.Debug("skipping bitrate check at highest level, no loss", mlog.String("sessionID", s.cfg.SessionID))
+			return
+		}
+
+		if changed, newRate, newLevel := s.handleSenderBitrateChange(rate); changed {
 			lastLevelChangeAt = time.Now()
 			currLevel = newLevel
 
@@ -123,7 +136,7 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 	}()
 }
 
-func (s *session) handleSenderBitrateChange(rate int) (bool, int, string) {
+func (s *session) handleSenderBitrateChange(downRate int) (bool, int, string) {
 	screenSession := s.call.getScreenSession()
 	if screenSession == nil {
 		return false, 0, ""
@@ -138,14 +151,14 @@ func (s *session) handleSenderBitrateChange(rate int) (bool, int, string) {
 		return false, 0, ""
 	}
 
-	track := sender.Track()
+	currTrack := sender.Track()
 
-	if track == nil {
+	if currTrack == nil {
 		s.log.Error("track should not be nil", mlog.String("sessionID", s.cfg.SessionID))
 		return false, 0, ""
 	}
 
-	currLevel := track.RID()
+	currLevel := currTrack.RID()
 	if currLevel == "" {
 		// not a simulcast track
 		return false, 0, ""
@@ -157,15 +170,20 @@ func (s *session) handleSenderBitrateChange(rate int) (bool, int, string) {
 		return false, 0, ""
 	}
 
-	currSourceRate := rm.GetRate()
-	newLevel := getSimulcastLevel(rate, currSourceRate)
+	currSourceRate, _ := rm.GetRate()
+	if currSourceRate <= 0 {
+		s.log.Warn("current source rate not available yet")
+		return false, 0, ""
+	}
+
+	newLevel := getSimulcastLevel(downRate, currSourceRate)
 	if newLevel == currLevel {
 		// no level change, nothing to do
 		return false, 0, ""
 	}
 
-	screenTrack := screenSession.getOutScreenTrack(newLevel)
-	if screenTrack == nil {
+	newTrack := screenSession.getOutScreenTrack(newLevel)
+	if newTrack == nil {
 		// if the desired track is not available we keep the current one
 		return false, 0, ""
 	}
@@ -175,26 +193,26 @@ func (s *session) handleSenderBitrateChange(rate int) (bool, int, string) {
 		s.log.Warn("rate monitor should not be nil")
 		return false, 0, ""
 	}
-	sourceRate := rm.GetRate()
+	sourceRate, _ := rm.GetRate()
 
 	s.log.Debug("switching simulcast level",
 		mlog.String("sessionID", s.cfg.SessionID),
 		mlog.String("currLevel", currLevel),
 		mlog.String("newLevel", newLevel),
-		mlog.Int("downRate", rate),
+		mlog.Int("downRate", downRate),
 		mlog.Int("currSourceRate", currSourceRate),
 		mlog.Int("newSourceRate", sourceRate),
 	)
 
 	select {
-	case s.tracksCh <- trackActionContext{action: trackActionRemove, track: track}:
+	case s.tracksCh <- trackActionContext{action: trackActionRemove, track: currTrack}:
 	default:
 		s.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", s.cfg.SessionID))
 		return false, 0, ""
 	}
 
 	select {
-	case s.tracksCh <- trackActionContext{action: trackActionAdd, track: screenTrack}:
+	case s.tracksCh <- trackActionContext{action: trackActionAdd, track: newTrack}:
 	default:
 		s.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", s.cfg.SessionID))
 		return false, 0, ""

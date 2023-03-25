@@ -8,8 +8,6 @@ import (
 	"math"
 	"sync"
 	"time"
-
-	"github.com/mattermost/rtcd/service/rtc/stat"
 )
 
 type RateMonitor struct {
@@ -43,11 +41,14 @@ func (m *RateMonitor) PushSample(size int) {
 	m.mut.Lock()
 	defer m.mut.Unlock()
 
-	if !m.filled && m.getSamplesDuration() < m.samplingSize {
+	// Filling up to double the sampling size to make sure we have enough samples
+	// to calculate the desired duration since at the beginning it's likely we get
+	// a burst of packets.
+	if !m.filled && m.getSamplesDuration() < m.samplingSize*2 {
 		m.samples = append(m.samples, size)
 		m.timestamps = append(m.timestamps, m.now())
 		m.samplesPtr++
-		if m.getSamplesDuration() >= m.samplingSize {
+		if m.getSamplesDuration() >= m.samplingSize*2 {
 			m.filled = true
 		}
 		return
@@ -76,17 +77,28 @@ func (m *RateMonitor) getSamplesDuration() time.Duration {
 	return lastTS.Sub(firstTS)
 }
 
-func (m *RateMonitor) GetRate() int {
+func (m *RateMonitor) GetRate() (int, time.Duration) {
 	m.mut.RLock()
 	defer m.mut.RUnlock()
 
 	if !m.filled {
-		return -1
+		return -1, 0
 	}
 
-	totalBytes := stat.Sum(m.samples)
-	samplesDuration := m.getSamplesDuration()
-	bitsPerSec := math.Round((totalBytes / samplesDuration.Seconds()) * 8)
+	now := m.now()
 
-	return int(bitsPerSec)
+	var totalBytes int
+	var samplesDuration time.Duration
+	for i := m.samplesPtr - 1; i >= m.samplesPtr-len(m.samples); i-- {
+		samplesDuration = now.Sub(m.timestamps[i%len(m.timestamps)])
+		totalBytes += m.samples[i%len(m.samples)]
+
+		if samplesDuration >= m.samplingSize {
+			break
+		}
+	}
+
+	bitsPerSec := math.Round((float64(totalBytes) / samplesDuration.Seconds()) * 8)
+
+	return int(bitsPerSec), samplesDuration
 }
