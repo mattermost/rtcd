@@ -308,7 +308,7 @@ func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) err
 	return nil
 }
 
-// addTrack removes the given track to the peer and starts (re)negotiation.
+// removeTrack removes the given track to the peer and starts (re)negotiation.
 func (s *session) removeTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) error {
 	var sender *webrtc.RTPSender
 
