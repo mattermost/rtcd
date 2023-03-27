@@ -267,6 +267,19 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		}
 	})
 
+	peerConn.OnDataChannel(func(dc *webrtc.DataChannel) {
+		s.log.Debug("data channel open", mlog.String("sessionID", cfg.SessionID))
+
+		dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+			if string(msg.Data) == "ping" {
+				if err := dc.SendText("pong"); err != nil {
+					s.log.Error("failed to send message", mlog.Err(err))
+					return
+				}
+			}
+		})
+	})
+
 	peerConn.OnTrack(func(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 		streamID := remoteTrack.StreamID()
 		trackType := remoteTrack.Codec().MimeType

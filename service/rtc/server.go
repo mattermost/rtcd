@@ -264,7 +264,7 @@ func (s *Server) msgReader() {
 				s.log.Error("screen session should not be set")
 			}
 		case ScreenOffMessage:
-			call.clearScreenState(s.log, s.receiveCh, session)
+			call.clearScreenState(session)
 		case MuteMessage, UnmuteMessage:
 			session.mut.RLock()
 			track := session.outVoiceTrack

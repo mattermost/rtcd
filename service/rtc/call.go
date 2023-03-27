@@ -78,7 +78,7 @@ func (c *call) iterSessions(cb func(s *session)) {
 	c.mut.RUnlock()
 }
 
-func (c *call) clearScreenState(log mlog.LoggerIFace, sdpOutCh chan<- Message, screenSession *session) {
+func (c *call) clearScreenState(screenSession *session) {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
