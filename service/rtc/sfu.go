@@ -98,7 +98,7 @@ func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, <-chan cc.B
 	}
 
 	// NACK
-	responder, err := nack.NewResponderInterceptor(nack.ResponderSize(nackResponderBufferSize))
+	responder, err := nack.NewResponderInterceptor(nack.ResponderSize(nackResponderBufferSize), nack.DisableCopy())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -117,13 +117,19 @@ func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, <-chan cc.B
 		return nil, nil, err
 	}
 
-	// Congestion Controller
+	// Congestion Control
+	initialRate := int(float32(getRateForSimulcastLevel(SimulcastLevelLow)) * 0.50)
+	pacer, err := gcc.NewLeakyBucketPacer(initialRate, gcc.PacerDisableCopy())
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create pacer: %w", err)
+	}
 	bwEstimatorCh := make(chan cc.BandwidthEstimator, 1)
 	congestionController, err := cc.NewInterceptor(func() (cc.BandwidthEstimator, error) {
 		return gcc.NewSendSideBWE(
-			gcc.SendSideBWEInitialBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelLow))*0.50)),
+			gcc.SendSideBWEInitialBitrate(initialRate),
 			gcc.SendSideBWEMinBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelLow))*0.50)),
 			gcc.SendSideBWEMaxBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelHigh))*1.50)),
+			gcc.SendSideBWEPacer(pacer),
 		)
 	})
 	if err != nil {
@@ -362,22 +368,13 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			}
 
 			for {
-				buf := s.bufPool.Get().([]byte)
-				i, _, readErr := remoteTrack.Read(buf)
+				packet, _, readErr := remoteTrack.ReadRTP()
 				if readErr != nil {
 					if !errors.Is(readErr, io.EOF) {
 						s.log.Error("failed to read RTP packet",
 							mlog.Err(readErr), mlog.String("sessionID", us.cfg.SessionID))
 						s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					}
-					return
-				}
-
-				packet := &rtp.Packet{}
-				if err := packet.Unmarshal(buf[:i]); err != nil {
-					s.log.Error("failed to unmarshal RTP packet",
-						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
-					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
 
@@ -400,19 +397,17 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					isEnabled := us.outVoiceTrackEnabled
 					us.mut.RUnlock()
 					if !isEnabled {
-						s.bufPool.Put(buf)
 						continue
 					}
 				}
 
+				fmt.Printf("write sfu: %p\n", packet.Payload)
 				if err := outAudioTrack.WriteRTP(packet); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 					s.log.Error("failed to write RTP packet",
 						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
-
-				s.bufPool.Put(buf)
 			}
 		} else if params, ok := rtpVideoCodecs[trackMimeType]; ok {
 			if screenStreamID != "" && screenStreamID != streamID {
@@ -481,8 +476,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			limiter := rate.NewLimiter(0.25, 1)
 
 			for {
-				buf := s.bufPool.Get().([]byte)
-				i, _, readErr := remoteTrack.Read(buf)
+				packet, _, readErr := remoteTrack.ReadRTP()
 				if readErr != nil {
 					if !errors.Is(readErr, io.EOF) {
 						s.log.Error("failed to read RTP packet",
@@ -492,15 +486,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					return
 				}
 
-				rtp := &rtp.Packet{}
-				if err := rtp.Unmarshal(buf[:i]); err != nil {
-					s.log.Error("failed to unmarshal RTP packet",
-						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
-					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
-					return
-				}
-
-				rm.PushSample(i)
+				rm.PushSample(packet.MarshalSize())
 				if limiter.Allow() {
 					rate, dur := rm.GetRate()
 					s.log.Debug("rate monitor",
@@ -512,14 +498,12 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					)
 				}
 
-				if err := outScreenTrack.WriteRTP(rtp); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+				if err := outScreenTrack.WriteRTP(packet); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 					s.log.Error("failed to write RTP packet",
 						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
-
-				s.bufPool.Put(buf)
 			}
 		}
 	})

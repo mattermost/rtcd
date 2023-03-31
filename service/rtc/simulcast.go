@@ -59,7 +59,7 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 
 	// Allowing up to one rate change per second with a burst size of 4.
 	limiter := rate.NewLimiter(1, 4)
-	rateCh := make(chan int, 1)
+	rateCh := make(chan int, 4)
 	bwEstimator.OnTargetBitrateChange(func(rate int) {
 		if !limiter.Allow() {
 			return
