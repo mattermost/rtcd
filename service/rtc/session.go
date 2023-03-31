@@ -465,20 +465,3 @@ func (s *session) clearScreenState() {
 	s.remoteScreenTracks = make(map[string]*webrtc.TrackRemote)
 	s.screenRateMonitors = make(map[string]*RateMonitor)
 }
-
-func (s *session) getSenderSimulcastLevel() (string, error) {
-	s.mut.RLock()
-	defer s.mut.RUnlock()
-
-	sender := s.screenTrackSender
-	if sender == nil {
-		return "", nil
-	}
-
-	currTrack := sender.Track()
-	if currTrack == nil {
-		return "", fmt.Errorf("track should not be nil")
-	}
-
-	return currTrack.RID(), nil
-}

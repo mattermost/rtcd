@@ -110,9 +110,11 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 				}
 			}
 
-			// We update the maximum rate for the estimator to better match the
-			// actual source rate.
-			bwEstimator.SetMaxBitrate(int(float64(newRate) * 1.5))
+			if newLevel == SimulcastLevelHigh {
+				// On upgrade we update the maximum rate for the estimator to better match the
+				// actual source rate.
+				bwEstimator.SetMaxBitrate(int(float64(newRate) * 1.5))
+			}
 
 			// We update the target bitrate for the estimator to better reflect the
 			// real rate of the source.
@@ -131,13 +133,9 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 			return
 		}
 
-		currLevel, err := s.getSenderSimulcastLevel()
-		if err != nil {
-			s.log.Error("failed to get sender simulcast level", mlog.String("sessionID", s.cfg.SessionID), mlog.Err(err))
-			return
-		}
-
-		sourceRate := screenSession.getSourceRate(currLevel)
+		// We purposely get the highest quality track's rate as it better reflects the
+		// maximum allowed bitrate.
+		sourceRate := screenSession.getSourceRate(SimulcastLevelHigh)
 		if sourceRate <= 0 {
 			s.log.Debug("source rate not available yet", mlog.String("sessionID", s.cfg.SessionID))
 			return
