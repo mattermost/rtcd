@@ -126,10 +126,13 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 	}
 
 	updateMaxSourceRate := func() {
-		s.mut.RLock()
 		screenSession := s.call.getScreenSession()
-		s.mut.RUnlock()
 		if screenSession == nil || s == screenSession {
+			return
+		}
+
+		if track := screenSession.getRemoteScreenTrack(SimulcastLevelHigh); track == nil {
+			// nothing to do if the sender is not simulcasting.
 			return
 		}
 
@@ -141,9 +144,7 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 			return
 		}
 
-		s.mut.RLock()
 		s.bwEstimator.SetMaxBitrate(int(float64(sourceRate) * 1.5))
-		s.mut.RUnlock()
 	}
 
 	go func() {
