@@ -8,10 +8,24 @@ import (
 	"time"
 
 	"github.com/mattermost/rtcd/service/random"
+
+	"github.com/pion/webrtc/v3"
 )
 
 func genTrackID(trackType, baseID string) string {
 	return trackType + "_" + baseID + "_" + random.NewID()[0:8]
+}
+
+func getTrackType(kind webrtc.RTPCodecType) string {
+	if kind == webrtc.RTPCodecTypeAudio {
+		return "audio"
+	}
+
+	if kind == webrtc.RTPCodecTypeVideo {
+		return "video"
+	}
+
+	return "unknown"
 }
 
 func generateAddrsPairs(localIPs []string, publicAddrsMap map[string]string, hostOverride string) ([]string, error) {
