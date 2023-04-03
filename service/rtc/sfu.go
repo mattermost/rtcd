@@ -401,7 +401,6 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					}
 				}
 
-				fmt.Printf("write sfu: %p\n", packet.Payload)
 				if err := outAudioTrack.WriteRTP(packet); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 					s.log.Error("failed to write RTP packet",
 						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
