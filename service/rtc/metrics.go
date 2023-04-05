@@ -7,7 +7,7 @@ type Metrics interface {
 	IncRTCSessions(groupID string, callID string)
 	DecRTCSessions(groupID string, callID string)
 	IncRTCConnState(state string)
-	IncRTPPackets(direction, trackType string)
-	AddRTPPacketBytes(direction, trackType string, value int)
 	IncRTCErrors(groupID string, errType string)
+	IncRTPTracks(groupID string, callID, direction, trackType string)
+	DecRTPTracks(groupID string, callID, direction, trackType string)
 }

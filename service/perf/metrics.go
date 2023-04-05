@@ -19,11 +19,10 @@ const (
 type Metrics struct {
 	registry *prometheus.Registry
 
-	RTPPacketCounters      *prometheus.CounterVec
-	RTPPacketBytesCounters *prometheus.CounterVec
-	RTCSessions            *prometheus.GaugeVec
-	RTCConnStateCounters   *prometheus.CounterVec
-	RTCErrors              *prometheus.CounterVec
+	RTPTracks            *prometheus.GaugeVec
+	RTCSessions          *prometheus.GaugeVec
+	RTCConnStateCounters *prometheus.CounterVec
+	RTCErrors            *prometheus.CounterVec
 
 	WSConnections     *prometheus.GaugeVec
 	WSMessageCounters *prometheus.CounterVec
@@ -42,27 +41,16 @@ func NewMetrics(namespace string, registry *prometheus.Registry) *Metrics {
 		m.registry.MustRegister(collectors.NewGoCollector())
 	}
 
-	m.RTPPacketCounters = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
+	m.RTPTracks = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: metricsSubSystemRTC,
-			Name:      "rtp_packets_total",
-			Help:      "Total number of sent/received RTP packets",
+			Name:      "rtp_tracks_total",
+			Help:      "Total number of active RTP tracks",
 		},
-		[]string{"direction", "type"},
+		[]string{"groupID", "callID", "direction", "type"},
 	)
-	m.registry.MustRegister(m.RTPPacketCounters)
-
-	m.RTPPacketBytesCounters = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: namespace,
-			Subsystem: metricsSubSystemRTC,
-			Name:      "rtp_bytes_total",
-			Help:      "Total number of sent/received RTP packet bytes",
-		},
-		[]string{"direction", "type"},
-	)
-	m.registry.MustRegister(m.RTPPacketBytesCounters)
+	m.registry.MustRegister(m.RTPTracks)
 
 	m.RTCSessions = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -138,12 +126,12 @@ func (m *Metrics) IncRTCErrors(groupID string, errType string) {
 	m.RTCErrors.With(prometheus.Labels{"type": errType, "groupID": groupID}).Inc()
 }
 
-func (m *Metrics) IncRTPPackets(direction, trackType string) {
-	m.RTPPacketCounters.With(prometheus.Labels{"direction": direction, "type": trackType}).Inc()
+func (m *Metrics) IncRTPTracks(groupID, callID, direction, trackType string) {
+	m.RTPTracks.With(prometheus.Labels{"groupID": groupID, "callID": callID, "direction": direction, "type": trackType}).Inc()
 }
 
-func (m *Metrics) AddRTPPacketBytes(direction, trackType string, value int) {
-	m.RTPPacketBytesCounters.With(prometheus.Labels{"direction": direction, "type": trackType}).Add(float64(value))
+func (m *Metrics) DecRTPTracks(groupID, callID, direction, trackType string) {
+	m.RTPTracks.With(prometheus.Labels{"groupID": groupID, "callID": callID, "direction": direction, "type": trackType}).Dec()
 }
 
 func (m *Metrics) IncWSConnections(clientID string) {
