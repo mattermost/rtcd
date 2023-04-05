@@ -73,11 +73,7 @@ func (c Config) IsValid() error {
 		return err
 	}
 
-	if err := c.Logger.IsValid(); err != nil {
-		return err
-	}
-
-	return nil
+	return c.Logger.IsValid()
 }
 
 func (c *Config) SetDefaults() {

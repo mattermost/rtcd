@@ -15,6 +15,7 @@ type call struct {
 	id            string
 	sessions      map[string]*session
 	screenSession *session
+	metrics       Metrics
 
 	mut sync.RWMutex
 }
@@ -70,15 +71,13 @@ func (c *call) setScreenSession(s *session) bool {
 
 func (c *call) iterSessions(cb func(s *session)) {
 	c.mut.RLock()
+	defer c.mut.RUnlock()
 	for _, session := range c.sessions {
-		c.mut.RUnlock()
 		cb(session)
-		c.mut.RLock()
 	}
-	c.mut.RUnlock()
 }
 
-func (c *call) clearScreenState(log mlog.LoggerIFace, sdpOutCh chan<- Message, screenSession *session) {
+func (c *call) clearScreenState(screenSession *session) {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
@@ -100,5 +99,71 @@ func (c *call) clearScreenState(log mlog.LoggerIFace, sdpOutCh chan<- Message, s
 			s.screenTrackSender = nil
 		}
 		s.mut.Unlock()
+	}
+}
+
+// handleSessionClose cleans up resources such as senders or receivers for the
+// closing session.
+// NOTE: this is expected to always be called under lock (call.mut).
+func (c *call) handleSessionClose(us *session) {
+	us.mut.RLock()
+	defer us.mut.RUnlock()
+
+	cleanUp := func(sessionID string, sender *webrtc.RTPSender, track webrtc.TrackLocal) {
+		c.metrics.DecRTPTracks(us.cfg.GroupID, us.cfg.CallID, "out", getTrackType(track.Kind()))
+
+		if err := sender.ReplaceTrack(nil); err != nil {
+			us.log.Error("failed to replace track on sender",
+				mlog.String("sessionID", sessionID),
+				mlog.String("trackID", track.ID()))
+		}
+
+		if err := sender.Stop(); err != nil {
+			us.log.Error("failed to stop sender for track",
+				mlog.String("sessionID", sessionID),
+				mlog.String("trackID", track.ID()))
+		}
+	}
+
+	// First we cleanup any track the closing session may have been receiving and stop
+	// the associated senders.
+	for _, sender := range us.rtcConn.GetSenders() {
+		if track := sender.Track(); track != nil {
+			cleanUp(us.cfg.SessionID, sender, track)
+		}
+	}
+
+	// We check whether the closing session was also sending any track
+	// (e.g. voice, screen).
+	outTracks := map[string]bool{}
+	if us.outVoiceTrack != nil {
+		outTracks[us.outVoiceTrack.ID()] = true
+	}
+	if us.outScreenAudioTrack != nil {
+		outTracks[us.outScreenAudioTrack.ID()] = true
+	}
+	for _, track := range us.outScreenTracks {
+		outTracks[track.ID()] = true
+	}
+
+	// Nothing left to do if the closing session wasn't sending anything.
+	if len(outTracks) == 0 {
+		return
+	}
+
+	// We finally go ahead and cleanup any tracks that the closing session may
+	// have been sending to other connected sessions.
+	for _, ss := range c.sessions {
+		if ss.cfg.SessionID == us.cfg.SessionID {
+			continue
+		}
+
+		ss.mut.RLock()
+		for _, sender := range ss.rtcConn.GetSenders() {
+			if track := sender.Track(); track != nil && outTracks[track.ID()] {
+				cleanUp(ss.cfg.SessionID, sender, track)
+			}
+		}
+		ss.mut.RUnlock()
 	}
 }

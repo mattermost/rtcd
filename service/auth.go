@@ -37,7 +37,7 @@ func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) (clientID 
 	return s.basicAuthHandler(w, r)
 }
 
-func (s *Service) basicAuthHandler(w http.ResponseWriter, r *http.Request) (string, int, error) {
+func (s *Service) basicAuthHandler(_ http.ResponseWriter, r *http.Request) (string, int, error) {
 	clientID, authKey, ok := r.BasicAuth()
 	if !ok {
 		return "", http.StatusUnauthorized, errors.New("authentication failed: invalid auth header")
@@ -59,7 +59,7 @@ func (s *Service) basicAuthHandler(w http.ResponseWriter, r *http.Request) (stri
 	return clientID, http.StatusOK, nil
 }
 
-func (s *Service) bearerAuthHandler(w http.ResponseWriter, r *http.Request) (string, int, error) {
+func (s *Service) bearerAuthHandler(_ http.ResponseWriter, r *http.Request) (string, int, error) {
 	bearerToken, ok := parseBearerAuth(r.Header.Get("Authorization"))
 	if !ok {
 		return "", http.StatusUnauthorized, errors.New("authentication failed: invalid auth header")

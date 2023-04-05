@@ -90,6 +90,7 @@ func (s *Server) addSession(cfg SessionConfig, peerConn *webrtc.PeerConnection, 
 		c = &call{
 			id:       cfg.CallID,
 			sessions: map[string]*session{},
+			metrics:  s.metrics,
 		}
 		g.calls[c.id] = c
 	}
@@ -266,7 +267,7 @@ func (s *session) sendOffer(sdpOutCh chan<- Message) error {
 }
 
 // addTrack adds the given track to the peer and starts negotiation.
-func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) error {
+func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) (errRet error) {
 	s.mut.Lock()
 	s.makingOffer = true
 	s.mut.Unlock()
@@ -276,21 +277,41 @@ func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) err
 		s.mut.Unlock()
 	}()
 
+	s.mut.RLock()
+	for _, sender := range s.rtcConn.GetSenders() {
+		if sender.Track() == track {
+			s.mut.RUnlock()
+			return fmt.Errorf("sender for track already exists")
+		}
+	}
 	sender, err := s.rtcConn.AddTrack(track)
 	if err != nil {
-		return fmt.Errorf("failed to add track: %w", err)
+		s.mut.RUnlock()
+		return fmt.Errorf("failed to add track %s: %w", track.ID(), err)
 	}
+	s.call.metrics.IncRTPTracks(s.cfg.GroupID, s.cfg.CallID, "out", getTrackType(track.Kind()))
+	s.mut.RUnlock()
 
-	if track.Kind() == webrtc.RTPCodecTypeVideo {
-		s.mut.Lock()
-		s.screenTrackSender = sender
-		s.mut.Unlock()
-	}
+	defer func() {
+		if errRet == nil {
+			return
+		}
+
+		s.mut.RLock()
+		if err := sender.ReplaceTrack(nil); err != nil {
+			s.log.Error("failed to replace track",
+				mlog.String("sessionID", s.cfg.SessionID),
+				mlog.String("trackID", track.ID()))
+		} else {
+			s.call.metrics.DecRTPTracks(s.cfg.GroupID, s.cfg.CallID, "out", getTrackType(track.Kind()))
+		}
+		s.mut.RUnlock()
+	}()
 
 	go s.handleSenderRTCP(sender)
 
 	if err := s.sendOffer(sdpOutCh); err != nil {
-		return fmt.Errorf("failed to send offer: %w", err)
+		return fmt.Errorf("failed to send offer for track %s: %w", track.ID(), err)
 	}
 
 	select {
@@ -299,10 +320,18 @@ func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) err
 			return nil
 		}
 		if err := s.rtcConn.SetRemoteDescription(answer); err != nil {
-			return fmt.Errorf("failed to set remote description: %w", err)
+			return fmt.Errorf("failed to set remote description for track %s: %w", track.ID(), err)
+		}
+		if track.Kind() == webrtc.RTPCodecTypeVideo {
+			s.mut.Lock()
+			s.screenTrackSender = sender
+			s.mut.Unlock()
 		}
 	case <-time.After(signalingTimeout):
 		return fmt.Errorf("timed out signaling")
+	case <-s.closeCh:
+		s.log.Debug("closeCh closed during signaling", mlog.Any("sessionCfg", s.cfg))
+		return nil
 	}
 
 	return nil
@@ -323,9 +352,13 @@ func (s *session) removeTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) 
 		return fmt.Errorf("failed to find sender for track")
 	}
 
+	s.mut.RLock()
 	if err := s.rtcConn.RemoveTrack(sender); err != nil {
+		s.mut.RUnlock()
 		return fmt.Errorf("failed to remove track: %w", err)
 	}
+	s.call.metrics.DecRTPTracks(s.cfg.GroupID, s.cfg.CallID, "out", getTrackType(track.Kind()))
+	s.mut.RUnlock()
 
 	if err := s.sendOffer(sdpOutCh); err != nil {
 		return fmt.Errorf("failed to send offer: %w", err)
@@ -341,6 +374,9 @@ func (s *session) removeTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) 
 		}
 	case <-time.After(signalingTimeout):
 		return fmt.Errorf("timed out signaling")
+	case <-s.closeCh:
+		s.log.Debug("closeCh closed during signaling", mlog.Any("sessionCfg", s.cfg))
+		return nil
 	}
 
 	return nil
