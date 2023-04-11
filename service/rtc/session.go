@@ -124,7 +124,7 @@ func (s *session) getRemoteScreenTrack(rid string) *webrtc.TrackRemote {
 	return s.remoteScreenTracks[rid]
 }
 
-func (s *session) getRateMonitor(rid string) *RateMonitor {
+func (s *session) getSourceRate(rid string) int {
 	s.mut.RLock()
 	defer s.mut.RUnlock()
 
@@ -132,7 +132,16 @@ func (s *session) getRateMonitor(rid string) *RateMonitor {
 		rid = SimulcastLevelDefault
 	}
 
-	return s.screenRateMonitors[rid]
+	rm := s.screenRateMonitors[rid]
+
+	if rm == nil {
+		s.log.Warn("rate monitor should not be nil", mlog.String("sessionID", s.cfg.SessionID))
+		return -1
+	}
+
+	rate, _ := rm.GetRate()
+
+	return rate
 }
 
 func (s *session) getOutScreenTrack(rid string) *webrtc.TrackLocalStaticRTP {
