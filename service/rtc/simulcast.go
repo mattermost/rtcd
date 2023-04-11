@@ -4,7 +4,10 @@
 package rtc
 
 import (
+	"fmt"
 	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/pion/interceptor/pkg/cc"
 
@@ -15,13 +18,18 @@ const (
 	SimulcastLevelHigh        = "h"
 	SimulcastLevelLow         = "l"
 	SimulcastLevelDefault     = SimulcastLevelLow
-	levelChangeInitialBackoff = 4 * time.Second
+	levelChangeInitialBackoff = 10 * time.Second
 	rateTolerance             = 0.9
 )
 
 var simulcastRates = map[string]int{
 	SimulcastLevelHigh: 2_500_000,
 	SimulcastLevelLow:  500_000,
+}
+
+var simulcastRateMonitorSampleSizes = map[string]time.Duration{
+	SimulcastLevelHigh: 2 * time.Second,
+	SimulcastLevelLow:  5 * time.Second,
 }
 
 func getRateForSimulcastLevel(level string) int {
@@ -49,8 +57,14 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 	s.bwEstimator = bwEstimator
 	s.mut.Unlock()
 
-	rateCh := make(chan int, 1)
+	// Allowing up to one rate change per second with a burst size of 4.
+	limiter := rate.NewLimiter(1, 4)
+	rateCh := make(chan int, 4)
 	bwEstimator.OnTargetBitrateChange(func(rate int) {
+		if !limiter.Allow() {
+			return
+		}
+
 		select {
 		case rateCh <- rate:
 		default:
@@ -58,15 +72,11 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 		}
 	})
 
-	var lastRate int
 	var backoff time.Duration
 	var lastLevelChangeAt time.Time
 	currLevel := SimulcastLevelDefault
 
 	rateChangeHandler := func(rate int) {
-		rateDiff := (rate - lastRate)
-		lastRate = rate
-
 		stats := bwEstimator.GetStats()
 		lossRate, _ := stats["lossTargetBitrate"].(int)
 		delayRate, _ := stats["delayTargetBitrate"].(int)
@@ -76,46 +86,81 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 			mlog.String("sessionID", s.cfg.SessionID),
 			mlog.Int("delayRate", delayRate),
 			mlog.Int("lossRate", lossRate),
-			mlog.Float64("averageLoss", averageLoss),
+			mlog.String("averageLoss", fmt.Sprintf("%.5f", averageLoss)),
 			mlog.Float64("backoff", backoff.Seconds()),
 			mlog.String("state", state),
-			mlog.Int("rateDiff", rateDiff),
 		)
 
-		// We want to give it some time for the rate estimation to stabilize when
-		// switching up levels. Unless there was some decrease in estimated rate
-		// in which case we want to react as quickly as possible.
-		if time.Since(lastLevelChangeAt) < backoff && (currLevel == SimulcastLevelLow || rateDiff >= 0) {
-			s.log.Debug("skipping bitrate check", mlog.String("sessionID", s.cfg.SessionID))
+		// We want to give it some time for the rate estimation to stabilize
+		// before attempting to upgrade level again.
+		if time.Since(lastLevelChangeAt) < backoff && currLevel == SimulcastLevelLow {
+			s.log.Debug("skipping bitrate check due to backoff", mlog.String("sessionID", s.cfg.SessionID))
 			return
 		}
 
-		if ok, newRate, newLevel := s.handleSenderBitrateChange(rate); ok {
-			lastLevelChangeAt = time.Now()
-			currLevel = newLevel
+		if changed, newRate, newLevel := s.handleSenderBitrateChange(rate, lossRate); changed {
+			// Adding some exponential backoff to avoid switching levels too often
+			// if either client's network conditions fluctuate too often or the client has
+			// not enough bandwidth to handle the higher rate track.
+			if newLevel == SimulcastLevelLow {
+				if backoff == 0 {
+					backoff = levelChangeInitialBackoff
+				} else {
+					backoff = backoff + backoff/2
+				}
+			}
 
-			// Adding some exponential backoff to avoid switching levels like crazy
-			// if either client's bandwidth fluctuates too often or the client has
-			// not enough to handle the higher rate track.
-			if backoff == 0 {
-				backoff = levelChangeInitialBackoff
-			} else {
-				backoff = backoff + backoff/2
+			if newLevel == SimulcastLevelHigh {
+				// On upgrade we update the maximum rate for the estimator to better match the
+				// actual source rate.
+				bwEstimator.SetMaxBitrate(int(float64(newRate) * 1.5))
 			}
 
 			// We update the target bitrate for the estimator to better reflect the
 			// real rate of the source.
-			// TODO: consider tweaking maximum bitrate as well to avoid potentially
-			// plateauing on a higher than real value.
 			bwEstimator.SetTargetBitrate(newRate)
+
+			currLevel = newLevel
+			lastLevelChangeAt = time.Now()
 		}
 	}
 
+	updateMaxSourceRate := func() {
+		screenSession := s.call.getScreenSession()
+		if screenSession == nil || s == screenSession {
+			return
+		}
+
+		if track := screenSession.getRemoteScreenTrack(SimulcastLevelHigh); track == nil {
+			// nothing to do if the sender is not simulcasting.
+			return
+		}
+
+		// We purposely get the highest quality track's rate as it better reflects the
+		// maximum allowed bitrate.
+		sourceRate := screenSession.getSourceRate(SimulcastLevelHigh)
+		if sourceRate <= 0 {
+			s.log.Debug("source rate not available yet", mlog.String("sessionID", s.cfg.SessionID))
+			return
+		}
+
+		s.bwEstimator.SetMaxBitrate(int(float64(sourceRate) * 1.5))
+	}
+
 	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+
 		for {
 			select {
-			case rate := <-rateCh:
+			case rate, ok := <-rateCh:
+				if !ok {
+					s.log.Info("rateCh was closed, returning", mlog.String("sessionID", s.cfg.SessionID))
+					return
+				}
 				rateChangeHandler(rate)
+			case <-ticker.C:
+				updateMaxSourceRate()
 			case <-s.closeCh:
 				return
 			}
@@ -123,7 +168,7 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 	}()
 }
 
-func (s *session) handleSenderBitrateChange(rate int) (bool, int, string) {
+func (s *session) handleSenderBitrateChange(downRate int, lossRate int) (bool, int, string) {
 	screenSession := s.call.getScreenSession()
 	if screenSession == nil {
 		return false, 0, ""
@@ -138,63 +183,68 @@ func (s *session) handleSenderBitrateChange(rate int) (bool, int, string) {
 		return false, 0, ""
 	}
 
-	track := sender.Track()
+	currTrack := sender.Track()
 
-	if track == nil {
+	if currTrack == nil {
 		s.log.Error("track should not be nil", mlog.String("sessionID", s.cfg.SessionID))
 		return false, 0, ""
 	}
 
-	currLevel := track.RID()
+	currLevel := currTrack.RID()
 	if currLevel == "" {
 		// not a simulcast track
 		return false, 0, ""
 	}
 
-	rm := screenSession.getRateMonitor(currLevel)
-	if rm == nil {
-		s.log.Warn("rate monitor should not be nil")
+	currSourceRate := screenSession.getSourceRate(currLevel)
+	if currSourceRate <= 0 {
+		s.log.Warn("current source rate not available yet", mlog.String("sessionID", s.cfg.SessionID))
 		return false, 0, ""
 	}
 
-	currSourceRate := rm.GetRate()
-	newLevel := getSimulcastLevel(rate, currSourceRate)
+	newLevel := getSimulcastLevel(downRate, currSourceRate)
 	if newLevel == currLevel {
 		// no level change, nothing to do
 		return false, 0, ""
 	}
 
-	screenTrack := screenSession.getOutScreenTrack(newLevel)
-	if screenTrack == nil {
+	// If the loss based rate estimation is greater than the source rate we avoid
+	// potentially downgrading the level due to fluctuating delay rate estimation.
+	if currLevel == SimulcastLevelHigh && lossRate > currSourceRate {
+		s.log.Debug("skipping level downgrade, no loss", mlog.String("sessionID", s.cfg.SessionID))
+		return false, 0, ""
+	}
+
+	newTrack := screenSession.getOutScreenTrack(newLevel)
+	if newTrack == nil {
 		// if the desired track is not available we keep the current one
 		return false, 0, ""
 	}
 
-	rm = screenSession.getRateMonitor(newLevel)
-	if rm == nil {
-		s.log.Warn("rate monitor should not be nil")
+	sourceRate := screenSession.getSourceRate(newLevel)
+	if sourceRate <= 0 {
+		s.log.Warn("source rate not available", mlog.String("sessionID", s.cfg.SessionID))
 		return false, 0, ""
 	}
-	sourceRate := rm.GetRate()
 
 	s.log.Debug("switching simulcast level",
 		mlog.String("sessionID", s.cfg.SessionID),
 		mlog.String("currLevel", currLevel),
 		mlog.String("newLevel", newLevel),
-		mlog.Int("downRate", rate),
+		mlog.Int("downRate", downRate),
 		mlog.Int("currSourceRate", currSourceRate),
 		mlog.Int("newSourceRate", sourceRate),
 	)
 
 	select {
-	case s.tracksCh <- trackActionContext{action: trackActionRemove, track: track}:
+	case s.tracksCh <- trackActionContext{action: trackActionRemove, track: currTrack}:
 	default:
 		s.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", s.cfg.SessionID))
 		return false, 0, ""
 	}
 
 	select {
-	case s.tracksCh <- trackActionContext{action: trackActionAdd, track: screenTrack}:
+	case s.tracksCh <- trackActionContext{action: trackActionAdd, track: newTrack}:
 	default:
 		s.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", s.cfg.SessionID))
 		return false, 0, ""

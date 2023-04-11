@@ -45,7 +45,7 @@ func newMultiConn(conns []net.PacketConn) (*multiConn, error) {
 	var mc multiConn
 	mc.conns = conns
 	mc.addr = conns[0].LocalAddr()
-	mc.readResultCh = make(chan readResult)
+	mc.readResultCh = make(chan readResult, len(conns)*2)
 	mc.closeCh = make(chan struct{})
 	mc.bufPool = &sync.Pool{
 		New: func() interface{} {
