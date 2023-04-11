@@ -17,14 +17,14 @@ require (
 	github.com/pion/stun v0.4.0
 	github.com/pion/webrtc/v3 v3.1.55
 	github.com/prometheus/client_golang v1.13.0
-	github.com/stretchr/testify v1.8.1
+	github.com/stretchr/testify v1.8.2
 	github.com/vmihailenco/msgpack/v5 v5.3.5
 	golang.org/x/crypto v0.6.0
 	golang.org/x/sys v0.5.0
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 )
 
-replace github.com/pion/interceptor v0.1.12 => github.com/streamer45/interceptor v0.0.0-20230403204744-ad890da73bb8
+replace github.com/pion/interceptor v0.1.12 => github.com/streamer45/interceptor v0.0.0-20230411181333-e32ad6baa491
 
 require (
 	github.com/abcum/lcp v0.0.0-20201209214815-7a3f3840be81 // indirect
