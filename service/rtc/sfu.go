@@ -118,17 +118,18 @@ func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, <-chan cc.B
 	}
 
 	// Congestion Control
-	initialRate := int(float32(getRateForSimulcastLevel(SimulcastLevelLow)) * 0.50)
-	pacer, err := gcc.NewLeakyBucketPacer(initialRate, gcc.PacerDisableCopy())
+	minRate := int(float32(getRateForSimulcastLevel(SimulcastLevelLow)) * 0.5)
+	maxRate := int(float32(getRateForSimulcastLevel(SimulcastLevelHigh)) * 1.5)
+	pacer, err := gcc.NewLeakyBucketPacer(minRate, gcc.PacerDisableCopy())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create pacer: %w", err)
 	}
 	bwEstimatorCh := make(chan cc.BandwidthEstimator, 1)
 	congestionController, err := cc.NewInterceptor(func() (cc.BandwidthEstimator, error) {
 		return gcc.NewSendSideBWE(
-			gcc.SendSideBWEInitialBitrate(initialRate),
-			gcc.SendSideBWEMinBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelLow))*0.50)),
-			gcc.SendSideBWEMaxBitrate(int(float32(getRateForSimulcastLevel(SimulcastLevelHigh))*1.50)),
+			gcc.SendSideBWEInitialBitrate(minRate),
+			gcc.SendSideBWEMinBitrate(minRate),
+			gcc.SendSideBWEMaxBitrate(maxRate),
 			gcc.SendSideBWEPacer(pacer),
 		)
 	})
@@ -297,12 +298,20 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			mlog.String("streamID", streamID),
 			mlog.String("remoteTrackID", remoteTrack.ID()),
 			mlog.Int("ssrc", int(remoteTrack.SSRC())),
-			mlog.String("sessionID", us.cfg.SessionID),
 			mlog.String("rid", remoteTrack.RID()),
+			mlog.String("sessionID", us.cfg.SessionID),
 		)
 
 		s.metrics.IncRTPTracks(us.cfg.GroupID, us.cfg.CallID, "in", getTrackType(remoteTrack.Kind()))
-		defer s.metrics.DecRTPTracks(us.cfg.GroupID, us.cfg.CallID, "in", getTrackType(remoteTrack.Kind()))
+		defer func() {
+			s.log.Debug("exiting track handler",
+				mlog.String("streamID", streamID),
+				mlog.String("remoteTrackID", remoteTrack.ID()),
+				mlog.Int("ssrc", int(remoteTrack.SSRC())),
+				mlog.String("rid", remoteTrack.RID()),
+				mlog.String("sessionID", us.cfg.SessionID))
+			s.metrics.DecRTPTracks(us.cfg.GroupID, us.cfg.CallID, "in", getTrackType(remoteTrack.Kind()))
+		}()
 
 		var screenStreamID string
 		if screenSession := call.getScreenSession(); screenSession != nil {
