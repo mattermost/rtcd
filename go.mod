@@ -17,6 +17,7 @@ require (
 	github.com/pion/stun v0.4.0
 	github.com/pion/webrtc/v3 v3.1.55
 	github.com/prometheus/client_golang v1.13.0
+	github.com/pyroscope-io/godeltaprof v0.1.1
 	github.com/stretchr/testify v1.8.2
 	github.com/vmihailenco/msgpack/v5 v5.3.5
 	golang.org/x/crypto v0.6.0
