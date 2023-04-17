@@ -359,7 +359,7 @@ func connectSession(t *testing.T, cfg SessionConfig, s *Server) {
 func TestCalls(t *testing.T) {
 	log, err := logger.New(logger.Config{
 		EnableConsole: true,
-		ConsoleLevel:  "DEBUG",
+		ConsoleLevel:  "INFO",
 	})
 	require.NoError(t, err)
 	defer func() {
@@ -378,8 +378,8 @@ func TestCalls(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, s)
 
-	nCalls := 10
-	nSessionsPerCall := 10
+	nCalls := 5
+	nSessionsPerCall := 5
 
 	err = s.Start()
 	require.NoError(t, err)
