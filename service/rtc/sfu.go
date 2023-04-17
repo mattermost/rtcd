@@ -120,10 +120,7 @@ func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, <-chan cc.B
 	// Congestion Control
 	minRate := int(float32(getRateForSimulcastLevel(SimulcastLevelLow)) * 0.5)
 	maxRate := int(float32(getRateForSimulcastLevel(SimulcastLevelHigh)) * 1.5)
-	pacer, err := gcc.NewLeakyBucketPacer(minRate, gcc.PacerDisableCopy())
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create pacer: %w", err)
-	}
+	pacer := gcc.NewNoOpPacer()
 	bwEstimatorCh := make(chan cc.BandwidthEstimator, 1)
 	congestionController, err := cc.NewInterceptor(func() (cc.BandwidthEstimator, error) {
 		return gcc.NewSendSideBWE(
