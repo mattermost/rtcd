@@ -85,20 +85,23 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 		delayRate, _ := stats["delayTargetBitrate"].(int)
 		averageLoss, _ := stats["averageLoss"].(float64)
 		state, _ := stats["state"].(string)
-		s.log.Debug("sender bwe",
-			mlog.String("sessionID", s.cfg.SessionID),
-			mlog.Int("delayRate", delayRate),
-			mlog.Int("lossRate", lossRate),
-			mlog.String("averageLoss", fmt.Sprintf("%.5f", averageLoss)),
-			mlog.Float64("backoff", backoff.Seconds()),
-			mlog.String("state", state),
-		)
 
 		// We want to know if there was a rate drop on both rates (delay, loss)
 		// since last time.
 		rateDiff := math.Max(float64(delayRate-lastDelayRate), float64(lossRate-lastLossRate))
 		lastDelayRate = delayRate
 		lastLossRate = lossRate
+
+		s.log.Debug("sender bwe",
+			mlog.String("sessionID", s.cfg.SessionID),
+			mlog.Int("delayRate", delayRate),
+			mlog.Int("lossRate", lossRate),
+			mlog.String("averageLoss", fmt.Sprintf("%.5f", averageLoss)),
+			mlog.String("state", state),
+			mlog.Float64("backoff", backoff.Seconds()),
+			mlog.Float64("lastLevelChange", time.Since(lastLevelChangeAt).Seconds()),
+			mlog.Float64("rateDiff", rateDiff),
+		)
 
 		// We want to give it some time for the rate estimation to stabilize
 		// before attempting to change level again, unless we are serving the
