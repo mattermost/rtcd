@@ -4,14 +4,19 @@
 package rtc
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/mattermost/rtcd/service/perf"
+	"github.com/mattermost/rtcd/service/random"
 
 	"github.com/mattermost/mattermost-server/v6/shared/mlog"
+	"github.com/mattermost/rtcd/logger"
+	"github.com/pion/webrtc/v3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -191,4 +196,240 @@ func TestDraining(t *testing.T) {
 
 		require.True(t, time.Since(beforeStop) > time.Second)
 	})
+}
+
+func TestInitSession(t *testing.T) {
+	log, err := logger.New(logger.Config{
+		EnableConsole: true,
+		ConsoleLevel:  "INFO",
+	})
+	require.NoError(t, err)
+	defer func() {
+		err := log.Shutdown()
+		require.NoError(t, err)
+	}()
+
+	metrics := perf.NewMetrics("rtcd", nil)
+	require.NotNil(t, metrics)
+
+	cfg := ServerConfig{
+		ICEPortUDP: 30433,
+	}
+
+	s, err := NewServer(cfg, log, metrics)
+	require.NoError(t, err)
+	require.NotNil(t, s)
+
+	nCalls := 10
+	nSessionsPerCall := 10
+
+	err = s.Start()
+	require.NoError(t, err)
+
+	var sessions []SessionConfig
+	for i := 0; i < nCalls; i++ {
+		callID := random.NewID()
+		for j := 0; j < nSessionsPerCall; j++ {
+			sessions = append(sessions, SessionConfig{
+				GroupID:   "groupID",
+				CallID:    callID,
+				UserID:    random.NewID(),
+				SessionID: random.NewID(),
+			})
+		}
+	}
+
+	for _, cfg := range sessions {
+		go func(cfg SessionConfig) {
+			err := s.InitSession(cfg, nil)
+			require.NoError(t, err)
+		}(cfg)
+	}
+
+	for _, cfg := range sessions {
+		go func(id string) {
+			err := s.CloseSession(id)
+			require.NoError(t, err)
+		}(cfg.SessionID)
+	}
+
+	err = s.Stop()
+	require.NoError(t, err)
+}
+
+func connectSession(t *testing.T, cfg SessionConfig, s *Server) {
+	t.Helper()
+
+	connectCh := make(chan struct{})
+	gatheringDoneCh := make(chan struct{})
+	pc, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+	require.NoError(t, err)
+
+	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		if state == webrtc.PeerConnectionStateConnected {
+			close(connectCh)
+		}
+	})
+
+	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		if candidate == nil {
+			close(gatheringDoneCh)
+			return
+		}
+
+		iceData, err := json.Marshal(candidate.ToJSON())
+		require.NoError(t, err)
+
+		err = s.Send(Message{
+			GroupID:   cfg.GroupID,
+			CallID:    cfg.CallID,
+			UserID:    cfg.UserID,
+			SessionID: cfg.SessionID,
+			Type:      ICEMessage,
+			Data:      iceData,
+		})
+		require.NoError(t, err)
+	})
+
+	dc, err := pc.CreateDataChannel("calls-dc", nil)
+	require.NoError(t, err)
+	require.NotNil(t, dc)
+
+	offer, err := pc.CreateOffer(nil)
+	require.NoError(t, err)
+
+	err = pc.SetLocalDescription(offer)
+	require.NoError(t, err)
+
+	offerData, err := json.Marshal(&offer)
+	require.NoError(t, err)
+
+	err = s.Send(Message{
+		GroupID:   cfg.GroupID,
+		CallID:    cfg.CallID,
+		UserID:    cfg.UserID,
+		SessionID: cfg.SessionID,
+		Type:      SDPMessage,
+		Data:      offerData,
+	})
+	require.NoError(t, err)
+
+	var connectWg sync.WaitGroup
+	iceCh := make(chan []byte, 10)
+	connectWg.Add(1)
+	go func() {
+		defer connectWg.Done()
+		for {
+			select {
+			case msg := <-s.ReceiveCh():
+				if msg.SessionID != cfg.SessionID {
+					s.receiveCh <- msg
+					continue
+				}
+
+				if msg.Type == ICEMessage {
+					iceCh <- msg.Data
+				} else if msg.Type == SDPMessage {
+					var answer webrtc.SessionDescription
+					err := json.Unmarshal(msg.Data, &answer)
+					require.NoError(t, err)
+					err = pc.SetRemoteDescription(answer)
+					require.NoError(t, err)
+
+					go func() {
+						for candidate := range iceCh {
+							data := make(map[string]interface{})
+							err := json.Unmarshal(candidate, &data)
+							require.NoError(t, err)
+							err = pc.AddICECandidate(webrtc.ICECandidateInit{Candidate: data["candidate"].(map[string]interface{})["candidate"].(string)})
+							require.NoError(t, err)
+						}
+					}()
+				}
+			case <-connectCh:
+				return
+			}
+		}
+	}()
+
+	<-gatheringDoneCh
+	connectWg.Wait()
+}
+
+func TestCalls(t *testing.T) {
+	log, err := logger.New(logger.Config{
+		EnableConsole: true,
+		ConsoleLevel:  "DEBUG",
+	})
+	require.NoError(t, err)
+	defer func() {
+		err := log.Shutdown()
+		require.NoError(t, err)
+	}()
+
+	metrics := perf.NewMetrics("rtcd", nil)
+	require.NotNil(t, metrics)
+
+	cfg := ServerConfig{
+		ICEPortUDP: 30433,
+	}
+
+	s, err := NewServer(cfg, log, metrics)
+	require.NoError(t, err)
+	require.NotNil(t, s)
+
+	nCalls := 10
+	nSessionsPerCall := 10
+
+	err = s.Start()
+	require.NoError(t, err)
+
+	var sessions []SessionConfig
+	groupID := random.NewID()
+	for i := 0; i < nCalls; i++ {
+		callID := random.NewID()
+		for j := 0; j < nSessionsPerCall; j++ {
+			sessions = append(sessions, SessionConfig{
+				GroupID:   groupID,
+				CallID:    callID,
+				UserID:    random.NewID(),
+				SessionID: random.NewID(),
+			})
+		}
+	}
+
+	var initWg sync.WaitGroup
+	initWg.Add(len(sessions))
+	for _, cfg := range sessions {
+		go func(cfg SessionConfig) {
+			defer initWg.Done()
+			err := s.InitSession(cfg, nil)
+			require.NoError(t, err)
+		}(cfg)
+	}
+	initWg.Wait()
+
+	var connectWg sync.WaitGroup
+	connectWg.Add(len(sessions))
+	for _, cfg := range sessions {
+		go func(cfg SessionConfig) {
+			defer connectWg.Done()
+			connectSession(t, cfg, s)
+		}(cfg)
+	}
+	connectWg.Wait()
+
+	var closeWg sync.WaitGroup
+	closeWg.Add(len(sessions))
+	for _, cfg := range sessions {
+		go func(id string) {
+			defer closeWg.Done()
+			err := s.CloseSession(id)
+			require.NoError(t, err)
+		}(cfg.SessionID)
+	}
+	closeWg.Wait()
+
+	err = s.Stop()
+	require.NoError(t, err)
 }
