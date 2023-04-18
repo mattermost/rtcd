@@ -41,8 +41,8 @@ DOCKER_REGISTRY_REPO    ?= mattermost/${APP_NAME}-daily
 DOCKER_USER             ?= user
 DOCKER_PASSWORD         ?= password
 ## Docker Images
-DOCKER_IMAGE_GO         += "golang:${GO_VERSION}@sha256:fa71e1447cb0241324162a6c51297206928d755b16142eceec7b809af55061e5"
-DOCKER_IMAGE_GOLINT     += "golangci/golangci-lint:v1.52.1@sha256:e0390a5a89764cb2a8bc538bb6f3429c9c987598e7885437e71f780e29d75c86"
+DOCKER_IMAGE_GO         += "golang:${GO_VERSION}@sha256:dd9ad81920b63c7f9f18823d888d5fdcc7e7516086fd16654d07bc437f0e2427"
+DOCKER_IMAGE_GOLINT     += "golangci/golangci-lint:v1.52.2@sha256:5fa6a92ab28ca3421c88d2b6cd794c9759d05a999aceca73053d014aad41b9d3"
 DOCKER_IMAGE_DOCKERLINT += "hadolint/hadolint:v2.9.2@sha256:d355bd7df747a0f124f3b5e7b21e9dafd0cb19732a276f901f0fdee243ec1f3b"
 DOCKER_IMAGE_COSIGN     += "bitnami/cosign:1.8.0@sha256:8c2c61c546258fffff18b47bb82a65af6142007306b737129a7bd5429d53629a"
 DOCKER_IMAGE_GH_CLI     += "registry.internal.mattermost.com/images/build-ci:3.16.0@sha256:f6a229a9ababef3c483f237805ee4c3dbfb63f5de4fbbf58f4c4b6ed8fcd34b6"
