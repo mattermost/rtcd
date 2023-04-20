@@ -5,6 +5,7 @@ package rtc
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -45,7 +46,7 @@ func getSimulcastLevel(downRate, sourceRate int) string {
 }
 
 func getSimulcastLevelForRate(rate int) string {
-	if rate >= int(float32(simulcastRates[SimulcastLevelHigh])*rateTolerance) {
+	if rate > int(float32(simulcastRates[SimulcastLevelHigh])*rateTolerance) {
 		return SimulcastLevelHigh
 	}
 
@@ -72,9 +73,11 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 		}
 	})
 
-	var backoff time.Duration
-	var lastLevelChangeAt time.Time
 	currLevel := SimulcastLevelDefault
+	backoff := levelChangeInitialBackoff
+	var lastLevelChangeAt time.Time
+	var lastDelayRate int
+	var lastLossRate int
 
 	rateChangeHandler := func(rate int) {
 		stats := bwEstimator.GetStats()
@@ -82,19 +85,30 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 		delayRate, _ := stats["delayTargetBitrate"].(int)
 		averageLoss, _ := stats["averageLoss"].(float64)
 		state, _ := stats["state"].(string)
+
+		// We want to know if there was a rate drop on both rates (delay, loss)
+		// since last time.
+		rateDiff := math.Max(float64(delayRate-lastDelayRate), float64(lossRate-lastLossRate))
+		lastDelayRate = delayRate
+		lastLossRate = lossRate
+
 		s.log.Debug("sender bwe",
 			mlog.String("sessionID", s.cfg.SessionID),
 			mlog.Int("delayRate", delayRate),
 			mlog.Int("lossRate", lossRate),
 			mlog.String("averageLoss", fmt.Sprintf("%.5f", averageLoss)),
-			mlog.Float64("backoff", backoff.Seconds()),
 			mlog.String("state", state),
+			mlog.Float64("backoff", backoff.Seconds()),
+			mlog.Float64("lastLevelChange", time.Since(lastLevelChangeAt).Seconds()),
+			mlog.Float64("rateDiff", rateDiff),
 		)
 
 		// We want to give it some time for the rate estimation to stabilize
-		// before attempting to upgrade level again.
-		if time.Since(lastLevelChangeAt) < backoff && currLevel == SimulcastLevelLow {
-			s.log.Debug("skipping bitrate check due to backoff", mlog.String("sessionID", s.cfg.SessionID))
+		// before attempting to change level again, unless we are serving the
+		// high rate track and there was a drop in the estimated rate
+		// in which case we want to act as quickly as possible.
+		if time.Since(lastLevelChangeAt) < backoff && (currLevel == SimulcastLevelLow || rateDiff >= 0) {
+			s.log.Debug("skipping bitrate check due to backoff, no drop", mlog.String("sessionID", s.cfg.SessionID))
 			return
 		}
 
@@ -102,55 +116,20 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 			// Adding some exponential backoff to avoid switching levels too often
 			// if either client's network conditions fluctuate too often or the client has
 			// not enough bandwidth to handle the higher rate track.
-			if newLevel == SimulcastLevelLow {
-				if backoff == 0 {
-					backoff = levelChangeInitialBackoff
-				} else {
-					backoff = backoff + backoff/2
-				}
-			}
+			backoff = backoff + backoff/2
 
 			if newLevel == SimulcastLevelHigh {
-				// On upgrade we update the maximum rate for the estimator to better match the
-				// actual source rate.
-				bwEstimator.SetMaxBitrate(int(float64(newRate) * 1.5))
+				// On upgrading level we update the target rate to better reflect the
+				// actual rate of the source.
+				bwEstimator.SetTargetBitrate(newRate)
 			}
 
-			// We update the target bitrate for the estimator to better reflect the
-			// real rate of the source.
-			bwEstimator.SetTargetBitrate(newRate)
-
-			currLevel = newLevel
 			lastLevelChangeAt = time.Now()
+			currLevel = newLevel
 		}
-	}
-
-	updateMaxSourceRate := func() {
-		screenSession := s.call.getScreenSession()
-		if screenSession == nil || s == screenSession {
-			return
-		}
-
-		if track := screenSession.getRemoteScreenTrack(SimulcastLevelHigh); track == nil {
-			// nothing to do if the sender is not simulcasting.
-			return
-		}
-
-		// We purposely get the highest quality track's rate as it better reflects the
-		// maximum allowed bitrate.
-		sourceRate := screenSession.getSourceRate(SimulcastLevelHigh)
-		if sourceRate <= 0 {
-			s.log.Debug("source rate not available yet", mlog.String("sessionID", s.cfg.SessionID))
-			return
-		}
-
-		s.bwEstimator.SetMaxBitrate(int(float64(sourceRate) * 1.5))
 	}
 
 	go func() {
-		ticker := time.NewTicker(2 * time.Second)
-		defer ticker.Stop()
-
 		for {
 			select {
 			case rate, ok := <-rateCh:
@@ -159,8 +138,6 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 					return
 				}
 				rateChangeHandler(rate)
-			case <-ticker.C:
-				updateMaxSourceRate()
 			case <-s.closeCh:
 				return
 			}
@@ -210,7 +187,7 @@ func (s *session) handleSenderBitrateChange(downRate int, lossRate int) (bool, i
 
 	// If the loss based rate estimation is greater than the source rate we avoid
 	// potentially downgrading the level due to fluctuating delay rate estimation.
-	if currLevel == SimulcastLevelHigh && lossRate > currSourceRate {
+	if currLevel == SimulcastLevelHigh && lossRate > int(float32(currSourceRate)*rateTolerance) {
 		s.log.Debug("skipping level downgrade, no loss", mlog.String("sessionID", s.cfg.SessionID))
 		return false, 0, ""
 	}

@@ -10,9 +10,13 @@ import (
 	"time"
 )
 
+type sample struct {
+	ts   time.Time
+	size int
+}
+
 type RateMonitor struct {
-	samples      []int
-	timestamps   []time.Time
+	samples      []sample
 	samplesPtr   int
 	samplingSize time.Duration
 	filled       bool
@@ -32,8 +36,7 @@ func NewRateMonitor(samplingSize time.Duration, now func() time.Time) (*RateMoni
 	return &RateMonitor{
 		now:          now,
 		samplingSize: samplingSize,
-		samples:      make([]int, 0),
-		timestamps:   make([]time.Time, 0),
+		samples:      make([]sample, 0),
 	}, nil
 }
 
@@ -44,9 +47,8 @@ func (m *RateMonitor) PushSample(size int) {
 	// Filling up to double the sampling size to make sure we have enough samples
 	// to calculate the desired duration since at the beginning it's likely we get
 	// a burst of packets.
-	if !m.filled && m.getSamplesDuration() < m.samplingSize*2 {
-		m.samples = append(m.samples, size)
-		m.timestamps = append(m.timestamps, m.now())
+	if !m.filled {
+		m.samples = append(m.samples, sample{ts: m.now(), size: size})
 		m.samplesPtr++
 		if m.getSamplesDuration() >= m.samplingSize*2 {
 			m.filled = true
@@ -54,8 +56,7 @@ func (m *RateMonitor) PushSample(size int) {
 		return
 	}
 
-	m.samples[m.samplesPtr%len(m.samples)] = size
-	m.timestamps[m.samplesPtr%len(m.timestamps)] = m.now()
+	m.samples[m.samplesPtr%len(m.samples)] = sample{ts: m.now(), size: size}
 	m.samplesPtr++
 }
 
@@ -67,12 +68,12 @@ func (m *RateMonitor) GetSamplesDuration() time.Duration {
 }
 
 func (m *RateMonitor) getSamplesDuration() time.Duration {
-	if len(m.timestamps) == 0 {
+	if len(m.samples) == 0 {
 		return 0
 	}
 
-	lastTS := m.timestamps[(m.samplesPtr-1)%len(m.timestamps)]
-	firstTS := m.timestamps[m.samplesPtr%len(m.timestamps)]
+	lastTS := m.samples[(m.samplesPtr-1)%len(m.samples)].ts
+	firstTS := m.samples[m.samplesPtr%len(m.samples)].ts
 
 	return lastTS.Sub(firstTS)
 }
@@ -90,8 +91,9 @@ func (m *RateMonitor) GetRate() (int, time.Duration) {
 	var totalBytes int
 	var samplesDuration time.Duration
 	for i := m.samplesPtr - 1; i >= m.samplesPtr-len(m.samples); i-- {
-		samplesDuration = now.Sub(m.timestamps[i%len(m.timestamps)])
-		totalBytes += m.samples[i%len(m.samples)]
+		sample := m.samples[i%len(m.samples)]
+		samplesDuration = now.Sub(sample.ts)
+		totalBytes += sample.size
 
 		if samplesDuration >= m.samplingSize {
 			break

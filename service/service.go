@@ -6,6 +6,8 @@ package service
 import (
 	"fmt"
 	"net/http/pprof"
+	"os"
+	"runtime"
 	"sync"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	"github.com/mattermost/rtcd/service/ws"
 
 	"github.com/mattermost/mattermost-server/v6/shared/mlog"
+	godeltaprof "github.com/pyroscope-io/godeltaprof/http/pprof"
 )
 
 type Service struct {
@@ -100,8 +103,16 @@ func New(cfg Config) (*Service, error) {
 	s.apiServer.RegisterHandleFunc("/unregister", s.unregisterClient)
 	s.apiServer.RegisterHandler("/ws", s.wsServer)
 
+	if val := os.Getenv("PERF_PROFILES"); val == "true" {
+		runtime.SetMutexProfileFraction(5)
+		runtime.SetBlockProfileRate(5)
+	}
+
 	s.apiServer.RegisterHandler("/metrics", s.metrics.Handler())
 	s.apiServer.RegisterHandler("/debug/pprof/heap", pprof.Handler("heap"))
+	s.apiServer.RegisterHandleFunc("/debug/pprof/delta_heap", godeltaprof.Heap)
+	s.apiServer.RegisterHandleFunc("/debug/pprof/delta_block", godeltaprof.Block)
+	s.apiServer.RegisterHandleFunc("/debug/pprof/delta_mutex", godeltaprof.Mutex)
 	s.apiServer.RegisterHandler("/debug/pprof/goroutine", pprof.Handler("goroutine"))
 	s.apiServer.RegisterHandler("/debug/pprof/mutex", pprof.Handler("mutex"))
 	s.apiServer.RegisterHandleFunc("/debug/pprof/profile", pprof.Profile)
