@@ -22,7 +22,7 @@ import (
 
 const (
 	signalChSize = 20
-	tracksChSize = 10
+	tracksChSize = 100
 )
 
 // session contains all the state necessary to connect a user to a call.
