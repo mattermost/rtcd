@@ -84,8 +84,8 @@ func (s *Server) ReceiveCh() <-chan Message {
 func (s *Server) Start() error {
 	var err error
 	var muxes []ice.UDPMux
-	if s.cfg.ICEAddressUDP == "" {
-		s.log.Debug("no address specified, going to listen on all supported interfaces")
+	if s.cfg.ICEAddressUDP == "" || s.cfg.ICEAddressUDP == "0.0.0.0" {
+		s.log.Debug("going to listen on all supported interfaces")
 		s.localIPs, err = getSystemIPs(s.log)
 		if err != nil {
 			return fmt.Errorf("failed to get system IPs: %w", err)

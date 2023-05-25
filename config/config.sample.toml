@@ -23,7 +23,8 @@ security.admin_secret_key = ""
 security.session_cache.expiration_minutes = 1440
 
 [rtc]
-# The IP address used to listen for UDP packets.
+# The IP address used to listen for UDP packets. If left empty it has the same
+# effect as using the 0.0.0.0 address, causing the server to listen on all available network interfaces.
 ice_address_udp = ""
 # The UDP port used to route all the media (audio/screen/video tracks).
 ice_port_udp = 8443
