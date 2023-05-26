@@ -15,6 +15,10 @@ type ServerConfig struct {
 	ICEAddressUDP string `toml:"ice_address_udp"`
 	// ICEPortUDP specifies the UDP port the RTC service should listen to.
 	ICEPortUDP int `toml:"ice_port_udp"`
+	// ICEAddressTCP specifies the TCP address the RTC service should listen on.
+	ICEAddressTCP string `toml:"ice_address_tcp"`
+	// ICEPortTCP specifies the TCP port the RTC service should listen to.
+	ICEPortTCP int `toml:"ice_port_tcp"`
 	// ICEHostOverride optionally specifies an IP address (or hostname)
 	// to be used as the main host ICE candidate.
 	ICEHostOverride string `toml:"ice_host_override"`
@@ -28,8 +32,16 @@ func (c ServerConfig) IsValid() error {
 		return fmt.Errorf("invalid ICEAddressUDP value: not a valid address")
 	}
 
+	if c.ICEAddressTCP != "" && net.ParseIP(c.ICEAddressTCP) == nil {
+		return fmt.Errorf("invalid ICEAddressTCP value: not a valid address")
+	}
+
 	if c.ICEPortUDP < 80 || c.ICEPortUDP > 49151 {
 		return fmt.Errorf("invalid ICEPortUDP value: %d is not in allowed range [80, 49151]", c.ICEPortUDP)
+	}
+
+	if c.ICEPortTCP < 80 || c.ICEPortTCP > 49151 {
+		return fmt.Errorf("invalid ICEPortTCP value: %d is not in allowed range [80, 49151]", c.ICEPortTCP)
 	}
 
 	if err := c.ICEServers.IsValid(); err != nil {

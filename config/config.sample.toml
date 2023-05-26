@@ -23,11 +23,17 @@ security.admin_secret_key = ""
 security.session_cache.expiration_minutes = 1440
 
 [rtc]
-# The IP address used to listen for UDP packets. If left empty it has the same
+# The IP address used to listen for UDP packets and generate UDP candidates. If left empty it has the same
 # effect as using the 0.0.0.0 address, causing the server to listen on all available network interfaces.
 ice_address_udp = ""
-# The UDP port used to route all the media (audio/screen/video tracks).
+# The UDP port used to route media (audio/screen/video tracks).
 ice_port_udp = 8443
+# The IP address used to listen for TCP connections and generate TCP candidates. This is used to generate
+# TCP candidates which may be used by client in case UDP connectivity is not available.
+ice_address_tcp = ""
+# The TCP port used to route media (audio/screen/video tracks). This is used to
+# generate TCP candidates.
+ice_port_tcp = 8443
 # An optional hostname used to override the default value. By default, the
 # service will try to guess its own public IP through STUN (if configured).
 # Depending on the network setup, it may be necessary to set an override. 

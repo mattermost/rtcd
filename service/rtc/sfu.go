@@ -187,7 +187,13 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 	sEngine := webrtc.SettingEngine{}
 	sEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
+	sEngine.SetNetworkTypes([]webrtc.NetworkType{
+		webrtc.NetworkTypeUDP4,
+		webrtc.NetworkTypeTCP4,
+	})
 	sEngine.SetICEUDPMux(s.udpMux)
+	sEngine.SetICETCPMux(s.tcpMux)
+	sEngine.SetIncludeLoopbackCandidate(true)
 
 	pairs, err := generateAddrsPairs(s.localIPs, s.publicAddrsMap, s.cfg.ICEHostOverride)
 	if err != nil {

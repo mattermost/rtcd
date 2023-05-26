@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	udpSocketBufferSize = 1024 * 1024 * 16 // 16MB
-	msgChSize           = 256
-	signalingTimeout    = 10 * time.Second
+	msgChSize        = 256
+	signalingTimeout = 10 * time.Second
+	catchAllIP       = "0.0.0.0"
 )
 
 type Server struct {
@@ -31,6 +31,7 @@ type Server struct {
 	sessions map[string]SessionConfig
 
 	udpMux         ice.UDPMux
+	tcpMux         ice.TCPMux
 	publicAddrsMap map[string]string
 	localIPs       []string
 
@@ -83,42 +84,19 @@ func (s *Server) ReceiveCh() <-chan Message {
 
 func (s *Server) Start() error {
 	var err error
-	var muxes []ice.UDPMux
-	if s.cfg.ICEAddressUDP == "" || s.cfg.ICEAddressUDP == "0.0.0.0" {
-		s.log.Debug("going to listen on all supported interfaces")
-		s.localIPs, err = getSystemIPs(s.log)
-		if err != nil {
-			return fmt.Errorf("failed to get system IPs: %w", err)
-		}
-		if len(s.localIPs) == 0 {
-			return fmt.Errorf("no valid address to listen on was found")
-		}
-	} else {
-		s.localIPs = append(s.localIPs, s.cfg.ICEAddressUDP)
+	var udpMuxes []ice.UDPMux
+	var tcpMuxes []ice.TCPMux
+
+	localIPs, err := getSystemIPs(s.log)
+	if err != nil {
+		return fmt.Errorf("failed to get system IPs: %w", err)
+	}
+	if len(localIPs) == 0 {
+		return fmt.Errorf("no valid address to listen on was found")
 	}
 
-	for _, ip := range s.localIPs {
-		listenAddress := fmt.Sprintf("%s:%d", ip, s.cfg.ICEPortUDP)
-
-		if s.cfg.ICEHostOverride == "" && len(s.cfg.ICEServers) > 0 {
-			udpAddr, err := net.ResolveUDPAddr("udp4", listenAddress)
-			if err != nil {
-				return fmt.Errorf("failed to resolve UDP address: %w", err)
-			}
-
-			// TODO: consider making this logic concurrent to lower total time taken
-			// in case of multiple interfaces.
-			addr, err := getPublicIP(udpAddr, s.cfg.ICEServers.getSTUN())
-			if err != nil {
-				s.log.Warn("failed to get public IP address for local interface", mlog.String("localAddr", ip), mlog.Err(err))
-			} else {
-				s.log.Info("got public IP address for local interface", mlog.String("localAddr", ip), mlog.String("remoteAddr", addr))
-			}
-
-			s.publicAddrsMap[ip] = addr
-		}
-
-		conns, err := createUDPConnsForAddr(s.log, listenAddress)
+	initUDPMux := func(addr string) error {
+		conns, err := createUDPConnsForAddr(s.log, addr)
 		if err != nil {
 			return fmt.Errorf("failed to create UDP connections: %w", err)
 		}
@@ -128,16 +106,97 @@ func (s *Server) Start() error {
 			return fmt.Errorf("failed to create multiconn: %w", err)
 		}
 
-		muxes = append(muxes, ice.NewUDPMuxDefault(ice.UDPMuxParams{
+		udpMuxes = append(udpMuxes, ice.NewUDPMuxDefault(ice.UDPMuxParams{
 			Logger:  newPionLeveledLogger(s.log),
 			UDPConn: udpConn,
 		}))
+
+		return nil
 	}
 
-	if len(muxes) == 1 {
-		s.udpMux = muxes[0]
+	initTCPMux := func(addr string) error {
+		tcpListener, err := net.Listen("tcp4", addr)
+		if err != nil {
+			return fmt.Errorf("failed to create TCP listener: %w", err)
+		}
+
+		tcpMuxes = append(tcpMuxes, ice.NewTCPMuxDefault(ice.TCPMuxParams{
+			Logger:          newPionLeveledLogger(s.log),
+			Listener:        tcpListener,
+			ReadBufferSize:  tcpConnReadBufferLength,
+			WriteBufferSize: tcpSocketWriteBufferSize,
+		}))
+
+		return nil
+	}
+
+	if s.cfg.ICEAddressUDP == "" || s.cfg.ICEAddressUDP == catchAllIP {
+		s.log.Debug("no UDP address specified, going to listen on all supported interfaces")
+	} else if err := initUDPMux(fmt.Sprintf("%s:%d", s.cfg.ICEAddressUDP, s.cfg.ICEPortUDP)); err != nil {
+		return err
 	} else {
-		s.udpMux = ice.NewMultiUDPMuxDefault(muxes...)
+		s.localIPs = append(s.localIPs, s.cfg.ICEAddressUDP)
+	}
+
+	if s.cfg.ICEAddressTCP == "" || s.cfg.ICEAddressTCP == catchAllIP {
+		s.log.Debug("no TCP address specified, going to listen on all supported interfaces")
+	} else if err := initTCPMux(fmt.Sprintf("%s:%d", s.cfg.ICEAddressTCP, s.cfg.ICEPortTCP)); err != nil {
+		return err
+	} else if s.cfg.ICEAddressTCP != s.cfg.ICEAddressUDP {
+		// There's a chance the same IP is used for both protocols, in which
+		// case we don't want to add it to the list as it would be duplicate.
+		s.localIPs = append(s.localIPs, s.cfg.ICEAddressTCP)
+	}
+
+	if s.cfg.ICEAddressUDP == "" || s.cfg.ICEAddressTCP == "" {
+		for _, ip := range localIPs {
+			udpListenAddr := fmt.Sprintf("%s:%d", ip, s.cfg.ICEPortUDP)
+			tcpListenAddr := fmt.Sprintf("%s:%d", ip, s.cfg.ICEPortTCP)
+
+			if s.cfg.ICEHostOverride == "" && len(s.cfg.ICEServers) > 0 {
+				udpAddr, err := net.ResolveUDPAddr("udp4", udpListenAddr)
+				if err != nil {
+					return fmt.Errorf("failed to resolve UDP address: %w", err)
+				}
+
+				// TODO: consider making this logic concurrent to lower total time taken
+				// in case of multiple interfaces.
+				addr, err := getPublicIP(udpAddr, s.cfg.ICEServers.getSTUN())
+				if err != nil {
+					s.log.Warn("failed to get public IP address for local interface", mlog.String("localAddr", ip), mlog.Err(err))
+				} else {
+					s.log.Info("got public IP address for local interface", mlog.String("localAddr", ip), mlog.String("remoteAddr", addr))
+				}
+
+				s.publicAddrsMap[ip] = addr
+			}
+
+			if s.cfg.ICEAddressUDP == "" {
+				if err := initUDPMux(udpListenAddr); err != nil {
+					return err
+				}
+			}
+
+			if s.cfg.ICEAddressTCP == "" {
+				if err := initTCPMux(tcpListenAddr); err != nil {
+					return err
+				}
+			}
+		}
+
+		s.localIPs = localIPs
+	}
+
+	if len(udpMuxes) == 1 {
+		s.udpMux = udpMuxes[0]
+	} else {
+		s.udpMux = ice.NewMultiUDPMuxDefault(udpMuxes...)
+	}
+
+	if len(tcpMuxes) == 1 {
+		s.tcpMux = tcpMuxes[0]
+	} else {
+		s.tcpMux = ice.NewMultiTCPMuxDefault(tcpMuxes...)
 	}
 
 	go s.msgReader()
@@ -163,6 +222,12 @@ func (s *Server) Stop() error {
 
 	if s.udpMux != nil {
 		if err := s.udpMux.Close(); err != nil {
+			return fmt.Errorf("failed to close udp mux: %w", err)
+		}
+	}
+
+	if s.tcpMux != nil {
+		if err := s.tcpMux.Close(); err != nil {
 			return fmt.Errorf("failed to close udp mux: %w", err)
 		}
 	}

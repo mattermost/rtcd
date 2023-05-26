@@ -16,6 +16,7 @@ import (
 
 	"github.com/mattermost/mattermost-server/v6/shared/mlog"
 	"github.com/mattermost/rtcd/logger"
+	"github.com/pion/ice/v2"
 	"github.com/pion/webrtc/v3"
 	"github.com/stretchr/testify/require"
 )
@@ -31,6 +32,7 @@ func setupServer(t *testing.T) (*Server, func()) {
 
 	cfg := ServerConfig{
 		ICEPortUDP: 30433,
+		ICEPortTCP: 30433,
 	}
 
 	s, err := NewServer(cfg, log, metrics)
@@ -64,6 +66,7 @@ func TestNewServer(t *testing.T) {
 	t.Run("missing logger", func(t *testing.T) {
 		cfg := ServerConfig{
 			ICEPortUDP: 30433,
+			ICEPortTCP: 30433,
 		}
 		s, err := NewServer(cfg, nil, metrics)
 		require.Error(t, err)
@@ -73,6 +76,7 @@ func TestNewServer(t *testing.T) {
 	t.Run("missing metrics", func(t *testing.T) {
 		cfg := ServerConfig{
 			ICEPortUDP: 30433,
+			ICEPortTCP: 30433,
 		}
 		s, err := NewServer(cfg, log, nil)
 		require.Error(t, err)
@@ -82,6 +86,7 @@ func TestNewServer(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		cfg := ServerConfig{
 			ICEPortUDP: 30433,
+			ICEPortTCP: 30433,
 		}
 		s, err := NewServer(cfg, log, metrics)
 		require.NoError(t, err)
@@ -102,6 +107,7 @@ func TestStartServer(t *testing.T) {
 
 	cfg := ServerConfig{
 		ICEPortUDP: 30433,
+		ICEPortTCP: 30433,
 	}
 
 	t.Run("port unavailable", func(t *testing.T) {
@@ -153,6 +159,7 @@ func TestDraining(t *testing.T) {
 
 	cfg := ServerConfig{
 		ICEPortUDP: 30433,
+		ICEPortTCP: 30433,
 	}
 
 	metrics := perf.NewMetrics("rtcd", nil)
@@ -214,6 +221,7 @@ func TestInitSession(t *testing.T) {
 
 	cfg := ServerConfig{
 		ICEPortUDP: 30433,
+		ICEPortTCP: 30433,
 	}
 
 	s, err := NewServer(cfg, log, metrics)
@@ -372,6 +380,7 @@ func TestCalls(t *testing.T) {
 
 	cfg := ServerConfig{
 		ICEPortUDP: 30433,
+		ICEPortTCP: 30433,
 	}
 
 	s, err := NewServer(cfg, log, metrics)
@@ -431,5 +440,91 @@ func TestCalls(t *testing.T) {
 	closeWg.Wait()
 
 	err = s.Stop()
+	require.NoError(t, err)
+}
+
+func TestTCPCandidates(t *testing.T) {
+	log, err := logger.New(logger.Config{
+		EnableConsole: true,
+		ConsoleLevel:  "INFO",
+	})
+	require.NoError(t, err)
+	defer func() {
+		err := log.Shutdown()
+		require.NoError(t, err)
+	}()
+
+	metrics := perf.NewMetrics("rtcd", nil)
+	require.NotNil(t, metrics)
+
+	serverCfg := ServerConfig{
+		ICEPortUDP: 30433,
+		ICEPortTCP: 30433,
+	}
+
+	s, err := NewServer(serverCfg, log, metrics)
+	require.NoError(t, err)
+	require.NotNil(t, s)
+
+	err = s.Start()
+	require.NoError(t, err)
+
+	cfg := SessionConfig{
+		GroupID:   random.NewID(),
+		CallID:    random.NewID(),
+		UserID:    random.NewID(),
+		SessionID: random.NewID(),
+	}
+	err = s.InitSession(cfg, nil)
+	require.NoError(t, err)
+
+	pc, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+	require.NoError(t, err)
+	defer pc.Close()
+
+	dc, err := pc.CreateDataChannel("calls-dc", nil)
+	require.NoError(t, err)
+	require.NotNil(t, dc)
+
+	offer, err := pc.CreateOffer(nil)
+	require.NoError(t, err)
+
+	err = pc.SetLocalDescription(offer)
+	require.NoError(t, err)
+
+	offerData, err := json.Marshal(&offer)
+	require.NoError(t, err)
+
+	err = s.Send(Message{
+		GroupID:   cfg.GroupID,
+		CallID:    cfg.CallID,
+		UserID:    cfg.UserID,
+		SessionID: cfg.SessionID,
+		Type:      SDPMessage,
+		Data:      offerData,
+	})
+	require.NoError(t, err)
+
+	for msg := range s.ReceiveCh() {
+		if msg.Type == ICEMessage {
+			data := make(map[string]any)
+			err := json.Unmarshal(msg.Data, &data)
+			require.NoError(t, err)
+
+			iceString := data["candidate"].(map[string]interface{})["candidate"].(string)
+
+			candidate, err := ice.UnmarshalCandidate(iceString)
+			require.NoError(t, err)
+
+			require.Equal(t, ice.CandidateTypeHost, candidate.Type())
+			require.Equal(t, serverCfg.ICEPortTCP, candidate.Port())
+
+			if candidate.NetworkType() == ice.NetworkTypeTCP4 {
+				break
+			}
+		}
+	}
+
+	err = s.CloseSession(cfg.SessionID)
 	require.NoError(t, err)
 }

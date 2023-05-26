@@ -80,6 +80,7 @@ func (c *Config) SetDefaults() {
 	c.API.HTTP.ListenAddress = ":8045"
 	c.API.Security.SessionCache.ExpirationMinutes = 1440
 	c.RTC.ICEPortUDP = 8443
+	c.RTC.ICEPortTCP = 8443
 	c.RTC.TURNConfig.CredentialsExpirationMinutes = 1440
 	c.Store.DataSource = "/tmp/rtcd_db"
 	c.Logger.EnableConsole = true

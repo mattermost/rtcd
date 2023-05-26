@@ -16,6 +16,12 @@ import (
 	"github.com/mattermost/mattermost-server/v6/shared/mlog"
 )
 
+const (
+	udpSocketBufferSize      = 1024 * 1024 * 16 // 16MB
+	tcpConnReadBufferLength  = 64
+	tcpSocketWriteBufferSize = 1024 * 1024 * 4 // 4MB
+)
+
 // getSystemIPs returns a list of all the available IPv4 addresses.
 func getSystemIPs(log mlog.LoggerIFace) ([]string, error) {
 	var ips []string
