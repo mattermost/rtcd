@@ -26,7 +26,13 @@ func TestGenerateAddrsPairs(t *testing.T) {
 			"10.1.1.1":  "",
 		}, "")
 		require.NoError(t, err)
-		require.Empty(t, pairs)
+		require.Equal(t, []string{"127.0.0.1/127.0.0.1", "10.1.1.1/10.1.1.1"}, pairs)
+	})
+
+	t.Run("full NAT mapping", func(t *testing.T) {
+		pairs, err := generateAddrsPairs([]string{"127.0.0.1", "10.1.1.1"}, map[string]string{}, "1.1.1.1/127.0.0.1,1.1.1.1/10.1.1.1")
+		require.NoError(t, err)
+		require.Equal(t, []string{"1.1.1.1/127.0.0.1", "1.1.1.1/10.1.1.1"}, pairs)
 	})
 
 	t.Run("no public addresses with override", func(t *testing.T) {
@@ -35,16 +41,16 @@ func TestGenerateAddrsPairs(t *testing.T) {
 			"10.1.1.1":  "",
 		}, "1.1.1.1")
 		require.NoError(t, err)
-		require.Equal(t, []string{"1.1.1.1/127.0.0.1", "10.1.1.1/10.1.1.1"}, pairs)
+		require.Equal(t, []string{"127.0.0.1/127.0.0.1", "1.1.1.1/10.1.1.1"}, pairs)
 	})
 
 	t.Run("single public address for multiple local addrs, no override", func(t *testing.T) {
 		pairs, err := generateAddrsPairs([]string{"127.0.0.1", "10.1.1.1"}, map[string]string{
-			"127.0.0.1": "1.1.1.1",
+			"127.0.0.1": "",
 			"10.1.1.1":  "1.1.1.1",
 		}, "")
 		require.NoError(t, err)
-		require.Equal(t, []string{"1.1.1.1/127.0.0.1", "10.1.1.1/10.1.1.1"}, pairs)
+		require.Equal(t, []string{"127.0.0.1/127.0.0.1", "1.1.1.1/10.1.1.1"}, pairs)
 	})
 
 	t.Run("single local/public address map, no override", func(t *testing.T) {
@@ -73,6 +79,6 @@ func TestGenerateAddrsPairs(t *testing.T) {
 			"10.1.1.1":  "1.1.1.2",
 		}, "8.8.8.8")
 		require.NoError(t, err)
-		require.Equal(t, []string{"8.8.8.8/127.0.0.1", "10.1.1.1/10.1.1.1"}, pairs)
+		require.Equal(t, []string{"127.0.0.1/127.0.0.1", "8.8.8.8/10.1.1.1"}, pairs)
 	})
 }
