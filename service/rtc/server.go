@@ -84,8 +84,6 @@ func (s *Server) ReceiveCh() <-chan Message {
 
 func (s *Server) Start() error {
 	var err error
-	var udpMuxes []ice.UDPMux
-	var tcpMuxes []ice.TCPMux
 
 	localIPs, err := getSystemIPs(s.log)
 	if err != nil {
@@ -95,108 +93,37 @@ func (s *Server) Start() error {
 		return fmt.Errorf("no valid address to listen on was found")
 	}
 
-	initUDPMux := func(addr string) error {
-		conns, err := createUDPConnsForAddr(s.log, addr)
-		if err != nil {
-			return fmt.Errorf("failed to create UDP connections: %w", err)
-		}
+	s.localIPs = localIPs
 
-		udpConn, err := newMultiConn(conns)
-		if err != nil {
-			return fmt.Errorf("failed to create multiconn: %w", err)
-		}
-
-		udpMuxes = append(udpMuxes, ice.NewUDPMuxDefault(ice.UDPMuxParams{
-			Logger:  newPionLeveledLogger(s.log),
-			UDPConn: udpConn,
-		}))
-
-		return nil
-	}
-
-	initTCPMux := func(addr string) error {
-		tcpListener, err := net.Listen("tcp4", addr)
-		if err != nil {
-			return fmt.Errorf("failed to create TCP listener: %w", err)
-		}
-
-		tcpMuxes = append(tcpMuxes, ice.NewTCPMuxDefault(ice.TCPMuxParams{
-			Logger:          newPionLeveledLogger(s.log),
-			Listener:        tcpListener,
-			ReadBufferSize:  tcpConnReadBufferLength,
-			WriteBufferSize: tcpSocketWriteBufferSize,
-		}))
-
-		return nil
-	}
-
-	if s.cfg.ICEAddressUDP == "" || s.cfg.ICEAddressUDP == catchAllIP {
-		s.log.Debug("no UDP address specified, going to listen on all supported interfaces")
-	} else if err := initUDPMux(fmt.Sprintf("%s:%d", s.cfg.ICEAddressUDP, s.cfg.ICEPortUDP)); err != nil {
-		return err
-	} else {
-		s.localIPs = append(s.localIPs, s.cfg.ICEAddressUDP)
-	}
-
-	if s.cfg.ICEAddressTCP == "" || s.cfg.ICEAddressTCP == catchAllIP {
-		s.log.Debug("no TCP address specified, going to listen on all supported interfaces")
-	} else if err := initTCPMux(fmt.Sprintf("%s:%d", s.cfg.ICEAddressTCP, s.cfg.ICEPortTCP)); err != nil {
-		return err
-	} else if s.cfg.ICEAddressTCP != s.cfg.ICEAddressUDP {
-		// There's a chance the same IP is used for both protocols, in which
-		// case we don't want to add it to the list as it would be duplicate.
-		s.localIPs = append(s.localIPs, s.cfg.ICEAddressTCP)
-	}
-
-	if s.cfg.ICEAddressUDP == "" || s.cfg.ICEAddressTCP == "" {
+	// Populate public IP addresses map if override is not set and STUN is provided.
+	if s.cfg.ICEHostOverride == "" && len(s.cfg.ICEServers) > 0 {
 		for _, ip := range localIPs {
 			udpListenAddr := fmt.Sprintf("%s:%d", ip, s.cfg.ICEPortUDP)
-			tcpListenAddr := fmt.Sprintf("%s:%d", ip, s.cfg.ICEPortTCP)
-
-			if s.cfg.ICEHostOverride == "" && len(s.cfg.ICEServers) > 0 {
-				udpAddr, err := net.ResolveUDPAddr("udp4", udpListenAddr)
-				if err != nil {
-					return fmt.Errorf("failed to resolve UDP address: %w", err)
-				}
-
-				// TODO: consider making this logic concurrent to lower total time taken
-				// in case of multiple interfaces.
-				addr, err := getPublicIP(udpAddr, s.cfg.ICEServers.getSTUN())
-				if err != nil {
-					s.log.Warn("failed to get public IP address for local interface", mlog.String("localAddr", ip), mlog.Err(err))
-				} else {
-					s.log.Info("got public IP address for local interface", mlog.String("localAddr", ip), mlog.String("remoteAddr", addr))
-				}
-
-				s.publicAddrsMap[ip] = addr
+			udpAddr, err := net.ResolveUDPAddr("udp4", udpListenAddr)
+			if err != nil {
+				s.log.Error("failed to resolve UDP address", mlog.Err(err))
+				continue
 			}
 
-			if s.cfg.ICEAddressUDP == "" {
-				if err := initUDPMux(udpListenAddr); err != nil {
-					return err
-				}
+			// TODO: consider making this logic concurrent to lower total time taken
+			// in case of multiple interfaces.
+			addr, err := getPublicIP(udpAddr, s.cfg.ICEServers.getSTUN())
+			if err != nil {
+				s.log.Warn("failed to get public IP address for local interface", mlog.String("localAddr", ip), mlog.Err(err))
+			} else {
+				s.log.Info("got public IP address for local interface", mlog.String("localAddr", ip), mlog.String("remoteAddr", addr))
 			}
 
-			if s.cfg.ICEAddressTCP == "" {
-				if err := initTCPMux(tcpListenAddr); err != nil {
-					return err
-				}
-			}
+			s.publicAddrsMap[ip] = addr
 		}
-
-		s.localIPs = localIPs
 	}
 
-	if len(udpMuxes) == 1 {
-		s.udpMux = udpMuxes[0]
-	} else {
-		s.udpMux = ice.NewMultiUDPMuxDefault(udpMuxes...)
+	if err := s.initUDP(localIPs); err != nil {
+		return err
 	}
 
-	if len(tcpMuxes) == 1 {
-		s.tcpMux = tcpMuxes[0]
-	} else {
-		s.tcpMux = ice.NewMultiTCPMuxDefault(tcpMuxes...)
+	if err := s.initTCP(); err != nil {
+		return err
 	}
 
 	go s.msgReader()
@@ -362,4 +289,63 @@ func (s *Server) msgReader() {
 			s.log.Error("received unexpected message type")
 		}
 	}
+}
+
+func (s *Server) initUDP(localIPs []string) error {
+	var udpMuxes []ice.UDPMux
+
+	initUDPMux := func(addr string) error {
+		conns, err := createUDPConnsForAddr(s.log, addr)
+		if err != nil {
+			return fmt.Errorf("failed to create UDP connections: %w", err)
+		}
+
+		udpConn, err := newMultiConn(conns)
+		if err != nil {
+			return fmt.Errorf("failed to create multiconn: %w", err)
+		}
+
+		udpMuxes = append(udpMuxes, ice.NewUDPMuxDefault(ice.UDPMuxParams{
+			Logger:  newPionLeveledLogger(s.log),
+			UDPConn: udpConn,
+		}))
+
+		return nil
+	}
+
+	// If an address is specified we create a single udp mux.
+	if s.cfg.ICEAddressUDP != "" {
+		if err := initUDPMux(fmt.Sprintf("%s:%d", s.cfg.ICEAddressUDP, s.cfg.ICEPortUDP)); err != nil {
+			return err
+		}
+		s.udpMux = udpMuxes[0]
+		return nil
+	}
+
+	// If no address is specified we create a mux for each interface we find.
+	for _, ip := range localIPs {
+		if err := initUDPMux(fmt.Sprintf("%s:%d", ip, s.cfg.ICEPortUDP)); err != nil {
+			return err
+		}
+	}
+
+	s.udpMux = ice.NewMultiUDPMuxDefault(udpMuxes...)
+
+	return nil
+}
+
+func (s *Server) initTCP() error {
+	tcpListener, err := net.Listen("tcp4", fmt.Sprintf("%s:%d", s.cfg.ICEAddressTCP, s.cfg.ICEPortTCP))
+	if err != nil {
+		return fmt.Errorf("failed to create TCP listener: %w", err)
+	}
+
+	s.tcpMux = ice.NewTCPMuxDefault(ice.TCPMuxParams{
+		Logger:          newPionLeveledLogger(s.log),
+		Listener:        tcpListener,
+		ReadBufferSize:  tcpConnReadBufferLength,
+		WriteBufferSize: tcpSocketWriteBufferSize,
+	})
+
+	return nil
 }
