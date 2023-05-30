@@ -191,11 +191,11 @@ func (s *Service) Stop() error {
 		return fmt.Errorf("failed to stop rtc server: %w", err)
 	}
 
+	s.wsServer.Close()
+
 	if err := s.apiServer.Stop(); err != nil {
 		return fmt.Errorf("failed to stop api server: %w", err)
 	}
-
-	s.wsServer.Close()
 
 	if err := s.store.Close(); err != nil {
 		return fmt.Errorf("failed to close store: %w", err)
