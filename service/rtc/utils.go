@@ -5,6 +5,7 @@ package rtc
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/mattermost/rtcd/service/random"
@@ -33,6 +34,13 @@ func generateAddrsPairs(localIPs []string, publicAddrsMap map[string]string, hos
 	var pairs []string
 	var hostOverrideIP string
 
+	// If the override is in full NAT mapping format (e.g. "EA/IA,EB/IB") we return
+	// that directly.
+	if strings.Contains(hostOverride, "/") {
+		return strings.Split(hostOverride, ","), nil
+	}
+
+	// If the override is set we resolve it in case it's a hostname.
 	if hostOverride != "" {
 		hostOverrideIP, err = resolveHost(hostOverride, time.Second)
 		if err != nil {
@@ -40,30 +48,48 @@ func generateAddrsPairs(localIPs []string, publicAddrsMap map[string]string, hos
 		}
 	}
 
-	usedPublicAddrs := map[string]bool{}
-	for _, localAddr := range localIPs {
-		publicAddr := publicAddrsMap[localAddr]
-
-		// If an override was explicitly provided we enforce that.
-		if hostOverrideIP != "" {
-			publicAddr = hostOverrideIP
-		}
-
-		if publicAddr != "" && !usedPublicAddrs[publicAddr] {
-			// if a public IP has not been used yet we map it to
-			// the first matching local ip.
-			pairs = append(pairs, fmt.Sprintf("%s/%s", publicAddr, localAddr))
-			usedPublicAddrs[publicAddr] = true
-		} else {
-			// if a public IP has been used already we map
-			// any successive matching local ips to themselves.
-			pairs = append(pairs, fmt.Sprintf("%s/%s", localAddr, localAddr))
-		}
+	// Nothing to do at this point if no local IP was found.
+	if len(localIPs) == 0 {
+		return nil, nil
 	}
 
-	// If no public address was found/set there's no point in generating pairs.
-	if len(usedPublicAddrs) == 0 {
+	// If the override is set but no explicit mapping is given, we try to
+	// generate one.
+	if hostOverrideIP != "" {
+		// If only one local interface is found, we map that to the given public ip
+		// override.
+		if len(localIPs) == 1 {
+			return []string{
+				fmt.Sprintf("%s/%s", hostOverrideIP, localIPs[0]),
+			}, nil
+		}
+
+		// Otherwise we map the override to any non-loopback IP.
+		for _, localAddr := range localIPs {
+			// TODO: consider a better check to figure out if it's loopback.
+			if localAddr == "127.0.0.1" {
+				pairs = append(pairs, fmt.Sprintf("%s/%s", localAddr, localAddr))
+			} else {
+				pairs = append(pairs, fmt.Sprintf("%s/%s", hostOverrideIP, localAddr))
+			}
+		}
+
+		return pairs, nil
+	}
+
+	// Nothing to do if no public address was found.
+	if len(publicAddrsMap) == 0 {
 		return nil, nil
+	}
+
+	// We finally try to generate a mapping from any public IP we have
+	// found through STUN.
+	for _, localAddr := range localIPs {
+		publicAddr := publicAddrsMap[localAddr]
+		if publicAddr == "" {
+			publicAddr = localAddr
+		}
+		pairs = append(pairs, fmt.Sprintf("%s/%s", publicAddr, localAddr))
 	}
 
 	return pairs, nil

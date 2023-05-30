@@ -38,7 +38,8 @@ ice_port_tcp = 8443
 # service will try to guess its own public IP through STUN (if configured).
 # Depending on the network setup, it may be necessary to set an override. 
 # This is the host that gets advertised to clients and that will be used to connect them to calls.
-ice_host_override = ""
+# For more advanced usage this value can also be a comma separated list of NAT mappings, e.g. "EA/IA,EB/IB,IC/IC".
+ice_host_override = "127.0.0.1/127.0.0.1,192.168.1.117/192.168.1.117"
 # A list of ICE servers (STUN/TURN) to be used by the service. It supports
 # advanced configurations.
 # Example
