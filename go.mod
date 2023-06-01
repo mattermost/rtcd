@@ -7,7 +7,7 @@ require (
 	github.com/BurntSushi/toml v1.0.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/mattermost/mattermost-server/server/public v0.0.4
+	github.com/mattermost/mattermost-server/server/public v0.0.0-20230601095415-7cabedb94270
 	github.com/pborman/uuid v1.2.1
 	github.com/pion/ice/v2 v2.3.2
 	github.com/pion/interceptor v0.1.12
@@ -36,7 +36,7 @@ require (
 	github.com/gofrs/flock v0.8.0 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/uuid v1.3.0 // indirect
-	github.com/mattermost/logr/v2 v2.0.15 // indirect
+	github.com/mattermost/logr/v2 v2.0.16 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/pion/datachannel v1.5.5 // indirect
 	github.com/pion/dtls/v2 v2.2.6 // indirect
@@ -62,6 +62,6 @@ require (
 	golang.org/x/exp v0.0.0-20200908183739-ae8ad444f925 // indirect
 	golang.org/x/net v0.9.0 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
-	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
