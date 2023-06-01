@@ -7,7 +7,7 @@ require (
 	github.com/BurntSushi/toml v1.0.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/mattermost/mattermost-server/v6 v6.0.0-20221122212622-0509e78744bf
+	github.com/mattermost/mattermost-server/server/public v0.0.4
 	github.com/pborman/uuid v1.2.1
 	github.com/pion/ice/v2 v2.3.2
 	github.com/pion/interceptor v0.1.12
@@ -54,6 +54,7 @@ require (
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.42.0 // indirect
 	github.com/prometheus/procfs v0.9.0 // indirect
+	github.com/rogpeppe/go-internal v1.10.0 // indirect
 	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/wiggin77/merror v1.0.4 // indirect

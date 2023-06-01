@@ -13,7 +13,7 @@ import (
 
 	"github.com/mattermost/rtcd/service/random"
 
-	"github.com/mattermost/mattermost-server/v6/shared/mlog"
+	"github.com/mattermost/mattermost-server/server/public/shared/mlog"
 
 	"github.com/pion/ice/v2"
 	"github.com/pion/interceptor"
