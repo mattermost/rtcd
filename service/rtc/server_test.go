@@ -121,7 +121,7 @@ func TestStartServer(t *testing.T) {
 		require.NoError(t, err)
 		defer udpConn.Close()
 
-		ips, err := getSystemIPs(log)
+		ips, err := getSystemIPs(log, false)
 		require.NoError(t, err)
 		require.NotEmpty(t, ips)
 

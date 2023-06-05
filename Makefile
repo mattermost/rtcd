@@ -2,6 +2,10 @@
 # Variables
 
 ## General Variables
+
+# CI
+CI ?= false
+
 # Branch Variables
 PROTECTED_BRANCH := master
 CURRENT_BRANCH   := $(shell git rev-parse --abbrev-ref HEAD)
@@ -290,6 +294,7 @@ go-test: ## to run tests
 	$(AT)$(DOCKER) run ${DOCKER_OPTS} \
 	-v $(PWD):/app -w /app \
 	-e GOCACHE="/tmp" \
+	-e CI=${CI} \
 	$(DOCKER_IMAGE_GO) \
 	/bin/sh -c \
 	"cd /app && \

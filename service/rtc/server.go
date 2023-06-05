@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -32,8 +33,8 @@ type Server struct {
 
 	udpMux         ice.UDPMux
 	tcpMux         ice.TCPMux
-	publicAddrsMap map[string]string
-	localIPs       []string
+	publicAddrsMap map[netip.Addr]string
+	localIPs       []netip.Addr
 
 	sendCh    chan Message
 	receiveCh chan Message
@@ -63,7 +64,7 @@ func NewServer(cfg ServerConfig, log mlog.LoggerIFace, metrics Metrics) (*Server
 		sendCh:         make(chan Message, msgChSize),
 		receiveCh:      make(chan Message, msgChSize),
 		bufPool:        &sync.Pool{New: func() interface{} { return make([]byte, receiveMTU) }},
-		publicAddrsMap: make(map[string]string),
+		publicAddrsMap: make(map[netip.Addr]string),
 	}
 
 	return s, nil
@@ -83,9 +84,16 @@ func (s *Server) ReceiveCh() <-chan Message {
 }
 
 func (s *Server) Start() error {
-	var err error
+	udpNetwork := "udp4"
+	tcpNetwork := "tcp4"
 
-	localIPs, err := getSystemIPs(s.log)
+	if s.cfg.EnableIPv6 {
+		s.log.Info("rtc: experimental IPv6 support enabled")
+		udpNetwork = "udp"
+		tcpNetwork = "tcp"
+	}
+
+	localIPs, err := getSystemIPs(s.log, s.cfg.EnableIPv6)
 	if err != nil {
 		return fmt.Errorf("failed to get system IPs: %w", err)
 	}
@@ -95,11 +103,13 @@ func (s *Server) Start() error {
 
 	s.localIPs = localIPs
 
+	s.log.Debug("rtc: found local IPs", mlog.Any("ips", s.localIPs))
+
 	// Populate public IP addresses map if override is not set and STUN is provided.
 	if s.cfg.ICEHostOverride == "" && len(s.cfg.ICEServers) > 0 {
 		for _, ip := range localIPs {
-			udpListenAddr := fmt.Sprintf("%s:%d", ip, s.cfg.ICEPortUDP)
-			udpAddr, err := net.ResolveUDPAddr("udp4", udpListenAddr)
+			udpListenAddr := netip.AddrPortFrom(ip, uint16(s.cfg.ICEPortUDP)).String()
+			udpAddr, err := net.ResolveUDPAddr(udpNetwork, udpListenAddr)
 			if err != nil {
 				s.log.Error("failed to resolve UDP address", mlog.Err(err))
 				continue
@@ -107,22 +117,22 @@ func (s *Server) Start() error {
 
 			// TODO: consider making this logic concurrent to lower total time taken
 			// in case of multiple interfaces.
-			addr, err := getPublicIP(udpAddr, s.cfg.ICEServers.getSTUN())
+			addr, err := getPublicIP(udpAddr, udpNetwork, s.cfg.ICEServers.getSTUN())
 			if err != nil {
-				s.log.Warn("failed to get public IP address for local interface", mlog.String("localAddr", ip), mlog.Err(err))
+				s.log.Warn("failed to get public IP address for local interface", mlog.String("localAddr", ip.String()), mlog.Err(err))
 			} else {
-				s.log.Info("got public IP address for local interface", mlog.String("localAddr", ip), mlog.String("remoteAddr", addr))
+				s.log.Info("got public IP address for local interface", mlog.String("localAddr", ip.String()), mlog.String("remoteAddr", addr))
 			}
 
 			s.publicAddrsMap[ip] = addr
 		}
 	}
 
-	if err := s.initUDP(localIPs); err != nil {
+	if err := s.initUDP(localIPs, udpNetwork); err != nil {
 		return err
 	}
 
-	if err := s.initTCP(); err != nil {
+	if err := s.initTCP(tcpNetwork); err != nil {
 		return err
 	}
 
@@ -291,11 +301,11 @@ func (s *Server) msgReader() {
 	}
 }
 
-func (s *Server) initUDP(localIPs []string) error {
+func (s *Server) initUDP(localIPs []netip.Addr, network string) error {
 	var udpMuxes []ice.UDPMux
 
 	initUDPMux := func(addr string) error {
-		conns, err := createUDPConnsForAddr(s.log, addr)
+		conns, err := createUDPConnsForAddr(s.log, network, addr)
 		if err != nil {
 			return fmt.Errorf("failed to create UDP connections: %w", err)
 		}
@@ -315,7 +325,7 @@ func (s *Server) initUDP(localIPs []string) error {
 
 	// If an address is specified we create a single udp mux.
 	if s.cfg.ICEAddressUDP != "" {
-		if err := initUDPMux(fmt.Sprintf("%s:%d", s.cfg.ICEAddressUDP, s.cfg.ICEPortUDP)); err != nil {
+		if err := initUDPMux(net.JoinHostPort(s.cfg.ICEAddressUDP, fmt.Sprintf("%d", s.cfg.ICEPortUDP))); err != nil {
 			return err
 		}
 		s.udpMux = udpMuxes[0]
@@ -324,7 +334,7 @@ func (s *Server) initUDP(localIPs []string) error {
 
 	// If no address is specified we create a mux for each interface we find.
 	for _, ip := range localIPs {
-		if err := initUDPMux(fmt.Sprintf("%s:%d", ip, s.cfg.ICEPortUDP)); err != nil {
+		if err := initUDPMux(netip.AddrPortFrom(ip, uint16(s.cfg.ICEPortUDP)).String()); err != nil {
 			return err
 		}
 	}
@@ -334,8 +344,8 @@ func (s *Server) initUDP(localIPs []string) error {
 	return nil
 }
 
-func (s *Server) initTCP() error {
-	tcpListener, err := net.Listen("tcp4", fmt.Sprintf("%s:%d", s.cfg.ICEAddressTCP, s.cfg.ICEPortTCP))
+func (s *Server) initTCP(network string) error {
+	tcpListener, err := net.Listen(network, net.JoinHostPort(s.cfg.ICEAddressTCP, fmt.Sprintf("%d", s.cfg.ICEPortTCP)))
 	if err != nil {
 		return fmt.Errorf("failed to create TCP listener: %w", err)
 	}

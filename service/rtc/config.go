@@ -25,6 +25,8 @@ type ServerConfig struct {
 	// A list of ICE server (STUN/TURN) configurations to use.
 	ICEServers ICEServers `toml:"ice_servers"`
 	TURNConfig TURNConfig `toml:"turn"`
+	// EnableIPv6 specifies whether or not IPv6 should be used.
+	EnableIPv6 bool `toml:"enable_ipv6"`
 }
 
 func (c ServerConfig) IsValid() error {

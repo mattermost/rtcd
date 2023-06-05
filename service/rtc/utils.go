@@ -5,6 +5,7 @@ package rtc
 
 import (
 	"fmt"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -29,7 +30,7 @@ func getTrackType(kind webrtc.RTPCodecType) string {
 	return "unknown"
 }
 
-func generateAddrsPairs(localIPs []string, publicAddrsMap map[string]string, hostOverride string) ([]string, error) {
+func generateAddrsPairs(localIPs []netip.Addr, publicAddrsMap map[netip.Addr]string, hostOverride string, dualStack bool) ([]string, error) {
 	var err error
 	var pairs []string
 	var hostOverrideIP string
@@ -40,9 +41,14 @@ func generateAddrsPairs(localIPs []string, publicAddrsMap map[string]string, hos
 		return strings.Split(hostOverride, ","), nil
 	}
 
+	ipNetwork := "ip4"
+	if dualStack {
+		ipNetwork = "ip"
+	}
+
 	// If the override is set we resolve it in case it's a hostname.
 	if hostOverride != "" {
-		hostOverrideIP, err = resolveHost(hostOverride, time.Second)
+		hostOverrideIP, err = resolveHost(hostOverride, ipNetwork, time.Second)
 		if err != nil {
 			return pairs, fmt.Errorf("failed to resolve host: %w", err)
 		}
@@ -56,21 +62,25 @@ func generateAddrsPairs(localIPs []string, publicAddrsMap map[string]string, hos
 	// If the override is set but no explicit mapping is given, we try to
 	// generate one.
 	if hostOverrideIP != "" {
+		hostOverrideAddr, err := netip.ParseAddr(hostOverrideIP)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse hostOverrideIP: %w", err)
+		}
+
 		// If only one local interface is found, we map that to the given public ip
 		// override.
-		if len(localIPs) == 1 {
+		if len(localIPs) == 1 && areAddressesSameStack(hostOverrideAddr, localIPs[0]) {
 			return []string{
-				fmt.Sprintf("%s/%s", hostOverrideIP, localIPs[0]),
+				fmt.Sprintf("%s/%s", hostOverrideAddr.String(), localIPs[0].String()),
 			}, nil
 		}
 
 		// Otherwise we map the override to any non-loopback IP.
 		for _, localAddr := range localIPs {
-			// TODO: consider a better check to figure out if it's loopback.
-			if localAddr == "127.0.0.1" {
-				pairs = append(pairs, fmt.Sprintf("%s/%s", localAddr, localAddr))
-			} else {
-				pairs = append(pairs, fmt.Sprintf("%s/%s", hostOverrideIP, localAddr))
+			if localAddr.IsLoopback() {
+				pairs = append(pairs, fmt.Sprintf("%s/%s", localAddr.String(), localAddr.String()))
+			} else if areAddressesSameStack(hostOverrideAddr, localAddr) {
+				pairs = append(pairs, fmt.Sprintf("%s/%s", hostOverrideAddr.String(), localAddr.String()))
 			}
 		}
 
@@ -87,9 +97,9 @@ func generateAddrsPairs(localIPs []string, publicAddrsMap map[string]string, hos
 	for _, localAddr := range localIPs {
 		publicAddr := publicAddrsMap[localAddr]
 		if publicAddr == "" {
-			publicAddr = localAddr
+			publicAddr = localAddr.String()
 		}
-		pairs = append(pairs, fmt.Sprintf("%s/%s", publicAddr, localAddr))
+		pairs = append(pairs, fmt.Sprintf("%s/%s", publicAddr, localAddr.String()))
 	}
 
 	return pairs, nil
