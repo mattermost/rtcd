@@ -8,7 +8,7 @@ import (
 
 	"github.com/pion/webrtc/v3"
 
-	"github.com/mattermost/mattermost-server/v6/shared/mlog"
+	"github.com/mattermost/mattermost/server/public/shared/mlog"
 )
 
 type call struct {
