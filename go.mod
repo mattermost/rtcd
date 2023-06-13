@@ -7,7 +7,7 @@ require (
 	github.com/BurntSushi/toml v1.0.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/mattermost/mattermost-server/server/public v0.0.0-20230601095415-7cabedb94270
+	github.com/mattermost/mattermost/server/public v0.0.0-20230613002302-62a3ee8adcb5
 	github.com/pborman/uuid v1.2.1
 	github.com/pion/ice/v2 v2.3.2
 	github.com/pion/interceptor v0.1.12

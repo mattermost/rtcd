@@ -14,7 +14,7 @@ import (
 	"github.com/mattermost/rtcd/service/random"
 
 	"github.com/gorilla/websocket"
-	"github.com/mattermost/mattermost-server/server/public/shared/mlog"
+	"github.com/mattermost/mattermost/server/public/shared/mlog"
 	"github.com/stretchr/testify/require"
 )
 

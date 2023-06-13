@@ -14,7 +14,7 @@ import (
 	"github.com/mattermost/rtcd/service/perf"
 	"github.com/mattermost/rtcd/service/random"
 
-	"github.com/mattermost/mattermost-server/server/public/shared/mlog"
+	"github.com/mattermost/mattermost/server/public/shared/mlog"
 	"github.com/mattermost/rtcd/logger"
 	"github.com/pion/webrtc/v3"
 	"github.com/stretchr/testify/require"
