@@ -19,7 +19,7 @@ import (
 	"github.com/mattermost/rtcd/service/store"
 	"github.com/mattermost/rtcd/service/ws"
 
-	"github.com/mattermost/mattermost-server/v6/shared/mlog"
+	"github.com/mattermost/mattermost/server/public/shared/mlog"
 	godeltaprof "github.com/pyroscope-io/godeltaprof/http/pprof"
 )
 
