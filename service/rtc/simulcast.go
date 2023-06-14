@@ -124,6 +124,11 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 				bwEstimator.SetTargetBitrate(newRate)
 			}
 
+			// We update the cached rates since the actual source rate could be lower than
+			// the previous ones, causing an improper check above next time the event fires.
+			lastDelayRate = newRate
+			lastLossRate = newRate
+
 			lastLevelChangeAt = time.Now()
 			currLevel = newLevel
 		}
