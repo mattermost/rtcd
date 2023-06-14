@@ -277,6 +277,13 @@ func (s *session) sendOffer(sdpOutCh chan<- Message) error {
 
 // addTrack adds the given track to the peer and starts negotiation.
 func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) (errRet error) {
+	if track == nil {
+		return fmt.Errorf("trying to add a nil track")
+	}
+
+	s.log.Debug("addTrack", mlog.String("sessionID", s.cfg.SessionID),
+		mlog.String("trackID", track.ID()))
+
 	s.mut.Lock()
 	s.makingOffer = true
 	s.mut.Unlock()
@@ -286,27 +293,33 @@ func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) (er
 		s.mut.Unlock()
 	}()
 
-	s.mut.RLock()
+	s.mut.Lock()
 	for _, sender := range s.rtcConn.GetSenders() {
 		if sender.Track() == track {
-			s.mut.RUnlock()
+			s.mut.Unlock()
 			return fmt.Errorf("sender for track already exists")
 		}
 	}
+
+	if track.Kind() == webrtc.RTPCodecTypeVideo && s.screenTrackSender != nil {
+		s.mut.Unlock()
+		return fmt.Errorf("screen track sender is already set")
+	}
+
 	sender, err := s.rtcConn.AddTrack(track)
 	if err != nil {
-		s.mut.RUnlock()
+		s.mut.Unlock()
 		return fmt.Errorf("failed to add track %s: %w", track.ID(), err)
 	}
 	s.call.metrics.IncRTPTracks(s.cfg.GroupID, s.cfg.CallID, "out", getTrackType(track.Kind()))
-	s.mut.RUnlock()
+	s.mut.Unlock()
 
 	defer func() {
 		if errRet == nil {
 			return
 		}
 
-		s.mut.RLock()
+		s.mut.Lock()
 		if err := sender.ReplaceTrack(nil); err != nil {
 			s.log.Error("failed to replace track",
 				mlog.String("sessionID", s.cfg.SessionID),
@@ -314,7 +327,7 @@ func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) (er
 		} else {
 			s.call.metrics.DecRTPTracks(s.cfg.GroupID, s.cfg.CallID, "out", getTrackType(track.Kind()))
 		}
-		s.mut.RUnlock()
+		s.mut.Unlock()
 	}()
 
 	go s.handleSenderRTCP(sender)
@@ -348,8 +361,16 @@ func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) (er
 
 // removeTrack removes the given track to the peer and starts (re)negotiation.
 func (s *session) removeTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) error {
+	if track == nil {
+		return fmt.Errorf("trying to remove a nil track")
+	}
+
+	s.log.Debug("removeTrack", mlog.String("sessionID", s.cfg.SessionID),
+		mlog.String("trackID", track.ID()))
+
 	var sender *webrtc.RTPSender
 
+	s.mut.Lock()
 	for _, snd := range s.rtcConn.GetSenders() {
 		if snd.Track() == track {
 			sender = snd
@@ -358,16 +379,20 @@ func (s *session) removeTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) 
 	}
 
 	if sender == nil {
+		s.mut.Unlock()
 		return fmt.Errorf("failed to find sender for track")
 	}
 
-	s.mut.RLock()
 	if err := s.rtcConn.RemoveTrack(sender); err != nil {
-		s.mut.RUnlock()
+		s.mut.Unlock()
 		return fmt.Errorf("failed to remove track: %w", err)
 	}
 	s.call.metrics.DecRTPTracks(s.cfg.GroupID, s.cfg.CallID, "out", getTrackType(track.Kind()))
-	s.mut.RUnlock()
+
+	if s.screenTrackSender == sender {
+		s.screenTrackSender = nil
+	}
+	s.mut.Unlock()
 
 	if err := s.sendOffer(sdpOutCh); err != nil {
 		return fmt.Errorf("failed to send offer: %w", err)
