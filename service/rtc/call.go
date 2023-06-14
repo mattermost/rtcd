@@ -106,8 +106,10 @@ func (c *call) clearScreenState(screenSession *session) {
 // closing session.
 // NOTE: this is expected to always be called under lock (call.mut).
 func (c *call) handleSessionClose(us *session) {
-	us.mut.RLock()
-	defer us.mut.RUnlock()
+	us.log.Debug("handleSessionClose", mlog.String("sessionID", us.cfg.SessionID))
+
+	us.mut.Lock()
+	defer us.mut.Unlock()
 
 	cleanUp := func(sessionID string, sender *webrtc.RTPSender, track webrtc.TrackLocal) {
 		c.metrics.DecRTPTracks(us.cfg.GroupID, us.cfg.CallID, "out", getTrackType(track.Kind()))
@@ -158,12 +160,12 @@ func (c *call) handleSessionClose(us *session) {
 			continue
 		}
 
-		ss.mut.RLock()
+		ss.mut.Lock()
 		for _, sender := range ss.rtcConn.GetSenders() {
 			if track := sender.Track(); track != nil && outTracks[track.ID()] {
 				cleanUp(ss.cfg.SessionID, sender, track)
 			}
 		}
-		ss.mut.RUnlock()
+		ss.mut.Unlock()
 	}
 }
