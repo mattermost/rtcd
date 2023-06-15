@@ -39,6 +39,10 @@ ice_address_tcp = ""
 # The TCP port used to route media (audio/screen/video tracks). This is used to
 # generate TCP candidates.
 ice_port_tcp = 8443
+# Enables experimental IPv6 support. When this setting is true the RTC service
+# will work in dual-stack mode, listening for IPv6 connections and generating
+# candidates in addition to IPv4 ones.
+enable_ipv6 = false
 # An optional hostname used to override the default value. By default, the
 # service will try to guess its own public IP through STUN (if configured).
 #

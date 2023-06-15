@@ -122,6 +122,8 @@ func New(cfg Config) (*Service, error) {
 }
 
 func (s *Service) Start() error {
+	defer s.log.Flush()
+
 	if err := s.apiServer.Start(); err != nil {
 		return fmt.Errorf("failed to start api server: %w", err)
 	}
@@ -185,6 +187,7 @@ func (s *Service) Start() error {
 }
 
 func (s *Service) Stop() error {
+	defer s.log.Flush()
 	s.log.Info("rtcd: shutting down")
 
 	if err := s.rtcServer.Stop(); err != nil {

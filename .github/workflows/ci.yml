@@ -29,3 +29,5 @@ jobs:
         go mod download
         go mod verify
         make test
+      env:
+        CI: true
