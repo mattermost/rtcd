@@ -5,6 +5,8 @@ package rtc
 
 import (
 	"fmt"
+	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/mattermost/rtcd/service/random"
@@ -28,42 +30,76 @@ func getTrackType(kind webrtc.RTPCodecType) string {
 	return "unknown"
 }
 
-func generateAddrsPairs(localIPs []string, publicAddrsMap map[string]string, hostOverride string) ([]string, error) {
+func generateAddrsPairs(localIPs []netip.Addr, publicAddrsMap map[netip.Addr]string, hostOverride string, dualStack bool) ([]string, error) {
 	var err error
 	var pairs []string
 	var hostOverrideIP string
 
+	// If the override is in full NAT mapping format (e.g. "EA/IA,EB/IB") we return
+	// that directly.
+	if strings.Contains(hostOverride, "/") {
+		return strings.Split(hostOverride, ","), nil
+	}
+
+	ipNetwork := "ip4"
+	if dualStack {
+		ipNetwork = "ip"
+	}
+
+	// If the override is set we resolve it in case it's a hostname.
 	if hostOverride != "" {
-		hostOverrideIP, err = resolveHost(hostOverride, time.Second)
+		hostOverrideIP, err = resolveHost(hostOverride, ipNetwork, time.Second)
 		if err != nil {
 			return pairs, fmt.Errorf("failed to resolve host: %w", err)
 		}
 	}
 
-	usedPublicAddrs := map[string]bool{}
-	for _, localAddr := range localIPs {
-		publicAddr := publicAddrsMap[localAddr]
-
-		// If an override was explicitly provided we enforce that.
-		if hostOverrideIP != "" {
-			publicAddr = hostOverrideIP
-		}
-
-		if publicAddr != "" && !usedPublicAddrs[publicAddr] {
-			// if a public IP has not been used yet we map it to
-			// the first matching local ip.
-			pairs = append(pairs, fmt.Sprintf("%s/%s", publicAddr, localAddr))
-			usedPublicAddrs[publicAddr] = true
-		} else {
-			// if a public IP has been used already we map
-			// any successive matching local ips to themselves.
-			pairs = append(pairs, fmt.Sprintf("%s/%s", localAddr, localAddr))
-		}
+	// Nothing to do at this point if no local IP was found.
+	if len(localIPs) == 0 {
+		return nil, nil
 	}
 
-	// If no public address was found/set there's no point in generating pairs.
-	if len(usedPublicAddrs) == 0 {
+	// If the override is set but no explicit mapping is given, we try to
+	// generate one.
+	if hostOverrideIP != "" {
+		hostOverrideAddr, err := netip.ParseAddr(hostOverrideIP)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse hostOverrideIP: %w", err)
+		}
+
+		// If only one local interface is found, we map that to the given public ip
+		// override.
+		if len(localIPs) == 1 && areAddressesSameStack(hostOverrideAddr, localIPs[0]) {
+			return []string{
+				fmt.Sprintf("%s/%s", hostOverrideAddr.String(), localIPs[0].String()),
+			}, nil
+		}
+
+		// Otherwise we map the override to any non-loopback IP.
+		for _, localAddr := range localIPs {
+			if localAddr.IsLoopback() {
+				pairs = append(pairs, fmt.Sprintf("%s/%s", localAddr.String(), localAddr.String()))
+			} else if areAddressesSameStack(hostOverrideAddr, localAddr) {
+				pairs = append(pairs, fmt.Sprintf("%s/%s", hostOverrideAddr.String(), localAddr.String()))
+			}
+		}
+
+		return pairs, nil
+	}
+
+	// Nothing to do if no public address was found.
+	if len(publicAddrsMap) == 0 {
 		return nil, nil
+	}
+
+	// We finally try to generate a mapping from any public IP we have
+	// found through STUN.
+	for _, localAddr := range localIPs {
+		publicAddr := publicAddrsMap[localAddr]
+		if publicAddr == "" {
+			publicAddr = localAddr.String()
+		}
+		pairs = append(pairs, fmt.Sprintf("%s/%s", publicAddr, localAddr.String()))
 	}
 
 	return pairs, nil

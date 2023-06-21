@@ -23,15 +23,34 @@ security.admin_secret_key = ""
 security.session_cache.expiration_minutes = 1440
 
 [rtc]
-# The IP address used to listen for UDP packets. If left empty it has the same
-# effect as using the 0.0.0.0 address, causing the server to listen on all available network interfaces.
+# The IP address used to listen for UDP packets and generate UDP candidates.
+#
+# If left empty it has the same effect as using the 0.0.0.0 catch-all address,
+# causing the server to listen on all available network interfaces.
 ice_address_udp = ""
-# The UDP port used to route all the media (audio/screen/video tracks).
+# The UDP port used to route media (audio/screen/video tracks).
 ice_port_udp = 8443
+# The IP address used to listen for TCP connections and generate TCP candidates. This is used to generate
+# TCP candidates which may be used by client in case UDP connectivity is not available.
+#
+# If left empty it has the same effect as using the 0.0.0.0 catch-all address,
+# causing the server to listen on all available network interfaces.
+ice_address_tcp = ""
+# The TCP port used to route media (audio/screen/video tracks). This is used to
+# generate TCP candidates.
+ice_port_tcp = 8443
+# Enables experimental IPv6 support. When this setting is true the RTC service
+# will work in dual-stack mode, listening for IPv6 connections and generating
+# candidates in addition to IPv4 ones.
+enable_ipv6 = false
 # An optional hostname used to override the default value. By default, the
 # service will try to guess its own public IP through STUN (if configured).
-# Depending on the network setup, it may be necessary to set an override. 
+#
+# Depending on the network setup, it may be necessary to set an override.
 # This is the host that gets advertised to clients and that will be used to connect them to calls.
+#
+# For more advanced usage this value can also be a comma separated list of
+# NAT mappings in the form of "external IP / internal IP" pairs, e.g. "8.8.8.8/10.0.2.2,8.8.4.4/10.0.2.1".
 ice_host_override = ""
 # A list of ICE servers (STUN/TURN) to be used by the service. It supports
 # advanced configurations.

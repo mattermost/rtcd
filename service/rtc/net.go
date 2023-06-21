@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/netip"
 	"runtime"
 	"syscall"
 	"time"
@@ -16,9 +17,15 @@ import (
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
 )
 
-// getSystemIPs returns a list of all the available IPv4 addresses.
-func getSystemIPs(log mlog.LoggerIFace) ([]string, error) {
-	var ips []string
+const (
+	udpSocketBufferSize      = 1024 * 1024 * 16 // 16MB
+	tcpConnReadBufferLength  = 64
+	tcpSocketWriteBufferSize = 1024 * 1024 * 4 // 4MB
+)
+
+// getSystemIPs returns a list of all the available local addresses.
+func getSystemIPs(log mlog.LoggerIFace, dualStack bool) ([]netip.Addr, error) {
+	var ips []netip.Addr
 
 	interfaces, err := net.Interfaces()
 	if err != nil {
@@ -28,36 +35,43 @@ func getSystemIPs(log mlog.LoggerIFace) ([]string, error) {
 	for _, iface := range interfaces {
 		// filter out inactive interfaces
 		if iface.Flags&net.FlagUp == 0 {
-			log.Debug("skipping inactive interface", mlog.String("interface", iface.Name))
+			log.Info("skipping inactive interface", mlog.String("interface", iface.Name))
 			continue
 		}
 
 		addrs, err := iface.Addrs()
 		if err != nil {
-			log.Debug("failed to get addresses for interface", mlog.String("interface", iface.Name))
+			log.Warn("failed to get addresses for interface", mlog.String("interface", iface.Name))
 			continue
 		}
 
 		for _, addr := range addrs {
-			ip, _, err := net.ParseCIDR(addr.String())
+			prefix, err := netip.ParsePrefix(addr.String())
 			if err != nil {
-				log.Debug("failed to parse address", mlog.Err(err), mlog.String("addr", addr.String()))
+				log.Warn("failed to parse prefix", mlog.Err(err), mlog.String("prefix", prefix.String()))
 				continue
 			}
 
-			// IPv4 only (for the time being at least, see MM-50294)
-			if ip.To4() == nil {
+			ip := prefix.Addr()
+
+			if !dualStack && ip.Is6() {
+				log.Debug("ignoring IPv6 address: dual stack support is disabled by config", mlog.String("addr", ip.String()))
 				continue
 			}
 
-			ips = append(ips, ip.String())
+			if ip.Is6() && !ip.IsGlobalUnicast() {
+				log.Debug("ignoring non global IPv6 address", mlog.String("addr", ip.String()))
+				continue
+			}
+
+			ips = append(ips, ip)
 		}
 	}
 
 	return ips, nil
 }
 
-func createUDPConnsForAddr(log mlog.LoggerIFace, listenAddress string) ([]net.PacketConn, error) {
+func createUDPConnsForAddr(log mlog.LoggerIFace, network, listenAddress string) ([]net.PacketConn, error) {
 	var conns []net.PacketConn
 
 	for i := 0; i < runtime.NumCPU(); i++ {
@@ -78,7 +92,7 @@ func createUDPConnsForAddr(log mlog.LoggerIFace, listenAddress string) ([]net.Pa
 			},
 		}
 
-		udpConn, err := listenConfig.ListenPacket(context.Background(), "udp4", listenAddress)
+		udpConn, err := listenConfig.ListenPacket(context.Background(), network, listenAddress)
 		if err != nil {
 			return nil, fmt.Errorf("failed to listen on udp: %w", err)
 		}
@@ -126,12 +140,12 @@ func createUDPConnsForAddr(log mlog.LoggerIFace, listenAddress string) ([]net.Pa
 	return conns, nil
 }
 
-func resolveHost(host string, timeout time.Duration) (string, error) {
+func resolveHost(host, network string, timeout time.Duration) (string, error) {
 	var ip string
 	r := net.Resolver{}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	addrs, err := r.LookupIP(ctx, "ip4", host)
+	addrs, err := r.LookupIP(ctx, network, host)
 	if err != nil {
 		return ip, fmt.Errorf("failed to resolve host %q: %w", host, err)
 	}
@@ -139,4 +153,8 @@ func resolveHost(host string, timeout time.Duration) (string, error) {
 		ip = addrs[0].String()
 	}
 	return ip, err
+}
+
+func areAddressesSameStack(addrA, addrB netip.Addr) bool {
+	return (addrA.Is4() && addrB.Is4()) || (addrA.Is6() && addrB.Is6())
 }

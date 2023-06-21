@@ -12,10 +12,13 @@ RTCD_API_SECURITY_ALLOWSELFREGISTRATION             True or False
 RTCD_API_SECURITY_SESSIONCACHE_EXPIRATIONMINUTES    Integer
 RTCD_RTC_ICEADDRESSUDP                              String
 RTCD_RTC_ICEPORTUDP                                 Integer
+RTCD_RTC_ICEADDRESSTCP                              String
+RTCD_RTC_ICEPORTTCP                                 Integer
 RTCD_RTC_ICEHOSTOVERRIDE                            String
 RTCD_RTC_ICESERVERS                                 Comma-separated list of 
 RTCD_RTC_TURNCONFIG_STATICAUTHSECRET                String
 RTCD_RTC_TURNCONFIG_CREDENTIALSEXPIRATIONMINUTES    Integer
+RTCD_RTC_ENABLEIPV6                                 True or False
 RTCD_STORE_DATASOURCE                               String
 RTCD_LOGGER_ENABLECONSOLE                           True or False
 RTCD_LOGGER_CONSOLEJSON                             True or False

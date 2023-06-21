@@ -80,7 +80,8 @@ func MakeDefaultCfg(tb testing.TB) *Config {
 			},
 		},
 		RTC: rtc.ServerConfig{
-			ICEPortUDP: 30443,
+			ICEPortUDP: 30444,
+			ICEPortTCP: 30444,
 		},
 		Store: StoreConfig{
 			DataSource: dbDir,

@@ -187,9 +187,19 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 	sEngine := webrtc.SettingEngine{}
 	sEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
+	networkTypes := []webrtc.NetworkType{
+		webrtc.NetworkTypeUDP4,
+		webrtc.NetworkTypeTCP4,
+	}
+	if s.cfg.EnableIPv6 {
+		networkTypes = append(networkTypes, webrtc.NetworkTypeUDP6, webrtc.NetworkTypeTCP6)
+	}
+	sEngine.SetNetworkTypes(networkTypes)
 	sEngine.SetICEUDPMux(s.udpMux)
+	sEngine.SetICETCPMux(s.tcpMux)
+	sEngine.SetIncludeLoopbackCandidate(true)
 
-	pairs, err := generateAddrsPairs(s.localIPs, s.publicAddrsMap, s.cfg.ICEHostOverride)
+	pairs, err := generateAddrsPairs(s.localIPs, s.publicAddrsMap, s.cfg.ICEHostOverride, s.cfg.EnableIPv6)
 	if err != nil {
 		return fmt.Errorf("failed to generate addresses pairs: %w", err)
 	} else if len(pairs) > 0 {

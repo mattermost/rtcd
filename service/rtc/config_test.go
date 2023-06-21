@@ -41,9 +41,23 @@ func TestServerConfigIsValid(t *testing.T) {
 		require.Equal(t, "invalid ICEPortUDP value: 65000 is not in allowed range [80, 49151]", err.Error())
 	})
 
+	t.Run("invalid ICEPortTCP", func(t *testing.T) {
+		var cfg ServerConfig
+		cfg.ICEPortUDP = 8443
+		cfg.ICEPortTCP = 22
+		err := cfg.IsValid()
+		require.Error(t, err)
+		require.Equal(t, "invalid ICEPortTCP value: 22 is not in allowed range [80, 49151]", err.Error())
+		cfg.ICEPortTCP = 65000
+		err = cfg.IsValid()
+		require.Error(t, err)
+		require.Equal(t, "invalid ICEPortTCP value: 65000 is not in allowed range [80, 49151]", err.Error())
+	})
+
 	t.Run("invalid TURNCredentialsExpirationMinutes", func(t *testing.T) {
 		var cfg ServerConfig
 		cfg.ICEPortUDP = 8443
+		cfg.ICEPortTCP = 8443
 		cfg.TURNConfig.StaticAuthSecret = "secret"
 		err := cfg.IsValid()
 		require.Error(t, err)
@@ -59,6 +73,7 @@ func TestServerConfigIsValid(t *testing.T) {
 		var cfg ServerConfig
 		cfg.ICEAddressUDP = "127.0.0.1"
 		cfg.ICEPortUDP = 8443
+		cfg.ICEPortTCP = 8443
 		cfg.TURNConfig.CredentialsExpirationMinutes = 1440
 		err := cfg.IsValid()
 		require.NoError(t, err)

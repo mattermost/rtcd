@@ -12,19 +12,19 @@ import (
 	"github.com/pion/stun"
 )
 
-func getPublicIP(addr *net.UDPAddr, stunURL string) (string, error) {
+func getPublicIP(addr *net.UDPAddr, network, stunURL string) (string, error) {
 	if stunURL == "" {
 		return "", fmt.Errorf("no STUN server URL was provided")
 	}
 
-	conn, err := net.ListenUDP("udp4", addr)
+	conn, err := net.ListenUDP(network, addr)
 	if err != nil {
 		return "", err
 	}
 	defer conn.Close()
 
 	serverURL := stunURL[strings.Index(stunURL, ":")+1:]
-	serverAddr, err := net.ResolveUDPAddr("udp", serverURL)
+	serverAddr, err := net.ResolveUDPAddr(network, serverURL)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve stun host: %w", err)
 	}
