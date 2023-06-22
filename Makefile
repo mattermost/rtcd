@@ -351,7 +351,7 @@ else
 	-e GITHUB_TOKEN=${GITHUB_TOKEN} \
 	$(DOCKER_IMAGE_GH_CLI) \
 	/bin/sh -c \
-	"cd /app && \
+	"git config --global --add safe.directory /app && cd /app && \
 	gh release create $(APP_VERSION) --generate-notes $(GO_OUT_BIN_DIR)/*" || ${FAIL}
 endif
 	@$(OK) Generating github-release http://github.com/$(GITHUB_ORG)/$(GITHUB_REPO)/releases/tag/$(APP_VERSION) ...
