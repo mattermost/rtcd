@@ -1,9 +1,0 @@
----
-
-include:
-  - project: 'mattermost/ci/pipelines'
-    ref: 'master'
-    file: 'default.yml'
-  - project: 'mattermost/ci/pipelines'
-    ref: 'master'
-    file: '${CI_PROJECT_NAME}/gitlab-ci.yml'
