@@ -72,10 +72,20 @@ func TestClientConfigIsValid(t *testing.T) {
 		require.Equal(t, "invalid ConnID value: should be 26 characters long", err.Error())
 	})
 
+	t.Run("invalid AuthType", func(t *testing.T) {
+		var cfg ClientConfig
+		cfg.URL = "wss://localhost:8045"
+		cfg.ConnID = random.NewID()
+		err := cfg.IsValid()
+		require.Error(t, err)
+		require.Equal(t, "invalid AuthType value", err.Error())
+	})
+
 	t.Run("empty connID", func(t *testing.T) {
 		var cfg ClientConfig
 		cfg.URL = "wss://localhost:8045"
 		cfg.ConnID = ""
+		cfg.AuthType = BasicClientAuthType
 		err := cfg.IsValid()
 		require.NoError(t, err)
 	})
@@ -84,6 +94,7 @@ func TestClientConfigIsValid(t *testing.T) {
 		var cfg ClientConfig
 		cfg.URL = "wss://localhost:8045"
 		cfg.ConnID = random.NewID()
+		cfg.AuthType = BearerClientAuthType
 		err := cfg.IsValid()
 		require.NoError(t, err)
 	})

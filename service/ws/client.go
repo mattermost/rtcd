@@ -53,8 +53,11 @@ func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
 		}
 	}
 
-	header := http.Header{
-		"Authorization": []string{"Basic " + cfg.AuthToken},
+	header := http.Header{}
+	if cfg.AuthType == BearerClientAuthType {
+		header.Set("Authorization", "Bearer "+cfg.AuthToken)
+	} else {
+		header.Set("Authorization", "Basic "+cfg.AuthToken)
 	}
 
 	dialer := *websocket.DefaultDialer

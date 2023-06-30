@@ -33,7 +33,8 @@ func TestNewClient(t *testing.T) {
 		u := url.URL{Scheme: "ws", Host: "localhost:" + port, Path: "/ws"}
 
 		cfg := ClientConfig{
-			URL: u.String(),
+			URL:      u.String(),
+			AuthType: BasicClientAuthType,
 		}
 		c, err := NewClient(cfg)
 		require.NoError(t, err)
@@ -71,7 +72,8 @@ func TestNewClient(t *testing.T) {
 		}
 
 		cfg := ClientConfig{
-			URL: u.String(),
+			URL:      u.String(),
+			AuthType: BasicClientAuthType,
 		}
 		c, err := NewClient(cfg, WithDialFunc(dialFn))
 		require.NoError(t, err)
@@ -111,7 +113,8 @@ func TestNewClientWithAuth(t *testing.T) {
 		u := url.URL{Scheme: "ws", Host: "localhost:" + port, Path: "/ws"}
 
 		cfg := ClientConfig{
-			URL: u.String(),
+			URL:      u.String(),
+			AuthType: BasicClientAuthType,
 		}
 		c, err := NewClient(cfg)
 		require.Error(t, err)
@@ -125,6 +128,7 @@ func TestNewClientWithAuth(t *testing.T) {
 		cfg := ClientConfig{
 			URL:       u.String(),
 			AuthToken: authToken,
+			AuthType:  BasicClientAuthType,
 		}
 		c, err := NewClient(cfg)
 		require.NoError(t, err)
@@ -159,7 +163,8 @@ func TestClientPing(t *testing.T) {
 	require.NoError(t, err)
 	u := url.URL{Scheme: "ws", Host: "localhost:" + port, Path: "/ws"}
 	cfg := ClientConfig{
-		URL: u.String(),
+		URL:      u.String(),
+		AuthType: BasicClientAuthType,
 	}
 	c, err := NewClient(cfg, withCustomPingHandler)
 	require.NoError(t, err)
