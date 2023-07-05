@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	MinKeyLen                        = 32
-	authTimeout                      = 10 * time.Second
-	authRequestsPerSecond rate.Limit = 20
+	MinKeyLen                              = 32
+	authTimeout                            = 10 * time.Second
+	authRequestsPerSecondPerCPU rate.Limit = 12 // MM-53483
 )
 
 type Service struct {
@@ -37,7 +37,7 @@ func NewService(store store.Store, sessionCache *SessionCache) (*Service, error)
 	return &Service{
 		sessionCache: sessionCache,
 		store:        store,
-		limiter:      rate.NewLimiter(authRequestsPerSecond*rate.Limit(runtime.NumCPU()), 1),
+		limiter:      rate.NewLimiter(authRequestsPerSecondPerCPU*rate.Limit(runtime.NumCPU()), 1),
 	}, nil
 }
 
