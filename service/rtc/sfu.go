@@ -662,7 +662,11 @@ func (s *Server) handleTracks(call *call, us *session) {
 			} else if ctx.action == trackActionRemove {
 				if err := us.removeTrack(s.receiveCh, ctx.track); err != nil {
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
-					s.log.Error("failed to remove track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID), mlog.String("trackID", ctx.track.ID()))
+					var trackID string
+					if ctx.track != nil {
+						trackID = ctx.track.ID()
+					}
+					s.log.Error("failed to remove track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID), mlog.String("trackID", trackID))
 					continue
 				}
 			} else {
