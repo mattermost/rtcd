@@ -589,9 +589,6 @@ func (s *Server) CloseSession(sessionID string) error {
 
 	call.handleSessionClose(us)
 
-	if us == call.screenSession {
-		call.screenSession = nil
-	}
 	delete(call.sessions, cfg.SessionID)
 	if len(call.sessions) == 0 {
 		group.mut.Lock()
@@ -665,7 +662,11 @@ func (s *Server) handleTracks(call *call, us *session) {
 			} else if ctx.action == trackActionRemove {
 				if err := us.removeTrack(s.receiveCh, ctx.track); err != nil {
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
-					s.log.Error("failed to remove track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID), mlog.String("trackID", ctx.track.ID()))
+					var trackID string
+					if ctx.track != nil {
+						trackID = ctx.track.ID()
+					}
+					s.log.Error("failed to remove track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID), mlog.String("trackID", trackID))
 					continue
 				}
 			} else {
