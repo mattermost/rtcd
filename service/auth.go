@@ -52,7 +52,7 @@ func (s *Service) basicAuthHandler(_ http.ResponseWriter, r *http.Request) (stri
 	}
 
 	if err := s.auth.Authenticate(clientID, authKey); err != nil {
-		s.log.Error("authentication failed", mlog.Err(err))
+		s.log.Error("authentication failed", mlog.Err(err), mlog.String("clientID", clientID))
 		return "", http.StatusUnauthorized, errors.New("authentication failed")
 	}
 

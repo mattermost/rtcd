@@ -157,20 +157,20 @@ func (s *Server) Stop() error {
 		<-drainCh
 	}
 
+	close(s.receiveCh)
+	close(s.sendCh)
+
+	if s.tcpMux != nil {
+		if err := s.tcpMux.Close(); err != nil {
+			return fmt.Errorf("failed to close tcp mux: %w", err)
+		}
+	}
+
 	if s.udpMux != nil {
 		if err := s.udpMux.Close(); err != nil {
 			return fmt.Errorf("failed to close udp mux: %w", err)
 		}
 	}
-
-	if s.tcpMux != nil {
-		if err := s.tcpMux.Close(); err != nil {
-			return fmt.Errorf("failed to close udp mux: %w", err)
-		}
-	}
-
-	close(s.receiveCh)
-	close(s.sendCh)
 
 	s.log.Info("rtc: server was shutdown")
 
