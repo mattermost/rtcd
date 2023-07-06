@@ -589,9 +589,6 @@ func (s *Server) CloseSession(sessionID string) error {
 
 	call.handleSessionClose(us)
 
-	if us == call.screenSession {
-		call.screenSession = nil
-	}
 	delete(call.sessions, cfg.SessionID)
 	if len(call.sessions) == 0 {
 		group.mut.Lock()
