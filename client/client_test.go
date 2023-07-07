@@ -94,8 +94,8 @@ func TestClientConnect(t *testing.T) {
 	// Setup
 
 	siteURL := "http://localhost:8065"
-	username := "calls-user0"
-	password := "U$er-sample1"
+	username := "sysadmin"
+	password := "Sys@dmin-sample1"
 
 	apiClient := model.NewAPIv4Client(siteURL)
 

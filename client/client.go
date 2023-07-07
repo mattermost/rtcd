@@ -134,6 +134,7 @@ func (c *Client) Close() error {
 	return nil
 }
 
+// On is used to subscribe to any events fired by the client.
 func (c *Client) On(eventType EventType, h EventHandler) {
 	c.handlers[eventType] = h
 }
@@ -174,7 +175,9 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 					c.currentConnID = connID
 				}
 
-				c.emit(ConnectEvent)
+				if err := c.emit(ConnectEvent); err != nil {
+					return fmt.Errorf("failed to emit connect event: %w", err)
+				}
 			} else {
 				return fmt.Errorf("missing or invalid connection ID")
 			}

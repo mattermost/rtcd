@@ -254,7 +254,8 @@ func TestWSAuthHandler(t *testing.T) {
 
 	t.Run("missing auth", func(t *testing.T) {
 		wsClient, err := ws.NewClient(ws.ClientConfig{
-			URL: wsURL.String(),
+			URL:      wsURL.String(),
+			AuthType: ws.BasicClientAuthType,
 		})
 		require.Error(t, err)
 		require.Nil(t, wsClient)
@@ -264,6 +265,7 @@ func TestWSAuthHandler(t *testing.T) {
 		wsClient, err := ws.NewClient(ws.ClientConfig{
 			URL:       wsURL.String(),
 			AuthToken: "invalid",
+			AuthType:  ws.BasicClientAuthType,
 		})
 		require.Error(t, err)
 		require.Nil(t, wsClient)
@@ -289,6 +291,7 @@ func TestWSAuthHandler(t *testing.T) {
 		wsClient, err := ws.NewClient(ws.ClientConfig{
 			URL:       wsURL.String(),
 			AuthToken: token,
+			AuthType:  ws.BasicClientAuthType,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, wsClient)

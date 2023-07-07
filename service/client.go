@@ -179,6 +179,7 @@ func (c *Client) Connect() error {
 	wsClient, err := ws.NewClient(ws.ClientConfig{
 		URL:       c.cfg.wsURL,
 		AuthToken: base64.StdEncoding.EncodeToString([]byte(c.cfg.ClientID + ":" + c.cfg.AuthKey)),
+		AuthType:  ws.BasicClientAuthType,
 	}, ws.WithDialFunc(ws.DialContextFn(c.dialFn)))
 	if err != nil {
 		return fmt.Errorf("failed to create ws client: %w", err)
