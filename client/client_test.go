@@ -4,13 +4,9 @@
 package client
 
 import (
-	"context"
 	"testing"
-	"time"
 
 	"github.com/mattermost/rtcd/service/random"
-
-	"github.com/mattermost/mattermost/server/public/model"
 
 	"github.com/stretchr/testify/require"
 )
@@ -91,40 +87,19 @@ func TestConfigParse(t *testing.T) {
 }
 
 func TestClientConnect(t *testing.T) {
-	// Setup
-
-	siteURL := "http://localhost:8065"
-	username := "sysadmin"
-	password := "Sys@dmin-sample1"
-
-	apiClient := model.NewAPIv4Client(siteURL)
-
-	// login (or create) user
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	_, _, err := apiClient.Login(ctx, username, password)
-	require.Nil(t, err)
-
-	cfg := Config{
-		SiteURL:   siteURL,
-		AuthToken: apiClient.AuthToken,
-	}
-
-	c, err := New(cfg)
-	require.NoError(t, err)
-	require.NotNil(t, c)
+	th := setupTestHelper(t)
 
 	connectCh := make(chan struct{})
-	c.On(ConnectEvent, func() error {
+	th.userClient.On(ConnectEvent, func() error {
 		close(connectCh)
 		return nil
 	})
 
-	err = c.Connect(random.NewID())
+	err := th.userClient.Connect(random.NewID())
 	require.NoError(t, err)
 
 	<-connectCh
 
-	err = c.Close()
+	err = th.userClient.Close()
 	require.NoError(t, err)
 }
