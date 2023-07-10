@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"math/rand"
+	"time"
 
 	"github.com/mattermost/rtcd/service/ws"
 
@@ -15,7 +17,12 @@ import (
 
 const (
 	mmWebSocketAPIPath = "/api/v4/websocket"
+
+	wsMinReconnectRetryInterval    = time.Second
+	wsReconnectRetryIntervalJitter = 500 * time.Millisecond
 )
+
+var wsReconnectionTimeout = 30 * time.Second
 
 func (c *Client) handleWSMsg(msg ws.Message) error {
 	switch msg.Type {
@@ -36,13 +43,17 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 				if c.originalConnID == "" {
 					log.Printf("initial ws connection")
 					c.originalConnID = connID
-					c.currentConnID = connID
+				} else {
+					log.Printf("ws reconnected successfully")
+					c.wsLastDisconnect = time.Time{}
+					c.wsReconnectInterval = 0
 				}
 
 				if connID != c.currentConnID {
 					log.Printf("new connection id from server")
-					c.currentConnID = connID
 				}
+
+				c.currentConnID = connID
 
 				if err := c.emit(WSConnectEvent); err != nil {
 					return fmt.Errorf("failed to emit connect event: %w", err)
@@ -59,8 +70,23 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 	return nil
 }
 
+func (c *Client) wsOpen() error {
+	ws, err := ws.NewClient(ws.ClientConfig{
+		URL:       c.cfg.wsURL,
+		AuthToken: c.cfg.AuthToken,
+		AuthType:  ws.BearerClientAuthType,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create websocket client: %w", err)
+	}
+	c.ws = ws
+
+	return nil
+}
+
 func (c *Client) wsReader() {
 	defer close(c.wsDoneCh)
+
 	for {
 		select {
 		case msg, ok := <-c.ws.ReceiveCh():
@@ -68,7 +94,26 @@ func (c *Client) wsReader() {
 				if err := c.emit(WSDisconnectEvent); err != nil {
 					log.Printf("failed to emit disconnect event: %s", err)
 				}
-				return
+
+				// reconnect handler
+				if c.wsLastDisconnect.IsZero() {
+					c.wsLastDisconnect = time.Now()
+				} else if time.Since(c.wsLastDisconnect) > wsReconnectionTimeout {
+					log.Printf("ws reconnection timeout reached, closing")
+					if err := c.close(); err != nil {
+						log.Printf("failed to close: %s", err)
+					}
+					return
+				}
+
+				c.wsReconnectInterval += wsMinReconnectRetryInterval + time.Duration(rand.Int63n(wsReconnectRetryIntervalJitter.Milliseconds()))*time.Millisecond
+				log.Printf("ws disconnected, attemping reconnection in %v...", c.wsReconnectInterval)
+				time.Sleep(c.wsReconnectInterval)
+				if err := c.wsOpen(); err != nil {
+					log.Printf(err.Error())
+				}
+
+				continue
 			}
 			if err := c.handleWSMsg(msg); err != nil {
 				log.Printf("failed to handle ws message: %s", err.Error())
@@ -77,6 +122,8 @@ func (c *Client) wsReader() {
 			if err != nil {
 				log.Printf("ws error: %s", err.Error())
 			}
+		case <-c.wsCloseCh:
+			return
 		}
 	}
 }

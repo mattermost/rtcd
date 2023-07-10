@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/mattermost/rtcd/service/ws"
 )
@@ -31,14 +32,20 @@ const (
 
 // Client is a Golang implementation of a client for Mattermost Calls.
 type Client struct {
-	cfg            Config
-	ws             *ws.Client
-	originalConnID string
-	currentConnID  string
+	cfg Config
 
 	handlers map[EventType]EventHandler
-	wsDoneCh chan struct{}
-	state    int32
+
+	// WebSocket
+	ws                  *ws.Client
+	wsDoneCh            chan struct{}
+	wsCloseCh           chan struct{}
+	wsReconnectInterval time.Duration
+	wsLastDisconnect    time.Time
+	originalConnID      string
+	currentConnID       string
+
+	state int32
 
 	mut sync.RWMutex
 }
@@ -52,9 +59,10 @@ func New(cfg Config, opts ...Option) (*Client, error) {
 	}
 
 	c := &Client{
-		cfg:      cfg,
-		handlers: make(map[EventType]EventHandler),
-		wsDoneCh: make(chan struct{}),
+		cfg:       cfg,
+		handlers:  make(map[EventType]EventHandler),
+		wsDoneCh:  make(chan struct{}),
+		wsCloseCh: make(chan struct{}),
 	}
 
 	for _, opt := range opts {
@@ -75,16 +83,9 @@ func (c *Client) Connect() error {
 		return fmt.Errorf("ws client is already initialized")
 	}
 
-	ws, err := ws.NewClient(ws.ClientConfig{
-		URL:       c.cfg.wsURL,
-		AuthToken: c.cfg.AuthToken,
-		AuthType:  ws.BearerClientAuthType,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create websocket client: %w", err)
+	if err := c.wsOpen(); err != nil {
+		return err
 	}
-
-	c.ws = ws
 
 	go c.wsReader()
 
@@ -100,19 +101,14 @@ func (c *Client) Close() error {
 	}
 	c.mut.RUnlock()
 
+	close(c.wsCloseCh)
+	<-c.wsDoneCh
+
 	if err := c.ws.Close(); err != nil {
 		return fmt.Errorf("failed to close ws: %w", err)
 	}
 
-	<-c.wsDoneCh
-
-	atomic.StoreInt32(&c.state, clientStateClosed)
-
-	if err := c.emit(CloseEvent); err != nil {
-		return fmt.Errorf("close event handler failed: %w", err)
-	}
-
-	return nil
+	return c.close()
 }
 
 // On is used to subscribe to any events fired by the client.
@@ -131,6 +127,14 @@ func (c *Client) emit(eventType EventType) error {
 		if err := handler(); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (c *Client) close() error {
+	atomic.StoreInt32(&c.state, clientStateClosed)
+	if err := c.emit(CloseEvent); err != nil {
+		return fmt.Errorf("close event handler failed: %w", err)
 	}
 	return nil
 }

@@ -21,12 +21,6 @@ func TestClientConnect(t *testing.T) {
 		return nil
 	})
 
-	disconnectCh := make(chan struct{})
-	th.userClient.On(WSDisconnectEvent, func() error {
-		close(disconnectCh)
-		return nil
-	})
-
 	closeCh := make(chan struct{})
 	th.userClient.On(CloseEvent, func() error {
 		close(closeCh)
@@ -44,12 +38,6 @@ func TestClientConnect(t *testing.T) {
 
 	err = th.userClient.Close()
 	require.NoError(t, err)
-
-	select {
-	case <-disconnectCh:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for disconnect event")
-	}
 
 	select {
 	case <-closeCh:
