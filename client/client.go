@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/mattermost/rtcd/service/ws"
 
@@ -23,7 +25,9 @@ const (
 )
 
 type Config struct {
-	SiteURL   string
+	// SiteURL is the URL of the Mattermost installation to connect to.
+	SiteURL string
+	// AuthToken is a valid user session authentication token.
 	AuthToken string
 
 	wsURL string
@@ -62,11 +66,21 @@ type EventHandler func() error
 type EventType int
 
 const (
-	ConnectEvent = iota + 1
-	DisconnectEvent
+	WSConnectEvent = iota + 1
+	WSDisconnectEvent
 	CloseEvent
+	RTCConnectEvent
+	RTCDisconnectEvent
 )
 
+const (
+	clientStateNew int32 = iota
+	clientStateInit
+	clientStateClosing
+	clientStateClosed
+)
+
+// Client is a Golang implementation of a client for Mattermost Calls.
 type Client struct {
 	cfg            Config
 	ws             *ws.Client
@@ -74,6 +88,10 @@ type Client struct {
 	currentConnID  string
 
 	handlers map[EventType]EventHandler
+	wsDoneCh chan struct{}
+	state    int32
+
+	mut sync.RWMutex
 }
 
 type Option func(c *Client) error
@@ -87,6 +105,7 @@ func New(cfg Config, opts ...Option) (*Client, error) {
 	c := &Client{
 		cfg:      cfg,
 		handlers: make(map[EventType]EventHandler),
+		wsDoneCh: make(chan struct{}),
 	}
 
 	for _, opt := range opts {
@@ -100,8 +119,15 @@ func New(cfg Config, opts ...Option) (*Client, error) {
 
 // Connect connects to a call in the given channel.
 func (c *Client) Connect(channelID string) error {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
 	if !idRE.MatchString(channelID) {
 		return fmt.Errorf("invalid channelID")
+	}
+
+	if !atomic.CompareAndSwapInt32(&c.state, clientStateNew, clientStateInit) {
+		return fmt.Errorf("ws client is already initialized")
 	}
 
 	ws, err := ws.NewClient(ws.ClientConfig{
@@ -112,6 +138,7 @@ func (c *Client) Connect(channelID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create websocket client: %w", err)
 	}
+
 	c.ws = ws
 
 	go c.wsReader()
@@ -121,27 +148,42 @@ func (c *Client) Connect(channelID string) error {
 
 // Close permanently disconnects the client.
 func (c *Client) Close() error {
+	c.mut.RLock()
+	if !atomic.CompareAndSwapInt32(&c.state, clientStateInit, clientStateClosing) {
+		c.mut.RUnlock()
+		return fmt.Errorf("client is not initialized")
+	}
+	c.mut.RUnlock()
+
 	if err := c.ws.Close(); err != nil {
 		return fmt.Errorf("failed to close ws: %w", err)
 	}
+
+	<-c.wsDoneCh
+
+	atomic.StoreInt32(&c.state, clientStateClosed)
 
 	if err := c.emit(CloseEvent); err != nil {
 		return fmt.Errorf("close event handler failed: %w", err)
 	}
 
-	c.handlers = nil
-
 	return nil
 }
 
 // On is used to subscribe to any events fired by the client.
+// Note: there can only be one subscriber per event type.
 func (c *Client) On(eventType EventType, h EventHandler) {
+	c.mut.Lock()
+	defer c.mut.Unlock()
 	c.handlers[eventType] = h
 }
 
 func (c *Client) emit(eventType EventType) error {
-	if h := c.handlers[eventType]; h != nil {
-		if err := h(); err != nil {
+	c.mut.RLock()
+	handler := c.handlers[eventType]
+	c.mut.RUnlock()
+	if handler != nil {
+		if err := handler(); err != nil {
 			return err
 		}
 	}
@@ -175,7 +217,7 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 					c.currentConnID = connID
 				}
 
-				if err := c.emit(ConnectEvent); err != nil {
+				if err := c.emit(WSConnectEvent); err != nil {
 					return fmt.Errorf("failed to emit connect event: %w", err)
 				}
 			} else {
@@ -191,11 +233,14 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 }
 
 func (c *Client) wsReader() {
+	defer close(c.wsDoneCh)
 	for {
 		select {
 		case msg, ok := <-c.ws.ReceiveCh():
 			if !ok {
-				// disconnect
+				if err := c.emit(WSDisconnectEvent); err != nil {
+					log.Printf("failed to emit disconnect event: %s", err)
+				}
 				return
 			}
 			if err := c.handleWSMsg(msg); err != nil {
