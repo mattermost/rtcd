@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -60,6 +61,36 @@ const (
 	nackResponderBufferSize = 256
 	audioLevelExtensionURI  = "urn:ietf:params:rtp-hdrext:ssrc-audio-level"
 )
+
+func (s *Server) initSettingEngine() (webrtc.SettingEngine, error) {
+	sEngine := webrtc.SettingEngine{}
+	sEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
+	networkTypes := []webrtc.NetworkType{
+		webrtc.NetworkTypeUDP4,
+		webrtc.NetworkTypeTCP4,
+	}
+	if s.cfg.EnableIPv6 {
+		networkTypes = append(networkTypes, webrtc.NetworkTypeUDP6, webrtc.NetworkTypeTCP6)
+	}
+	sEngine.SetNetworkTypes(networkTypes)
+	sEngine.SetICEUDPMux(s.udpMux)
+	sEngine.SetICETCPMux(s.tcpMux)
+	sEngine.SetIncludeLoopbackCandidate(true)
+	if os.Getenv("RTCD_RTC_DTLS_INSECURE_SKIP_HELLOVERIFY") == "true" {
+		s.log.Warn("RTCD_RTC_DTLS_INSECURE_SKIP_HELLOVERIFY is set, will skip hello verify phase")
+		sEngine.SetDTLSInsecureSkipHelloVerify(true)
+	}
+
+	pairs, err := generateAddrsPairs(s.localIPs, s.publicAddrsMap, s.cfg.ICEHostOverride, s.cfg.EnableIPv6)
+	if err != nil {
+		return webrtc.SettingEngine{}, fmt.Errorf("failed to generate addresses pairs: %w", err)
+	} else if len(pairs) > 0 {
+		s.log.Debug("generated remote/local addrs pairs", mlog.Any("pairs", pairs))
+		sEngine.SetNAT1To1IPs(pairs, webrtc.ICECandidateTypeHost)
+	}
+
+	return sEngine, nil
+}
 
 func initMediaEngine() (*webrtc.MediaEngine, error) {
 	var m webrtc.MediaEngine
@@ -175,42 +206,25 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		SDPSemantics: webrtc.SDPSemanticsUnifiedPlan,
 	}
 
-	m, err := initMediaEngine()
+	mEngine, err := initMediaEngine()
 	if err != nil {
 		return fmt.Errorf("failed to init media engine: %w", err)
 	}
 
-	i, bwEstimatorCh, err := initInterceptors(m)
+	iRegistry, bwEstimatorCh, err := initInterceptors(mEngine)
 	if err != nil {
 		return fmt.Errorf("failed to init interceptors: %w", err)
 	}
 
-	sEngine := webrtc.SettingEngine{}
-	sEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
-	networkTypes := []webrtc.NetworkType{
-		webrtc.NetworkTypeUDP4,
-		webrtc.NetworkTypeTCP4,
-	}
-	if s.cfg.EnableIPv6 {
-		networkTypes = append(networkTypes, webrtc.NetworkTypeUDP6, webrtc.NetworkTypeTCP6)
-	}
-	sEngine.SetNetworkTypes(networkTypes)
-	sEngine.SetICEUDPMux(s.udpMux)
-	sEngine.SetICETCPMux(s.tcpMux)
-	sEngine.SetIncludeLoopbackCandidate(true)
-
-	pairs, err := generateAddrsPairs(s.localIPs, s.publicAddrsMap, s.cfg.ICEHostOverride, s.cfg.EnableIPv6)
+	sEngine, err := s.initSettingEngine()
 	if err != nil {
-		return fmt.Errorf("failed to generate addresses pairs: %w", err)
-	} else if len(pairs) > 0 {
-		s.log.Debug("generated remote/local addrs pairs", mlog.Any("pairs", pairs))
-		sEngine.SetNAT1To1IPs(pairs, webrtc.ICECandidateTypeHost)
+		return fmt.Errorf("failed to init setting engine: %w", err)
 	}
 
 	api := webrtc.NewAPI(
-		webrtc.WithMediaEngine(m),
+		webrtc.WithMediaEngine(mEngine),
 		webrtc.WithSettingEngine(sEngine),
-		webrtc.WithInterceptorRegistry(i),
+		webrtc.WithInterceptorRegistry(iRegistry),
 	)
 	peerConn, err := api.NewPeerConnection(peerConnConfig)
 	if err != nil {
