@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattermost/rtcd/service/random"
+
 	"github.com/mattermost/mattermost/server/public/model"
 
 	"github.com/stretchr/testify/require"
@@ -42,12 +44,16 @@ func ensureUser(tb testing.TB, client *model.Client4, username, password string)
 	}
 }
 
-func setupTestHelper(tb testing.TB) *TestHelper {
+func setupTestHelper(tb testing.TB, channelID string) *TestHelper {
 	tb.Helper()
 	var err error
 
 	th := &TestHelper{
 		tb: tb,
+	}
+
+	if channelID == "" {
+		channelID = random.NewID()
 	}
 
 	th.apiURL = "http://localhost:8065"
@@ -67,6 +73,7 @@ func setupTestHelper(tb testing.TB) *TestHelper {
 	th.adminClient, err = New(Config{
 		SiteURL:   th.apiURL,
 		AuthToken: th.adminAPIClient.AuthToken,
+		ChannelID: channelID,
 	})
 	require.NoError(tb, err)
 	require.NotNil(tb, th.adminClient)
@@ -74,6 +81,7 @@ func setupTestHelper(tb testing.TB) *TestHelper {
 	th.userClient, err = New(Config{
 		SiteURL:   th.apiURL,
 		AuthToken: th.userAPIClient.AuthToken,
+		ChannelID: channelID,
 	})
 	require.NoError(tb, err)
 	require.NotNil(tb, th.userClient)
