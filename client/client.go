@@ -5,6 +5,7 @@ package client
 
 import (
 	"fmt"
+	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,15 +13,17 @@ import (
 	"github.com/mattermost/rtcd/service/ws"
 )
 
-type EventHandler func() error
-type EventType int
+type EventHandler func(ctx any) error
+
+type EventType string
 
 const (
-	WSConnectEvent = iota + 1
-	WSDisconnectEvent
-	CloseEvent
-	RTCConnectEvent
-	RTCDisconnectEvent
+	WSConnectEvent     EventType = "WSConnect"
+	WSDisconnectEvent            = "WSDisconnect"
+	RTCConnectEvent              = "RTCConnect"
+	RTCDisconnectEvent           = "RTCDisconnect"
+	CloseEvent                   = "Close"
+	ErrorEvent                   = "Error"
 )
 
 const (
@@ -108,7 +111,9 @@ func (c *Client) Close() error {
 		return fmt.Errorf("failed to close ws: %w", err)
 	}
 
-	return c.close()
+	c.close()
+
+	return nil
 }
 
 // On is used to subscribe to any events fired by the client.
@@ -119,22 +124,18 @@ func (c *Client) On(eventType EventType, h EventHandler) {
 	c.handlers[eventType] = h
 }
 
-func (c *Client) emit(eventType EventType) error {
+func (c *Client) emit(eventType EventType, ctx any) {
 	c.mut.RLock()
 	handler := c.handlers[eventType]
 	c.mut.RUnlock()
 	if handler != nil {
-		if err := handler(); err != nil {
-			return err
+		if err := handler(ctx); err != nil {
+			log.Printf("failed to emit event (%s): %s", eventType, err.Error())
 		}
 	}
-	return nil
 }
 
-func (c *Client) close() error {
+func (c *Client) close() {
 	atomic.StoreInt32(&c.state, clientStateClosed)
-	if err := c.emit(CloseEvent); err != nil {
-		return fmt.Errorf("close event handler failed: %w", err)
-	}
-	return nil
+	c.emit(CloseEvent, nil)
 }

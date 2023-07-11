@@ -14,13 +14,13 @@ func TestClientWSDisconnect(t *testing.T) {
 	th := setupTestHelper(t, "")
 
 	connectCh := make(chan struct{}, 2)
-	th.userClient.On(WSConnectEvent, func() error {
+	th.userClient.On(WSConnectEvent, func(_ any) error {
 		connectCh <- struct{}{}
 		return nil
 	})
 
 	disconnectCh := make(chan struct{})
-	th.userClient.On(WSDisconnectEvent, func() error {
+	th.userClient.On(WSDisconnectEvent, func(_ any) error {
 		close(disconnectCh)
 		return nil
 	})
@@ -51,13 +51,13 @@ func TestClientWSReconnect(t *testing.T) {
 	th := setupTestHelper(t, "")
 
 	connectCh := make(chan struct{}, 2)
-	th.userClient.On(WSConnectEvent, func() error {
+	th.userClient.On(WSConnectEvent, func(_ any) error {
 		connectCh <- struct{}{}
 		return nil
 	})
 
 	disconnectCh := make(chan struct{})
-	th.userClient.On(WSDisconnectEvent, func() error {
+	th.userClient.On(WSDisconnectEvent, func(_ any) error {
 		close(disconnectCh)
 		return nil
 	})
@@ -96,7 +96,7 @@ func TestClientWSReconnectTimeout(t *testing.T) {
 	th := setupTestHelper(t, "")
 
 	connectCh := make(chan struct{}, 2)
-	th.userClient.On(WSConnectEvent, func() error {
+	th.userClient.On(WSConnectEvent, func(_ any) error {
 		connectCh <- struct{}{}
 		return nil
 	})
@@ -111,14 +111,28 @@ func TestClientWSReconnectTimeout(t *testing.T) {
 	}
 
 	th.userClient.cfg.wsURL = "ws://localhost:8080"
-	err = th.userClient.ws.Close()
-	require.NoError(t, err)
+
+	errorCh := make(chan struct{})
+	th.userClient.On(ErrorEvent, func(ctx any) error {
+		close(errorCh)
+		require.EqualError(t, ctx.(error), "ws reconnection timeout reached")
+		return nil
+	})
 
 	closeCh := make(chan struct{})
-	th.userClient.On(CloseEvent, func() error {
+	th.userClient.On(CloseEvent, func(_ any) error {
 		close(closeCh)
 		return nil
 	})
+
+	err = th.userClient.ws.Close()
+	require.NoError(t, err)
+
+	select {
+	case <-errorCh:
+	case <-time.After(wsReconnectionTimeout * 2):
+		require.Fail(t, "timed out waiting for error event")
+	}
 
 	select {
 	case <-closeCh:

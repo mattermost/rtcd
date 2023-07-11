@@ -55,9 +55,7 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 
 				c.currentConnID = connID
 
-				if err := c.emit(WSConnectEvent); err != nil {
-					return fmt.Errorf("failed to emit connect event: %w", err)
-				}
+				c.emit(WSConnectEvent, nil)
 			} else {
 				return fmt.Errorf("missing or invalid connection ID")
 			}
@@ -91,18 +89,15 @@ func (c *Client) wsReader() {
 		select {
 		case msg, ok := <-c.ws.ReceiveCh():
 			if !ok {
-				if err := c.emit(WSDisconnectEvent); err != nil {
-					log.Printf("failed to emit disconnect event: %s", err)
-				}
+				c.emit(WSDisconnectEvent, nil)
 
 				// reconnect handler
 				if c.wsLastDisconnect.IsZero() {
 					c.wsLastDisconnect = time.Now()
 				} else if time.Since(c.wsLastDisconnect) > wsReconnectionTimeout {
 					log.Printf("ws reconnection timeout reached, closing")
-					if err := c.close(); err != nil {
-						log.Printf("failed to close: %s", err)
-					}
+					c.emit(ErrorEvent, fmt.Errorf("ws reconnection timeout reached"))
+					c.close()
 					return
 				}
 

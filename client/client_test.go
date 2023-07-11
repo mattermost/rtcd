@@ -16,13 +16,13 @@ func TestClientConnect(t *testing.T) {
 	th := setupTestHelper(t, "")
 
 	connectCh := make(chan struct{})
-	th.userClient.On(WSConnectEvent, func() error {
+	th.userClient.On(WSConnectEvent, func(_ any) error {
 		close(connectCh)
 		return nil
 	})
 
 	closeCh := make(chan struct{})
-	th.userClient.On(CloseEvent, func() error {
+	th.userClient.On(CloseEvent, func(_ any) error {
 		close(closeCh)
 		return nil
 	})
@@ -92,12 +92,12 @@ func TestClientConcurrency(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			th.userClient.On(WSConnectEvent, func() error {
+			th.userClient.On(WSConnectEvent, func(_ any) error {
 				close(connectCh)
 				return nil
 			})
 
-			th.userClient.On(CloseEvent, func() error {
+			th.userClient.On(CloseEvent, func(_ any) error {
 				close(closeCh)
 				return nil
 			})
