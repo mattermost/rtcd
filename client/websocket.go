@@ -5,6 +5,7 @@ package client
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -17,12 +18,70 @@ import (
 
 const (
 	mmWebSocketAPIPath = "/api/v4/websocket"
+	wsEvPrefix         = "custom_" + pluginID + "_"
 
 	wsMinReconnectRetryInterval    = time.Second
 	wsReconnectRetryIntervalJitter = 500 * time.Millisecond
 )
 
+const (
+	wsEventJoin      = wsEvPrefix + "join"
+	wsEventLeave     = wsEvPrefix + "leave"
+	wsEventReconnect = wsEvPrefix + "reconnect"
+	wsEventError     = wsEvPrefix + "error"
+)
+
 var wsReconnectionTimeout = 30 * time.Second
+
+func (c *Client) wsSend(ev string, msg any, binary bool) error {
+	msgType := ws.TextMessage
+	if binary {
+		msgType = ws.BinaryMessage
+	}
+
+	c.wsClientSeqNo++
+	data, err := json.Marshal(map[string]any{
+		"action": ev,
+		"seq":    c.wsClientSeqNo,
+		"data":   msg,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal call join message: %w", err)
+	}
+
+	if err := c.ws.Send(msgType, data); err != nil {
+		return fmt.Errorf("failed to send join message: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Client) handleWSEventHello(ev *model.WebSocketEvent) (isReconnect bool, err error) {
+	connID, ok := ev.GetData()["connection_id"].(string)
+	if !ok || connID == "" {
+		return false, fmt.Errorf("missing or invalid connection ID")
+	}
+
+	if connID != c.currentConnID {
+		log.Printf("new connection id from server")
+	}
+
+	if c.originalConnID == "" {
+		log.Printf("initial ws connection")
+		c.originalConnID = connID
+	} else {
+		log.Printf("ws reconnected successfully")
+		c.wsLastDisconnect = time.Time{}
+		c.wsReconnectInterval = 0
+		isReconnect = true
+	}
+
+	c.currentConnID = connID
+
+	c.emit(WSConnectEvent, nil)
+
+	return
+}
 
 func (c *Client) handleWSMsg(msg ws.Message) error {
 	switch msg.Type {
@@ -38,27 +97,39 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 			return fmt.Errorf("invalid event")
 		}
 
-		if ev.EventType() == model.WebsocketEventHello {
-			if connID, ok := ev.GetData()["connection_id"].(string); ok && connID != "" {
-				if c.originalConnID == "" {
-					log.Printf("initial ws connection")
-					c.originalConnID = connID
-				} else {
-					log.Printf("ws reconnected successfully")
-					c.wsLastDisconnect = time.Time{}
-					c.wsReconnectInterval = 0
-				}
+		msgConnID := ev.GetBroadcast().ConnectionId
+		if msgConnID == "" {
+			msgConnID, _ = ev.GetData()["connID"].(string)
+		}
 
-				if connID != c.currentConnID {
-					log.Printf("new connection id from server")
-				}
+		if msgConnID != "" && msgConnID != c.currentConnID && msgConnID != c.originalConnID {
+			// ignoring any messages not specifically meant for us.
+			return nil
+		}
 
-				c.currentConnID = connID
+		if c.originalConnID == "" && ev.EventType() != model.WebsocketEventHello {
+			return fmt.Errorf("ws message received while waiting for hello")
+		}
 
-				c.emit(WSConnectEvent, nil)
-			} else {
-				return fmt.Errorf("missing or invalid connection ID")
+		switch ev.EventType() {
+		case model.WebsocketEventHello:
+			isReconnect, err := c.handleWSEventHello(ev)
+			if err != nil {
+				return fmt.Errorf("failed to handle hello event: %w", err)
 			}
+			if !isReconnect {
+				if err := c.joinCall(); err != nil {
+					return fmt.Errorf("failed to join call: %w", err)
+				}
+			}
+		case wsEventJoin:
+			c.emit(WSCallJoinEvent, nil)
+		case wsEventError:
+			errMsg, _ := ev.GetData()["data"].(string)
+			err := fmt.Errorf("ws error: %s", errMsg)
+			c.emit(ErrorEvent, err)
+			return err
+		default:
 		}
 	case ws.BinaryMessage:
 	default:
@@ -79,11 +150,22 @@ func (c *Client) wsOpen() error {
 	}
 	c.ws = ws
 
+	if c.originalConnID != "" {
+		if err := c.reconnectCall(); err != nil {
+			return fmt.Errorf("reconnectCall failed: %w", err)
+		}
+	}
+
 	return nil
 }
 
 func (c *Client) wsReader() {
-	defer close(c.wsDoneCh)
+	defer func() {
+		if err := c.leaveCall(); err != nil {
+			log.Printf(err.Error())
+		}
+		close(c.wsDoneCh)
+	}()
 
 	for {
 		select {

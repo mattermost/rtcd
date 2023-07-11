@@ -186,3 +186,32 @@ func TestClientPing(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, CloseMessage, msg.Type)
 }
+
+func TestMultipleClose(t *testing.T) {
+	server, addr, shutdown := setupServer(t)
+	defer shutdown()
+
+	_, port, err := net.SplitHostPort(addr)
+	require.NoError(t, err)
+	u := url.URL{Scheme: "ws", Host: "localhost:" + port, Path: "/ws"}
+	cfg := ClientConfig{
+		URL:      u.String(),
+		AuthType: BasicClientAuthType,
+	}
+	c, err := NewClient(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, c)
+
+	msg, ok := <-server.ReceiveCh()
+	require.True(t, ok)
+	require.Equal(t, OpenMessage, msg.Type)
+
+	err = c.Close()
+	require.NoError(t, err)
+
+	err = c.Close()
+	require.Error(t, err)
+
+	err = c.Close()
+	require.Error(t, err)
+}

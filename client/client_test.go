@@ -131,3 +131,98 @@ func TestClientConcurrency(t *testing.T) {
 	require.GreaterOrEqual(t, connectErrors, int32(n-1))
 	require.GreaterOrEqual(t, closeErrors, int32(n-1))
 }
+
+func TestClientJoinCall(t *testing.T) {
+	t.Run("invalid channel", func(t *testing.T) {
+		th := setupTestHelper(t, "")
+
+		err := th.userClient.Connect()
+		require.NoError(t, err)
+
+		connectCh := make(chan struct{})
+		th.userClient.On(WSConnectEvent, func(_ any) error {
+			close(connectCh)
+			return nil
+		})
+
+		closeCh := make(chan struct{})
+		th.userClient.On(CloseEvent, func(_ any) error {
+			close(closeCh)
+			return nil
+		})
+
+		errorCh := make(chan struct{})
+		th.userClient.On(ErrorEvent, func(err any) error {
+			require.EqualError(t, err.(error), "ws error: forbidden")
+			close(errorCh)
+			return nil
+		})
+
+		select {
+		case <-connectCh:
+		case <-time.After(time.Second):
+			require.Fail(t, "timed out waiting for connect event")
+		}
+
+		select {
+		case <-errorCh:
+		case <-time.After(time.Second):
+			require.Fail(t, "timed out waiting for error event")
+		}
+
+		err = th.userClient.Close()
+		require.NoError(t, err)
+
+		select {
+		case <-closeCh:
+		case <-time.After(time.Second):
+			require.Fail(t, "timed out waiting for close event")
+		}
+	})
+
+	t.Run("success", func(t *testing.T) {
+		th := setupTestHelper(t, "calls0")
+
+		err := th.userClient.Connect()
+		require.NoError(t, err)
+
+		connectCh := make(chan struct{})
+		th.userClient.On(WSConnectEvent, func(_ any) error {
+			close(connectCh)
+			return nil
+		})
+
+		closeCh := make(chan struct{})
+		th.userClient.On(CloseEvent, func(_ any) error {
+			close(closeCh)
+			return nil
+		})
+
+		joinCh := make(chan struct{})
+		th.userClient.On(WSCallJoinEvent, func(err any) error {
+			close(joinCh)
+			return nil
+		})
+
+		select {
+		case <-connectCh:
+		case <-time.After(time.Second):
+			require.Fail(t, "timed out waiting for connect event")
+		}
+
+		select {
+		case <-joinCh:
+		case <-time.After(time.Second):
+			require.Fail(t, "timed out waiting for join event")
+		}
+
+		err = th.userClient.Close()
+		require.NoError(t, err)
+
+		select {
+		case <-closeCh:
+		case <-time.After(time.Second):
+			require.Fail(t, "timed out waiting for close event")
+		}
+	})
+}

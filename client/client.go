@@ -20,6 +20,7 @@ type EventType string
 const (
 	WSConnectEvent     EventType = "WSConnect"
 	WSDisconnectEvent            = "WSDisconnect"
+	WSCallJoinEvent              = "WSCallJoin"
 	RTCConnectEvent              = "RTCConnect"
 	RTCDisconnectEvent           = "RTCDisconnect"
 	CloseEvent                   = "Close"
@@ -45,6 +46,7 @@ type Client struct {
 	wsCloseCh           chan struct{}
 	wsReconnectInterval time.Duration
 	wsLastDisconnect    time.Time
+	wsClientSeqNo       int64
 	originalConnID      string
 	currentConnID       string
 

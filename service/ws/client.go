@@ -28,6 +28,8 @@ type Client struct {
 	sendCh        chan Message
 	receiveCh     chan Message
 	errorCh       chan error
+	flushCh       chan struct{}
+	flushDoneCh   chan struct{}
 	wg            sync.WaitGroup
 	connState     int32
 	dialFn        DialContextFn
@@ -41,10 +43,12 @@ func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
 	}
 
 	c := &Client{
-		cfg:       cfg,
-		sendCh:    make(chan Message, sendChSize),
-		receiveCh: make(chan Message, ReceiveChSize),
-		errorCh:   make(chan error, 32),
+		cfg:         cfg,
+		sendCh:      make(chan Message, sendChSize),
+		receiveCh:   make(chan Message, ReceiveChSize),
+		errorCh:     make(chan error, 32),
+		flushCh:     make(chan struct{}, 1),
+		flushDoneCh: make(chan struct{}),
 	}
 
 	for _, opt := range opts {
@@ -125,21 +129,34 @@ func (c *Client) connReader() {
 }
 
 func (c *Client) connWriter() {
-	defer c.wg.Done()
+	defer func() {
+		close(c.flushDoneCh)
+		c.wg.Done()
+	}()
+
+	sendMsg := func(msg Message) {
+		msgType := websocket.TextMessage
+		if msg.Type == BinaryMessage {
+			msgType = websocket.BinaryMessage
+		}
+		if err := c.conn.ws.SetWriteDeadline(time.Now().Add(writeWaitTime)); err != nil {
+			c.sendError(fmt.Errorf("failed to set write deadline: %w", err))
+		}
+		if err := c.conn.ws.WriteMessage(msgType, msg.Data); err != nil {
+			c.sendError(fmt.Errorf("failed to write message: %w", err))
+		}
+	}
 
 	for {
 		select {
 		case msg := <-c.sendCh:
-			msgType := websocket.TextMessage
-			if msg.Type == BinaryMessage {
-				msgType = websocket.BinaryMessage
+			sendMsg(msg)
+		case <-c.flushCh:
+			log.Printf("flushing %d queued messages", len(c.sendCh))
+			for i := 0; i < len(c.sendCh); i++ {
+				sendMsg(<-c.sendCh)
 			}
-			if err := c.conn.ws.SetWriteDeadline(time.Now().Add(writeWaitTime)); err != nil {
-				c.sendError(fmt.Errorf("failed to set write deadline: %w", err))
-			}
-			if err := c.conn.ws.WriteMessage(msgType, msg.Data); err != nil {
-				c.sendError(fmt.Errorf("failed to write message: %w", err))
-			}
+			return
 		case <-c.conn.closeCh:
 			return
 		}
@@ -190,6 +207,9 @@ func (c *Client) ErrorCh() <-chan error {
 // Close closes the underlying WebSocket connection.
 func (c *Client) Close() error {
 	c.setConnState(wsConnClosing)
+	if err := c.flush(); err != nil {
+		return err
+	}
 	err := c.conn.close()
 	c.wg.Wait()
 	return err
@@ -201,4 +221,14 @@ func (c *Client) setConnState(st int32) {
 
 func (c *Client) getConnState() int32 {
 	return atomic.LoadInt32(&c.connState)
+}
+
+func (c *Client) flush() error {
+	select {
+	case c.flushCh <- struct{}{}:
+	default:
+		return fmt.Errorf("failed to send flush message")
+	}
+	<-c.flushDoneCh
+	return nil
 }
