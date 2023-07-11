@@ -303,6 +303,8 @@ start-mm: ## start MM server
 ifeq (${CI}, true)
 	@$(INFO) starting up MM server...
 	docker-compose -p mmserver -f ./build/test/docker-compose.yaml up -d
+  docker cp ./build/test/config_patch.json mmserver_server_1:/mattermost && \
+  docker exec mmserver_server_1 bin/mmctl --local config patch config_patch.json && \
 else
 	@$(INFO) skipping start-mm target, not on CI
 endif
