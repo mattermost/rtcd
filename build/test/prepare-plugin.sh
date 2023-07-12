@@ -25,6 +25,9 @@ make dist MM_SERVICESETTINGS_ENABLEDEVELOPER=true
 # Installation
 PLUGIN_BUILD_PATH=$(realpath dist/*.tar.gz)
 PLUGIN_FILE_NAME=$(basename ${PLUGIN_BUILD_PATH})
+
+docker cp ../rtcd/build/test/config_patch.json mmserver_server_1:/mattermost && \
+docker exec mmserver_server_1 bin/mmctl --local config patch config_patch.json && \
 docker cp ${PLUGIN_BUILD_PATH} mmserver_server_1:/mattermost && \
 docker exec mmserver_server_1 bin/mmctl --local plugin delete ${PLUGIN_ID} && \
 docker exec mmserver_server_1 bin/mmctl --local plugin add ${PLUGIN_FILE_NAME} && \
