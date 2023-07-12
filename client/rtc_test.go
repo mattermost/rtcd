@@ -104,92 +104,272 @@ func TestRTCDisconnect(t *testing.T) {
 }
 
 func TestRTCTrack(t *testing.T) {
-	th := setupTestHelper(t, "calls0")
+	t.Run("connect before track", func(t *testing.T) {
+		th := setupTestHelper(t, "calls0")
 
-	rtcConnectChA := make(chan struct{})
-	th.userClient.On(RTCConnectEvent, func(_ any) error {
-		close(rtcConnectChA)
-		return nil
+		rtcConnectChA := make(chan struct{})
+		th.userClient.On(RTCConnectEvent, func(_ any) error {
+			close(rtcConnectChA)
+			return nil
+		})
+
+		rtcConnectChB := make(chan struct{})
+		th.adminClient.On(RTCConnectEvent, func(_ any) error {
+			close(rtcConnectChB)
+			return nil
+		})
+
+		closeChA := make(chan struct{})
+		th.userClient.On(CloseEvent, func(_ any) error {
+			close(closeChA)
+			return nil
+		})
+
+		closeChB := make(chan struct{})
+		th.adminClient.On(CloseEvent, func(_ any) error {
+			close(closeChB)
+			return nil
+		})
+
+		rtcTrackCh := make(chan struct{})
+		th.userClient.On(RTCTrackEvent, func(ctx any) error {
+			track, ok := ctx.(*webrtc.TrackRemote)
+			require.True(t, ok)
+			require.Equal(t, webrtc.PayloadType(0x6f), track.PayloadType())
+			require.Equal(t, "audio/opus", track.Codec().MimeType)
+
+			close(rtcTrackCh)
+			return nil
+		})
+
+		go func() {
+			err := th.userClient.Connect()
+			require.NoError(t, err)
+		}()
+
+		go func() {
+			err := th.adminClient.Connect()
+			require.NoError(t, err)
+		}()
+
+		select {
+		case <-rtcConnectChA:
+		case <-time.After(4 * time.Second):
+			require.Fail(t, "timed out waiting for rtc connect event")
+		}
+
+		select {
+		case <-rtcConnectChB:
+		case <-time.After(4 * time.Second):
+			require.Fail(t, "timed out waiting for rtc connect event")
+		}
+
+		th.transmitAudioTrack(th.adminClient)
+
+		select {
+		case <-rtcTrackCh:
+		case <-time.After(4 * time.Second):
+			require.Fail(t, "timed out waiting for rtc track event")
+		}
+
+		go func() {
+			err := th.userClient.Close()
+			require.NoError(t, err)
+		}()
+
+		go func() {
+			err := th.adminClient.Close()
+			require.NoError(t, err)
+		}()
+
+		select {
+		case <-closeChA:
+		case <-time.After(time.Second):
+			require.Fail(t, "timed out waiting for close event")
+		}
+
+		select {
+		case <-closeChB:
+		case <-time.After(time.Second):
+			require.Fail(t, "timed out waiting for close event")
+		}
 	})
 
-	rtcConnectChB := make(chan struct{})
-	th.adminClient.On(RTCConnectEvent, func(_ any) error {
-		close(rtcConnectChB)
-		return nil
-	})
+	t.Run("connect after track", func(t *testing.T) {
+		th := setupTestHelper(t, "calls0")
 
-	closeChA := make(chan struct{})
-	th.userClient.On(CloseEvent, func(_ any) error {
-		close(closeChA)
-		return nil
-	})
+		rtcConnectChA := make(chan struct{})
+		th.userClient.On(RTCConnectEvent, func(_ any) error {
+			close(rtcConnectChA)
+			return nil
+		})
 
-	closeChB := make(chan struct{})
-	th.adminClient.On(CloseEvent, func(_ any) error {
-		close(closeChB)
-		return nil
-	})
+		rtcConnectChB := make(chan struct{})
+		th.adminClient.On(RTCConnectEvent, func(_ any) error {
+			close(rtcConnectChB)
+			return nil
+		})
 
-	rtcTrackCh := make(chan struct{})
-	th.userClient.On(RTCTrackEvent, func(ctx any) error {
-		track, ok := ctx.(*webrtc.TrackRemote)
-		require.True(t, ok)
-		require.Equal(t, webrtc.PayloadType(0x6f), track.PayloadType())
-		require.Equal(t, "audio/opus", track.Codec().MimeType)
+		closeChA := make(chan struct{})
+		th.userClient.On(CloseEvent, func(_ any) error {
+			close(closeChA)
+			return nil
+		})
 
-		close(rtcTrackCh)
-		return nil
-	})
+		closeChB := make(chan struct{})
+		th.adminClient.On(CloseEvent, func(_ any) error {
+			close(closeChB)
+			return nil
+		})
 
-	go func() {
-		err := th.userClient.Connect()
-		require.NoError(t, err)
-	}()
+		rtcTrackCh := make(chan struct{})
+		th.userClient.On(RTCTrackEvent, func(ctx any) error {
+			track, ok := ctx.(*webrtc.TrackRemote)
+			require.True(t, ok)
+			require.Equal(t, webrtc.PayloadType(0x6f), track.PayloadType())
+			require.Equal(t, "audio/opus", track.Codec().MimeType)
 
-	go func() {
+			close(rtcTrackCh)
+			return nil
+		})
+
 		err := th.adminClient.Connect()
 		require.NoError(t, err)
-	}()
 
-	select {
-	case <-rtcConnectChA:
-	case <-time.After(4 * time.Second):
-		require.Fail(t, "timed out waiting for rtc connect event")
-	}
+		select {
+		case <-rtcConnectChB:
+		case <-time.After(4 * time.Second):
+			require.Fail(t, "timed out waiting for rtc connect event")
+		}
 
-	select {
-	case <-rtcConnectChB:
-	case <-time.After(4 * time.Second):
-		require.Fail(t, "timed out waiting for rtc connect event")
-	}
+		th.transmitAudioTrack(th.adminClient)
 
-	th.transmitAudioTrack(th.adminClient)
-
-	select {
-	case <-rtcTrackCh:
-	case <-time.After(4 * time.Second):
-		require.Fail(t, "timed out waiting for rtc track event")
-	}
-
-	go func() {
-		err := th.userClient.Close()
+		err = th.userClient.Connect()
 		require.NoError(t, err)
-	}()
 
-	go func() {
-		err := th.adminClient.Close()
+		select {
+		case <-rtcConnectChA:
+		case <-time.After(4 * time.Second):
+			require.Fail(t, "timed out waiting for rtc connect event")
+		}
+
+		select {
+		case <-rtcTrackCh:
+		case <-time.After(4 * time.Second):
+			require.Fail(t, "timed out waiting for rtc track event")
+		}
+
+		go func() {
+			err := th.userClient.Close()
+			require.NoError(t, err)
+		}()
+
+		go func() {
+			err := th.adminClient.Close()
+			require.NoError(t, err)
+		}()
+
+		select {
+		case <-closeChA:
+		case <-time.After(time.Second):
+			require.Fail(t, "timed out waiting for close event")
+		}
+
+		select {
+		case <-closeChB:
+		case <-time.After(time.Second):
+			require.Fail(t, "timed out waiting for close event")
+		}
+	})
+
+	t.Run("concurrent", func(t *testing.T) {
+		th := setupTestHelper(t, "calls0")
+
+		rtcConnectChA := make(chan struct{})
+		th.userClient.On(RTCConnectEvent, func(_ any) error {
+			close(rtcConnectChA)
+			return nil
+		})
+
+		rtcConnectChB := make(chan struct{})
+		th.adminClient.On(RTCConnectEvent, func(_ any) error {
+			close(rtcConnectChB)
+			return nil
+		})
+
+		closeChA := make(chan struct{})
+		th.userClient.On(CloseEvent, func(_ any) error {
+			close(closeChA)
+			return nil
+		})
+
+		closeChB := make(chan struct{})
+		th.adminClient.On(CloseEvent, func(_ any) error {
+			close(closeChB)
+			return nil
+		})
+
+		rtcTrackCh := make(chan struct{})
+		th.userClient.On(RTCTrackEvent, func(ctx any) error {
+			track, ok := ctx.(*webrtc.TrackRemote)
+			require.True(t, ok)
+			require.Equal(t, webrtc.PayloadType(0x6f), track.PayloadType())
+			require.Equal(t, "audio/opus", track.Codec().MimeType)
+
+			close(rtcTrackCh)
+			return nil
+		})
+
+		err := th.adminClient.Connect()
 		require.NoError(t, err)
-	}()
 
-	select {
-	case <-closeChA:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for close event")
-	}
+		select {
+		case <-rtcConnectChB:
+		case <-time.After(4 * time.Second):
+			require.Fail(t, "timed out waiting for rtc connect event")
+		}
 
-	select {
-	case <-closeChB:
-	case <-time.After(time.Second):
-		require.Fail(t, "timed out waiting for close event")
-	}
+		go func() {
+			th.transmitAudioTrack(th.adminClient)
+		}()
+
+		go func() {
+			err := th.userClient.Connect()
+			require.NoError(t, err)
+		}()
+
+		select {
+		case <-rtcConnectChA:
+		case <-time.After(4 * time.Second):
+			require.Fail(t, "timed out waiting for rtc connect event")
+		}
+
+		select {
+		case <-rtcTrackCh:
+		case <-time.After(4 * time.Second):
+			require.Fail(t, "timed out waiting for rtc track event")
+		}
+
+		go func() {
+			err := th.userClient.Close()
+			require.NoError(t, err)
+		}()
+
+		go func() {
+			err := th.adminClient.Close()
+			require.NoError(t, err)
+		}()
+
+		select {
+		case <-closeChA:
+		case <-time.After(time.Second):
+			require.Fail(t, "timed out waiting for close event")
+		}
+
+		select {
+		case <-closeChB:
+		case <-time.After(time.Second):
+			require.Fail(t, "timed out waiting for close event")
+		}
+	})
 }
