@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/mattermost/rtcd/service/ws"
+
+	"github.com/pion/webrtc/v3"
 )
 
 type EventHandler func(ctx any) error
@@ -23,6 +25,7 @@ const (
 	WSCallJoinEvent              = "WSCallJoin"
 	RTCConnectEvent              = "RTCConnect"
 	RTCDisconnectEvent           = "RTCDisconnect"
+	RTCTrackEvent                = "RTCTrack"
 	CloseEvent                   = "Close"
 	ErrorEvent                   = "Error"
 )
@@ -50,6 +53,11 @@ type Client struct {
 	originalConnID      string
 	currentConnID       string
 
+	// WebRTC
+	pc    *webrtc.PeerConnection
+	dc    *webrtc.DataChannel
+	iceCh chan webrtc.ICECandidateInit
+
 	state int32
 
 	mut sync.RWMutex
@@ -64,10 +72,12 @@ func New(cfg Config, opts ...Option) (*Client, error) {
 	}
 
 	c := &Client{
-		cfg:       cfg,
-		handlers:  make(map[EventType]EventHandler),
-		wsDoneCh:  make(chan struct{}),
-		wsCloseCh: make(chan struct{}),
+		cfg:           cfg,
+		handlers:      make(map[EventType]EventHandler),
+		wsDoneCh:      make(chan struct{}),
+		wsCloseCh:     make(chan struct{}),
+		wsClientSeqNo: 1,
+		iceCh:         make(chan webrtc.ICECandidateInit, iceChSize),
 	}
 
 	for _, opt := range opts {
@@ -139,5 +149,12 @@ func (c *Client) emit(eventType EventType, ctx any) {
 
 func (c *Client) close() {
 	atomic.StoreInt32(&c.state, clientStateClosed)
+
+	if c.pc != nil {
+		if err := c.pc.Close(); err != nil {
+			log.Printf("failed to close peer connection: %s", err)
+		}
+	}
+
 	c.emit(CloseEvent, nil)
 }

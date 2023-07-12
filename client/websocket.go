@@ -14,6 +14,8 @@ import (
 	"github.com/mattermost/rtcd/service/ws"
 
 	"github.com/mattermost/mattermost/server/public/model"
+
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 const (
@@ -28,29 +30,43 @@ const (
 	wsEventJoin      = wsEvPrefix + "join"
 	wsEventLeave     = wsEvPrefix + "leave"
 	wsEventReconnect = wsEvPrefix + "reconnect"
+	wsEventSignal    = wsEvPrefix + "signal"
+	wsEventICE       = wsEvPrefix + "ice"
+	wsEventSDP       = wsEvPrefix + "sdp"
 	wsEventError     = wsEvPrefix + "error"
 )
 
 var wsReconnectionTimeout = 30 * time.Second
 
 func (c *Client) wsSend(ev string, msg any, binary bool) error {
-	msgType := ws.TextMessage
-	if binary {
-		msgType = ws.BinaryMessage
-	}
+	c.mut.Lock()
+	defer c.mut.Unlock()
 
-	c.wsClientSeqNo++
-	data, err := json.Marshal(map[string]any{
+	var err error
+	var data []byte
+	var msgType ws.MessageType
+
+	req := map[string]any{
 		"action": ev,
 		"seq":    c.wsClientSeqNo,
 		"data":   msg,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to marshal call join message: %w", err)
 	}
 
+	if binary {
+		msgType = ws.BinaryMessage
+		data, err = msgpack.Marshal(req)
+	} else {
+		msgType = ws.TextMessage
+		data, err = json.Marshal(req)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to marshal ws message (%s): %w", ev, err)
+	}
+
+	c.wsClientSeqNo++
 	if err := c.ws.Send(msgType, data); err != nil {
-		return fmt.Errorf("failed to send join message: %w", err)
+		return fmt.Errorf("failed to send ws message (%s): %w", ev, err)
 	}
 
 	return nil
@@ -124,6 +140,13 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 			}
 		case wsEventJoin:
 			c.emit(WSCallJoinEvent, nil)
+			if err := c.initRTCSession(); err != nil {
+				return fmt.Errorf("failed to init RTC session: %w", err)
+			}
+		case wsEventSignal:
+			if err := c.handleWSEventSignal(ev.GetData()); err != nil {
+				return fmt.Errorf("failed to handle signal event: %w", err)
+			}
 		case wsEventError:
 			errMsg, _ := ev.GetData()["data"].(string)
 			err := fmt.Errorf("ws error: %s", errMsg)

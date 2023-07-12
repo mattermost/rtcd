@@ -6,6 +6,9 @@ package client
 import (
 	"context"
 	"fmt"
+	"io"
+	"log"
+	"os"
 	"testing"
 	"time"
 
@@ -13,6 +16,9 @@ import (
 
 	"github.com/mattermost/mattermost/server/public/model"
 
+	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v3/pkg/media"
+	"github.com/pion/webrtc/v3/pkg/media/oggreader"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,6 +42,85 @@ const (
 	teamName  = "calls"
 	nChannels = 2
 )
+
+func (th *TestHelper) transmitAudioTrack(c *Client) {
+	th.tb.Helper()
+
+	track, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{
+		MimeType:     "audio/opus",
+		ClockRate:    48000,
+		Channels:     2,
+		SDPFmtpLine:  "minptime=10;useinbandfec=1",
+		RTCPFeedback: nil,
+	}, "audio", "voice_"+random.NewID())
+	require.NoError(th.tb, err)
+
+	sender, err := c.pc.AddTrack(track)
+	require.NoError(th.tb, err)
+
+	closeCh := make(chan struct{})
+	go func() {
+		rtcpBuf := make([]byte, 1500)
+		for {
+			if _, _, rtcpErr := sender.Read(rtcpBuf); rtcpErr != nil {
+				log.Printf("failed to read rtcp: %s", rtcpErr.Error())
+				close(closeCh)
+				return
+			}
+		}
+	}()
+
+	go func() {
+		// Open a OGG file and start reading using our OGGReader
+		file, oggErr := os.Open("../testfiles/audio.ogg")
+		require.NoError(th.tb, oggErr)
+		defer file.Close()
+
+		// Open on oggfile in non-checksum mode.
+		ogg, _, oggErr := oggreader.NewWith(file)
+		require.NoError(th.tb, oggErr)
+
+		// Keep track of last granule, the difference is the amount of samples in the buffer
+		var lastGranule uint64
+
+		// It is important to use a time.Ticker instead of time.Sleep because
+		// * avoids accumulating skew, just calling time.Sleep didn't compensate for the time spent parsing the data
+		// * works around latency issues with Sleep (see https://github.com/golang/go/issues/44343)
+		oggPageDuration := time.Millisecond * 20
+		ticker := time.NewTicker(oggPageDuration)
+		for {
+			select {
+			case <-closeCh:
+				log.Printf("existing ogg reader")
+				return
+			case <-ticker.C:
+			}
+
+			var oggErr error
+			var pageData []byte
+			var pageHeader *oggreader.OggPageHeader
+			pageData, pageHeader, oggErr = ogg.ParseNextPage()
+			if oggErr == io.EOF {
+				ogg.ResetReader(func(_ int64) io.Reader {
+					_, _ = file.Seek(0, 0)
+					return file
+				})
+				pageData, pageHeader, oggErr = ogg.ParseNextPage()
+			}
+			require.NoError(th.tb, oggErr)
+
+			// The amount of samples is the difference between the last and current timestamp
+			sampleCount := float64(pageHeader.GranulePosition - lastGranule)
+			lastGranule = pageHeader.GranulePosition
+			sampleDuration := time.Duration((sampleCount/48000)*1000) * time.Millisecond
+
+			if err := track.WriteSample(media.Sample{Data: pageData, Duration: sampleDuration}); err != nil {
+				log.Printf("failed to write audio sample: %s", err)
+				return
+			}
+		}
+	}()
+}
 
 func (th *TestHelper) ensureUser(client *model.Client4, username, password string) *model.User {
 	th.tb.Helper()
