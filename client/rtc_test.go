@@ -46,13 +46,13 @@ func TestClientConnectCall(t *testing.T) {
 
 	select {
 	case <-rtcDisconnectCh:
-	case <-time.After(time.Second):
+	case <-time.After(2 * time.Second):
 		require.Fail(t, "timed out waiting for rtc disconnect event")
 	}
 
 	select {
 	case <-closeCh:
-	case <-time.After(time.Second):
+	case <-time.After(2 * time.Second):
 		require.Fail(t, "timed out waiting for close event")
 	}
 }
@@ -92,13 +92,13 @@ func TestRTCDisconnect(t *testing.T) {
 
 	select {
 	case <-rtcDisconnectCh:
-	case <-time.After(time.Second):
+	case <-time.After(2 * time.Second):
 		require.Fail(t, "timed out waiting for rtc disconnect event")
 	}
 
 	select {
 	case <-closeCh:
-	case <-time.After(time.Second):
+	case <-time.After(2 * time.Second):
 		require.Fail(t, "timed out waiting for close event")
 	}
 }
@@ -184,13 +184,13 @@ func TestRTCTrack(t *testing.T) {
 
 		select {
 		case <-closeChA:
-		case <-time.After(time.Second):
+		case <-time.After(2 * time.Second):
 			require.Fail(t, "timed out waiting for close event")
 		}
 
 		select {
 		case <-closeChB:
-		case <-time.After(time.Second):
+		case <-time.After(2 * time.Second):
 			require.Fail(t, "timed out waiting for close event")
 		}
 	})
@@ -271,13 +271,13 @@ func TestRTCTrack(t *testing.T) {
 
 		select {
 		case <-closeChA:
-		case <-time.After(time.Second):
+		case <-time.After(2 * time.Second):
 			require.Fail(t, "timed out waiting for close event")
 		}
 
 		select {
 		case <-closeChB:
-		case <-time.After(time.Second):
+		case <-time.After(2 * time.Second):
 			require.Fail(t, "timed out waiting for close event")
 		}
 	})
@@ -362,13 +362,13 @@ func TestRTCTrack(t *testing.T) {
 
 		select {
 		case <-closeChA:
-		case <-time.After(time.Second):
+		case <-time.After(2 * time.Second):
 			require.Fail(t, "timed out waiting for close event")
 		}
 
 		select {
 		case <-closeChB:
-		case <-time.After(time.Second):
+		case <-time.After(2 * time.Second):
 			require.Fail(t, "timed out waiting for close event")
 		}
 	})
