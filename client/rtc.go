@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"compress/zlib"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"sync/atomic"
 
@@ -19,7 +21,8 @@ const (
 	signalMsgOffer     = "offer"
 	signalMsgAnswer    = "answer"
 
-	iceChSize = 20
+	iceChSize  = 20
+	receiveMTU = 1460
 )
 
 func (c *Client) handleWSEventSignal(evData map[string]any) error {
@@ -187,8 +190,27 @@ func (c *Client) initRTCSession() error {
 		}
 	})
 
-	pc.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+	pc.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 		log.Printf("received remote track: %v %v", track.PayloadType(), track.Codec())
+
+		// RTCP handler
+		go func(rid string) {
+			for {
+				rtcpBuf := make([]byte, receiveMTU)
+				if rid != "" {
+					_, _, err = receiver.ReadSimulcast(rtcpBuf, rid)
+				} else {
+					_, _, err = receiver.Read(rtcpBuf)
+				}
+				if err != nil {
+					if !errors.Is(err, io.EOF) {
+						log.Printf("failed to read RTCP packet: %s", err)
+					}
+					return
+				}
+			}
+		}(track.RID())
+
 		c.emit(RTCTrackEvent, track)
 	})
 

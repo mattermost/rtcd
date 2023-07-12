@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pion/webrtc/v3"
 	"github.com/stretchr/testify/require"
 )
 
@@ -130,7 +131,12 @@ func TestRTCTrack(t *testing.T) {
 	})
 
 	rtcTrackCh := make(chan struct{})
-	th.userClient.On(RTCTrackEvent, func(_ any) error {
+	th.userClient.On(RTCTrackEvent, func(ctx any) error {
+		track, ok := ctx.(*webrtc.TrackRemote)
+		require.True(t, ok)
+		require.Equal(t, webrtc.PayloadType(0x6f), track.PayloadType())
+		require.Equal(t, "audio/opus", track.Codec().MimeType)
+
 		close(rtcTrackCh)
 		return nil
 	})

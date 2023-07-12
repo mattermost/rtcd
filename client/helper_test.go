@@ -60,7 +60,7 @@ func (th *TestHelper) transmitAudioTrack(c *Client) {
 
 	closeCh := make(chan struct{})
 	go func() {
-		rtcpBuf := make([]byte, 1500)
+		rtcpBuf := make([]byte, receiveMTU)
 		for {
 			if _, _, rtcpErr := sender.Read(rtcpBuf); rtcpErr != nil {
 				log.Printf("failed to read rtcp: %s", rtcpErr.Error())
