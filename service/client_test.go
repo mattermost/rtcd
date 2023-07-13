@@ -690,3 +690,70 @@ func TestRegisterClientHerd(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestReconnectClientHerd(t *testing.T) {
+	cfg := MakeDefaultCfg(t)
+	cfg.API.HTTP.ListenAddress = ":38045"
+	cfg.API.Security.AllowSelfRegistration = true
+
+	th := SetupTestHelper(t, cfg)
+
+	authKey, err := random.NewSecureString(auth.MinKeyLen)
+	require.NoError(t, err)
+
+	// NOTE: this value needs to be bumped for any serious benchmarking.
+	n := 10
+	var registerWg sync.WaitGroup
+	registerWg.Add(n)
+
+	var reconnectWg sync.WaitGroup
+	reconnectWg.Add(n)
+
+	for i := 0; i < n; i++ {
+		go func(clientID string) {
+			connections := 0
+
+			reconnectCb := func(c *Client, attempt int) error {
+				err := c.Register(clientID, authKey)
+				require.NoError(t, err)
+				return nil
+			}
+
+			c, _ := NewClient(ClientConfig{
+				URL:      th.apiURL,
+				AuthKey:  authKey,
+				ClientID: clientID,
+			}, WithClientReconnectCb(reconnectCb))
+			err := c.Register(clientID, authKey)
+			require.NoError(t, err)
+
+			err = c.Connect()
+			require.NoError(t, err)
+			registerWg.Done()
+
+			for msg := range c.ReceiveCh() {
+				if msg.Type == ClientMessageHello {
+					connections++
+					if connections == 2 {
+						// Second connection means we reconnected successfully.
+						err := c.Close()
+						require.NoError(t, err)
+						reconnectWg.Done()
+					}
+				}
+			}
+
+		}(fmt.Sprintf("client%d", i))
+	}
+
+	// We wait for all clients to register.
+	registerWg.Wait()
+
+	// Simulate service restart
+	th.Teardown()
+	th = SetupTestHelper(t, cfg)
+	defer th.Teardown()
+
+	// We wait for all clients to reconnect successfully.
+	reconnectWg.Wait()
+}

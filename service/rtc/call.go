@@ -4,6 +4,7 @@
 package rtc
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/pion/webrtc/v3"
@@ -77,12 +78,21 @@ func (c *call) iterSessions(cb func(s *session)) {
 	}
 }
 
-func (c *call) clearScreenState(screenSession *session) {
+func (c *call) clearScreenState(screenSession *session) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	if screenSession == nil || c.screenSession != screenSession {
-		return
+	if screenSession == nil {
+		return fmt.Errorf("screenSession should not be nil")
+	}
+
+	if c.screenSession == nil {
+		return fmt.Errorf("call.screenSession should not be nil")
+	}
+
+	if c.screenSession != screenSession {
+		return fmt.Errorf("screenSession mismatch, call.screenSession=%s, screenSession=%s",
+			c.screenSession.cfg.SessionID, screenSession.cfg.SessionID)
 	}
 
 	for _, s := range c.sessions {
@@ -100,6 +110,8 @@ func (c *call) clearScreenState(screenSession *session) {
 		}
 		s.mut.Unlock()
 	}
+
+	return nil
 }
 
 // handleSessionClose cleans up resources such as senders or receivers for the
@@ -113,7 +125,6 @@ func (c *call) handleSessionClose(us *session) {
 
 	cleanUp := func(sessionID string, sender *webrtc.RTPSender, track webrtc.TrackLocal) {
 		c.metrics.DecRTPTracks(us.cfg.GroupID, us.cfg.CallID, "out", getTrackType(track.Kind()))
-
 		if err := sender.ReplaceTrack(nil); err != nil {
 			us.log.Error("failed to replace track on sender",
 				mlog.String("sessionID", sessionID),
@@ -127,10 +138,28 @@ func (c *call) handleSessionClose(us *session) {
 		}
 	}
 
+	// If the session getting closed was screen sharing we need to do some extra
+	// cleanup.
+	if us == c.screenSession {
+		c.screenSession = nil
+		for _, ss := range c.sessions {
+			if ss.cfg.SessionID == us.cfg.SessionID {
+				continue
+			}
+			ss.mut.Lock()
+			ss.screenTrackSender = nil
+			ss.mut.Unlock()
+		}
+	}
+
 	// First we cleanup any track the closing session may have been receiving and stop
 	// the associated senders.
 	for _, sender := range us.rtcConn.GetSenders() {
 		if track := sender.Track(); track != nil {
+			us.log.Debug("cleaning up out track on receiver",
+				mlog.String("sessionID", us.cfg.SessionID),
+				mlog.String("trackID", track.ID()),
+			)
 			cleanUp(us.cfg.SessionID, sender, track)
 		}
 	}
@@ -150,6 +179,8 @@ func (c *call) handleSessionClose(us *session) {
 
 	// Nothing left to do if the closing session wasn't sending anything.
 	if len(outTracks) == 0 {
+		us.log.Debug("no out tracks to cleanup, returning",
+			mlog.String("sessionID", us.cfg.SessionID))
 		return
 	}
 
@@ -163,7 +194,22 @@ func (c *call) handleSessionClose(us *session) {
 		ss.mut.Lock()
 		for _, sender := range ss.rtcConn.GetSenders() {
 			if track := sender.Track(); track != nil && outTracks[track.ID()] {
-				cleanUp(ss.cfg.SessionID, sender, track)
+				us.log.Debug("cleaning up out track on sender",
+					mlog.String("senderID", us.cfg.SessionID),
+					mlog.String("sessionID", ss.cfg.SessionID),
+					mlog.String("trackID", track.ID()),
+				)
+				// If it's a screen sharing track we should remove it as we normally would when
+				// sharing ends.
+				if track.Kind() == webrtc.RTPCodecTypeVideo {
+					select {
+					case ss.tracksCh <- trackActionContext{action: trackActionRemove, track: track}:
+					default:
+						ss.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", ss.cfg.SessionID))
+					}
+				} else {
+					cleanUp(ss.cfg.SessionID, sender, track)
+				}
 			}
 		}
 		ss.mut.Unlock()
