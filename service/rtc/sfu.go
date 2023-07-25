@@ -63,7 +63,9 @@ const (
 )
 
 func (s *Server) initSettingEngine() (webrtc.SettingEngine, error) {
-	sEngine := webrtc.SettingEngine{}
+	sEngine := webrtc.SettingEngine{
+		LoggerFactory: s,
+	}
 	sEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
 	networkTypes := []webrtc.NetworkType{
 		webrtc.NetworkTypeUDP4,
