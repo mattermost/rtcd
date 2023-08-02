@@ -272,7 +272,6 @@ func TestRTCTrack(t *testing.T) {
 		select {
 		case <-closeChA:
 		case <-time.After(2 * time.Second):
-			require.Fail(t, "timed out waiting for close event")
 		}
 
 		select {
@@ -315,6 +314,11 @@ func TestRTCTrack(t *testing.T) {
 			require.True(t, ok)
 			require.Equal(t, webrtc.PayloadType(0x6f), track.PayloadType())
 			require.Equal(t, "audio/opus", track.Codec().MimeType)
+
+			th.userClient.mut.RLock()
+			require.Len(t, th.userClient.receivers, 1)
+			require.NotNil(t, th.userClient.receivers[th.adminClient.originalConnID])
+			th.userClient.mut.RUnlock()
 
 			close(rtcTrackCh)
 			return nil

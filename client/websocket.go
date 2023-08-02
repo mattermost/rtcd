@@ -27,13 +27,14 @@ const (
 )
 
 const (
-	wsEventJoin      = wsEvPrefix + "join"
-	wsEventLeave     = wsEvPrefix + "leave"
-	wsEventReconnect = wsEvPrefix + "reconnect"
-	wsEventSignal    = wsEvPrefix + "signal"
-	wsEventICE       = wsEvPrefix + "ice"
-	wsEventSDP       = wsEvPrefix + "sdp"
-	wsEventError     = wsEvPrefix + "error"
+	wsEventJoin             = wsEvPrefix + "join"
+	wsEventLeave            = wsEvPrefix + "leave"
+	wsEventReconnect        = wsEvPrefix + "reconnect"
+	wsEventSignal           = wsEvPrefix + "signal"
+	wsEventICE              = wsEvPrefix + "ice"
+	wsEventSDP              = wsEvPrefix + "sdp"
+	wsEventError            = wsEvPrefix + "error"
+	wsEventUserDisconnected = wsEvPrefix + "user_disconnected"
 )
 
 var wsReconnectionTimeout = 30 * time.Second
@@ -152,6 +153,20 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 			err := fmt.Errorf("ws error: %s", errMsg)
 			c.emit(ErrorEvent, err)
 			return err
+		case wsEventUserDisconnected:
+			sessionID, _ := ev.GetData()["sessionID"].(string)
+			if sessionID == "" {
+				return fmt.Errorf("missing sessionID from disconnected event")
+			}
+			c.mut.Lock()
+			if rx := c.receivers[sessionID]; rx != nil {
+				log.Printf("stopping receiver for disconnected session %q", sessionID)
+				if err := rx.Stop(); err != nil {
+					log.Printf("failed to stop receiver for session %q: %s", sessionID, err)
+				}
+				delete(c.receivers, sessionID)
+			}
+			c.mut.Unlock()
 		default:
 		}
 	case ws.BinaryMessage:

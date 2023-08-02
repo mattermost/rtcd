@@ -54,9 +54,10 @@ type Client struct {
 	currentConnID       string
 
 	// WebRTC
-	pc    *webrtc.PeerConnection
-	dc    *webrtc.DataChannel
-	iceCh chan webrtc.ICECandidateInit
+	pc        *webrtc.PeerConnection
+	dc        *webrtc.DataChannel
+	iceCh     chan webrtc.ICECandidateInit
+	receivers map[string]*webrtc.RTPReceiver
 
 	state int32
 
@@ -78,6 +79,7 @@ func New(cfg Config, opts ...Option) (*Client, error) {
 		wsCloseCh:     make(chan struct{}),
 		wsClientSeqNo: 1,
 		iceCh:         make(chan webrtc.ICECandidateInit, iceChSize),
+		receivers:     make(map[string]*webrtc.RTPReceiver),
 	}
 
 	for _, opt := range opts {

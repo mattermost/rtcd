@@ -191,7 +191,29 @@ func (c *Client) initRTCSession() error {
 	})
 
 	pc.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		log.Printf("received remote track: %v %v", track.PayloadType(), track.Codec())
+		log.Printf("received remote track: %v %v %v", track.PayloadType(), track.Codec(), track.ID())
+
+		trackType, sessionID, err := ParseTrackID(track.ID())
+		if err != nil {
+			log.Printf("failed to parse track ID: %s", err)
+			if err := receiver.Stop(); err != nil {
+				log.Printf("failed to stop receiver: %s", err)
+			}
+			return
+		}
+
+		if trackType != TrackTypeVoice {
+			// We ignore any non voice track for now.
+			log.Printf("ignoring non voice track")
+			if err := receiver.Stop(); err != nil {
+				log.Printf("failed to stop receiver: %s", err)
+			}
+			return
+		}
+
+		c.mut.Lock()
+		c.receivers[sessionID] = receiver
+		c.mut.Unlock()
 
 		// RTCP handler
 		go func(rid string) {

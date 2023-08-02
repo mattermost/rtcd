@@ -14,3 +14,8 @@ type CallReconnectMessage struct {
 	OriginalConnID string `json:"originalConnID"`
 	PrevConnID     string `json:"prevConnID"`
 }
+
+const (
+	TrackTypeVoice  = "voice"
+	TrackTypeScreen = "screen"
+)
