@@ -6,6 +6,7 @@ package client
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -35,9 +36,13 @@ const (
 	wsEventSDP              = wsEvPrefix + "sdp"
 	wsEventError            = wsEvPrefix + "error"
 	wsEventUserDisconnected = wsEvPrefix + "user_disconnected"
+	wsEventCallEnd          = wsEvPrefix + "call_end"
 )
 
-var wsReconnectionTimeout = 30 * time.Second
+var (
+	wsReconnectionTimeout = 30 * time.Second
+	errCallEnded          = errors.New("call ended")
+)
 
 func (c *Client) wsSend(ev string, msg any, binary bool) error {
 	c.mut.Lock()
@@ -167,6 +172,15 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 				delete(c.receivers, sessionID)
 			}
 			c.mut.Unlock()
+		case wsEventCallEnd:
+			channelID := ev.GetBroadcast().ChannelId
+			if channelID == "" {
+				channelID, _ = ev.GetData()["channelID"].(string)
+			}
+			if channelID == c.cfg.ChannelID {
+				log.Printf("received call end event, closing client")
+				return errCallEnded
+			}
 		default:
 		}
 	case ws.BinaryMessage:
@@ -231,6 +245,10 @@ func (c *Client) wsReader() {
 				continue
 			}
 			if err := c.handleWSMsg(msg); err != nil {
+				if errors.Is(err, errCallEnded) {
+					c.close()
+					return
+				}
 				log.Printf("failed to handle ws message: %s", err.Error())
 			}
 		case err := <-c.ws.ErrorCh():

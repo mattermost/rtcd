@@ -155,6 +155,8 @@ func (c *Client) close() {
 	if c.pc != nil {
 		if err := c.pc.Close(); err != nil {
 			log.Printf("failed to close peer connection: %s", err)
+		} else {
+			log.Printf("pc closed successfully")
 		}
 	}
 
