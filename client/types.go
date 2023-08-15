@@ -7,6 +7,7 @@ const pluginID = "com.mattermost.calls"
 
 type CallJoinMessage struct {
 	ChannelID string `json:"channelID"`
+	ContextID string `json:"contextID"`
 }
 
 type CallReconnectMessage struct {
