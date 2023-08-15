@@ -19,6 +19,9 @@ type Config struct {
 	AuthToken string
 	// ChannelID is the id of the channel to start or join a call in.
 	ChannelID string
+	// ContextID is an id used to identify bot initiated sessions (e.g.
+	// recording/transcription)
+	ContextID string
 
 	wsURL string
 }
