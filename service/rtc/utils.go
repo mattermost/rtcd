@@ -14,8 +14,31 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-func genTrackID(trackType, baseID string) string {
-	return trackType + "_" + baseID + "_" + random.NewID()[0:8]
+type trackType string
+
+const (
+	trackTypeVoice       trackType = "voice"
+	trackTypeScreen                = "screen"
+	trackTypeScreenAudio           = "screen-audio"
+)
+
+var trackTypes = map[string]trackType{
+	"voice":        trackTypeVoice,
+	"screen":       trackTypeScreen,
+	"screen-audio": trackTypeScreenAudio,
+}
+
+func genTrackID(tt trackType, baseID string) string {
+	return string(tt) + "_" + baseID + "_" + random.NewID()[0:8]
+}
+
+func isValidTrackID(trackID string) bool {
+	fields := strings.Split(trackID, "_")
+	if len(fields) != 3 {
+		return false
+	}
+
+	return trackTypes[fields[0]] != ""
 }
 
 func getTrackType(kind webrtc.RTPCodecType) string {
