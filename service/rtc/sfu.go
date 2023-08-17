@@ -63,7 +63,9 @@ const (
 )
 
 func (s *Server) initSettingEngine() (webrtc.SettingEngine, error) {
-	sEngine := webrtc.SettingEngine{}
+	sEngine := webrtc.SettingEngine{
+		LoggerFactory: s,
+	}
 	sEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
 	networkTypes := []webrtc.NetworkType{
 		webrtc.NetworkTypeUDP4,
@@ -331,6 +333,17 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				mlog.Int("ssrc", int(remoteTrack.SSRC())),
 				mlog.String("rid", remoteTrack.RID()),
 				mlog.String("sessionID", us.cfg.SessionID))
+
+			if err := receiver.Stop(); err != nil {
+				s.log.Error("failed to stop receiver",
+					mlog.Err(err),
+					mlog.String("streamID", streamID),
+					mlog.String("remoteTrackID", remoteTrack.ID()),
+					mlog.Int("ssrc", int(remoteTrack.SSRC())),
+					mlog.String("rid", remoteTrack.RID()),
+					mlog.String("sessionID", us.cfg.SessionID))
+			}
+
 			s.metrics.DecRTPTracks(us.cfg.GroupID, us.cfg.CallID, "in", getTrackType(remoteTrack.Kind()))
 		}()
 
