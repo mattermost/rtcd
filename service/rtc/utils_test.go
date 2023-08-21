@@ -104,3 +104,53 @@ func TestGenerateAddrsPairs(t *testing.T) {
 		require.Equal(t, []string{"127.0.0.1/127.0.0.1", "8.8.8.8/10.1.1.1"}, pairs)
 	})
 }
+
+func TestIsValidTrackID(t *testing.T) {
+	tcs := []struct {
+		name   string
+		input  string
+		result bool
+	}{
+		{
+			name:   "empty",
+			input:  "",
+			result: false,
+		},
+		{
+			name:   "not enough fields",
+			input:  "screen_id",
+			result: false,
+		},
+		{
+			name:   "too many fields",
+			input:  "screen_id_id_id",
+			result: false,
+		},
+		{
+			name:   "invalid track type",
+			input:  "video_id_id",
+			result: false,
+		},
+		{
+			name:   "valid screen",
+			input:  "screen_id_id",
+			result: true,
+		},
+		{
+			name:   "valid voice",
+			input:  "voice_id_id",
+			result: true,
+		},
+		{
+			name:   "valid screen audio",
+			input:  "screen-audio_id_id",
+			result: true,
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.result, isValidTrackID(tc.input))
+		})
+	}
+}

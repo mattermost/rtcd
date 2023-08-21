@@ -355,10 +355,10 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		go us.handleReceiverRTCP(receiver, remoteTrack.RID())
 
 		if trackMimeType == rtpAudioCodec.MimeType {
-			trackType := "voice"
+			trackType := trackTypeVoice
 			if streamID == screenStreamID {
 				s.log.Debug("received screen sharing audio track", mlog.String("sessionID", us.cfg.SessionID))
-				trackType = "screen-audio"
+				trackType = trackTypeScreenAudio
 			}
 
 			outAudioTrack, err := webrtc.NewTrackLocalStaticRTP(rtpAudioCodec, genTrackID(trackType, us.cfg.SessionID), random.NewID())
@@ -368,7 +368,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			}
 
 			us.mut.Lock()
-			if trackType == "voice" {
+			if trackType == trackTypeVoice {
 				us.outVoiceTrack = outAudioTrack
 				us.outVoiceTrackEnabled = true
 			} else {
@@ -435,7 +435,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					}
 				}
 
-				if trackType == "voice" {
+				if trackType == trackTypeVoice {
 					us.mut.RLock()
 					isEnabled := us.outVoiceTrackEnabled
 					us.mut.RUnlock()
@@ -460,7 +460,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 			s.log.Debug("received screen sharing stream", mlog.String("streamID", streamID), mlog.String("sessionID", us.cfg.SessionID))
 
-			outScreenTrack, err := webrtc.NewTrackLocalStaticRTP(params.RTPCodecCapability, genTrackID("screen", us.cfg.SessionID), random.NewID(), webrtc.WithRTPStreamID(remoteTrack.RID()))
+			outScreenTrack, err := webrtc.NewTrackLocalStaticRTP(params.RTPCodecCapability, genTrackID(trackTypeScreen, us.cfg.SessionID), random.NewID(), webrtc.WithRTPStreamID(remoteTrack.RID()))
 			if err != nil {
 				s.log.Error("failed to create local track",
 					mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
