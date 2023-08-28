@@ -10,7 +10,7 @@ import (
 func (c *Client) joinCall() error {
 	if err := c.wsSend(wsEventJoin, CallJoinMessage{
 		ChannelID: c.cfg.ChannelID,
-		ContextID: c.cfg.ContextID,
+		JobID:     c.cfg.JobID,
 	}, false); err != nil {
 		return fmt.Errorf("failed to send ws msg: %w", err)
 	}
