@@ -178,7 +178,7 @@ func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, <-chan cc.B
 }
 
 func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
-	s.metrics.IncRTCSessions(cfg.GroupID, cfg.CallID)
+	s.metrics.IncRTCSessions(cfg.GroupID)
 
 	iceServers := make([]webrtc.ICEServer, 0, len(s.cfg.ICEServers))
 	for _, iceCfg := range s.cfg.ICEServers {
@@ -325,7 +325,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			mlog.String("sessionID", us.cfg.SessionID),
 		)
 
-		s.metrics.IncRTPTracks(us.cfg.GroupID, us.cfg.CallID, "in", getTrackType(remoteTrack.Kind()))
+		s.metrics.IncRTPTracks(us.cfg.GroupID, "in", getTrackType(remoteTrack.Kind()))
 		defer func() {
 			s.log.Debug("exiting track handler",
 				mlog.String("streamID", streamID),
@@ -344,7 +344,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					mlog.String("sessionID", us.cfg.SessionID))
 			}
 
-			s.metrics.DecRTPTracks(us.cfg.GroupID, us.cfg.CallID, "in", getTrackType(remoteTrack.Kind()))
+			s.metrics.DecRTPTracks(us.cfg.GroupID, "in", getTrackType(remoteTrack.Kind()))
 		}()
 
 		var screenStreamID string
@@ -597,7 +597,7 @@ func (s *Server) CloseSession(sessionID string) error {
 		return nil
 	}
 
-	s.metrics.DecRTCSessions(cfg.GroupID, cfg.CallID)
+	s.metrics.DecRTCSessions(cfg.GroupID)
 
 	group := s.getGroup(cfg.GroupID)
 	if group == nil {
