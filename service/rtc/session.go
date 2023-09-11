@@ -311,7 +311,7 @@ func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) (er
 		s.mut.Unlock()
 		return fmt.Errorf("failed to add track %s: %w", track.ID(), err)
 	}
-	s.call.metrics.IncRTPTracks(s.cfg.GroupID, s.cfg.CallID, "out", getTrackType(track.Kind()))
+	s.call.metrics.IncRTPTracks(s.cfg.GroupID, "out", getTrackType(track.Kind()))
 	s.mut.Unlock()
 
 	defer func() {
@@ -325,7 +325,7 @@ func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) (er
 				mlog.String("sessionID", s.cfg.SessionID),
 				mlog.String("trackID", track.ID()))
 		} else {
-			s.call.metrics.DecRTPTracks(s.cfg.GroupID, s.cfg.CallID, "out", getTrackType(track.Kind()))
+			s.call.metrics.DecRTPTracks(s.cfg.GroupID, "out", getTrackType(track.Kind()))
 		}
 		s.mut.Unlock()
 	}()
@@ -387,7 +387,7 @@ func (s *session) removeTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) 
 		s.mut.Unlock()
 		return fmt.Errorf("failed to remove track: %w", err)
 	}
-	s.call.metrics.DecRTPTracks(s.cfg.GroupID, s.cfg.CallID, "out", getTrackType(track.Kind()))
+	s.call.metrics.DecRTPTracks(s.cfg.GroupID, "out", getTrackType(track.Kind()))
 
 	if s.screenTrackSender == sender {
 		s.screenTrackSender = nil

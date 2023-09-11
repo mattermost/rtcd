@@ -48,7 +48,7 @@ func NewMetrics(namespace string, registry *prometheus.Registry) *Metrics {
 			Name:      "rtp_tracks_total",
 			Help:      "Total number of active RTP tracks",
 		},
-		[]string{"groupID", "callID", "direction", "type"},
+		[]string{"groupID", "direction", "type"},
 	)
 	m.registry.MustRegister(m.RTPTracks)
 
@@ -59,7 +59,7 @@ func NewMetrics(namespace string, registry *prometheus.Registry) *Metrics {
 			Name:      "sessions_total",
 			Help:      "Total number of active RTC sessions",
 		},
-		[]string{"groupID", "callID"},
+		[]string{"groupID"},
 	)
 	m.registry.MustRegister(m.RTCSessions)
 
@@ -110,12 +110,12 @@ func NewMetrics(namespace string, registry *prometheus.Registry) *Metrics {
 	return &m
 }
 
-func (m *Metrics) IncRTCSessions(groupID string, callID string) {
-	m.RTCSessions.With(prometheus.Labels{"groupID": groupID, "callID": callID}).Inc()
+func (m *Metrics) IncRTCSessions(groupID string) {
+	m.RTCSessions.With(prometheus.Labels{"groupID": groupID}).Inc()
 }
 
-func (m *Metrics) DecRTCSessions(groupID string, callID string) {
-	m.RTCSessions.With(prometheus.Labels{"groupID": groupID, "callID": callID}).Dec()
+func (m *Metrics) DecRTCSessions(groupID string) {
+	m.RTCSessions.With(prometheus.Labels{"groupID": groupID}).Dec()
 }
 
 func (m *Metrics) IncRTCConnState(state string) {
@@ -126,12 +126,12 @@ func (m *Metrics) IncRTCErrors(groupID string, errType string) {
 	m.RTCErrors.With(prometheus.Labels{"type": errType, "groupID": groupID}).Inc()
 }
 
-func (m *Metrics) IncRTPTracks(groupID, callID, direction, trackType string) {
-	m.RTPTracks.With(prometheus.Labels{"groupID": groupID, "callID": callID, "direction": direction, "type": trackType}).Inc()
+func (m *Metrics) IncRTPTracks(groupID, direction, trackType string) {
+	m.RTPTracks.With(prometheus.Labels{"groupID": groupID, "direction": direction, "type": trackType}).Inc()
 }
 
-func (m *Metrics) DecRTPTracks(groupID, callID, direction, trackType string) {
-	m.RTPTracks.With(prometheus.Labels{"groupID": groupID, "callID": callID, "direction": direction, "type": trackType}).Dec()
+func (m *Metrics) DecRTPTracks(groupID, direction, trackType string) {
+	m.RTPTracks.With(prometheus.Labels{"groupID": groupID, "direction": direction, "type": trackType}).Dec()
 }
 
 func (m *Metrics) IncWSConnections(clientID string) {

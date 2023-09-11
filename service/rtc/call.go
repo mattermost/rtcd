@@ -124,7 +124,15 @@ func (c *call) handleSessionClose(us *session) {
 	defer us.mut.Unlock()
 
 	cleanUp := func(sessionID string, sender *webrtc.RTPSender, track webrtc.TrackLocal) {
-		c.metrics.DecRTPTracks(us.cfg.GroupID, us.cfg.CallID, "out", getTrackType(track.Kind()))
+		if isValidTrackID(track.ID()) {
+			c.metrics.DecRTPTracks(us.cfg.GroupID, "out", getTrackType(track.Kind()))
+		} else {
+			us.log.Warn("invalid track ID",
+				mlog.String("sessionID", sessionID),
+				mlog.String("trackID", track.ID()),
+				mlog.Any("trackKind", track.Kind()))
+		}
+
 		if err := sender.ReplaceTrack(nil); err != nil {
 			us.log.Error("failed to replace track on sender",
 				mlog.String("sessionID", sessionID),
