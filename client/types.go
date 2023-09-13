@@ -24,10 +24,15 @@ type CallJobState struct {
 }
 
 func (cjs *CallJobState) FromMap(m map[string]any) {
-	cjs.InitAt, _ = m["init_at"].(int64)
-	cjs.StartAt, _ = m["start_at"].(int64)
-	cjs.EndAt, _ = m["end_at"].(int64)
-	cjs.Err, _ = m["err"].(string)
+	initAt, _ := m["init_at"].(float64)
+	startAt, _ := m["start_at"].(float64)
+	endAt, _ := m["end_at"].(float64)
+	err, _ := m["err"].(string)
+
+	cjs.InitAt = int64(initAt)
+	cjs.StartAt = int64(startAt)
+	cjs.EndAt = int64(endAt)
+	cjs.Err = err
 }
 
 const (
