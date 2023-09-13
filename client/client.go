@@ -20,14 +20,15 @@ type EventHandler func(ctx any) error
 type EventType string
 
 const (
-	WSConnectEvent     EventType = "WSConnect"
-	WSDisconnectEvent            = "WSDisconnect"
-	WSCallJoinEvent              = "WSCallJoin"
-	RTCConnectEvent              = "RTCConnect"
-	RTCDisconnectEvent           = "RTCDisconnect"
-	RTCTrackEvent                = "RTCTrack"
-	CloseEvent                   = "Close"
-	ErrorEvent                   = "Error"
+	WSConnectEvent       EventType = "WSConnect"
+	WSDisconnectEvent              = "WSDisconnect"
+	WSCallJoinEvent                = "WSCallJoin"
+	WSCallRecordingState           = "WSCallRecordingState"
+	RTCConnectEvent                = "RTCConnect"
+	RTCDisconnectEvent             = "RTCDisconnect"
+	RTCTrackEvent                  = "RTCTrack"
+	CloseEvent                     = "Close"
+	ErrorEvent                     = "Error"
 )
 
 const (

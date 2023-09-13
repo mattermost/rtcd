@@ -28,15 +28,16 @@ const (
 )
 
 const (
-	wsEventJoin             = wsEvPrefix + "join"
-	wsEventLeave            = wsEvPrefix + "leave"
-	wsEventReconnect        = wsEvPrefix + "reconnect"
-	wsEventSignal           = wsEvPrefix + "signal"
-	wsEventICE              = wsEvPrefix + "ice"
-	wsEventSDP              = wsEvPrefix + "sdp"
-	wsEventError            = wsEvPrefix + "error"
-	wsEventUserDisconnected = wsEvPrefix + "user_disconnected"
-	wsEventCallEnd          = wsEvPrefix + "call_end"
+	wsEventJoin               = wsEvPrefix + "join"
+	wsEventLeave              = wsEvPrefix + "leave"
+	wsEventReconnect          = wsEvPrefix + "reconnect"
+	wsEventSignal             = wsEvPrefix + "signal"
+	wsEventICE                = wsEvPrefix + "ice"
+	wsEventSDP                = wsEvPrefix + "sdp"
+	wsEventError              = wsEvPrefix + "error"
+	wsEventUserLeft           = wsEvPrefix + "user_left"
+	wsEventCallEnd            = wsEvPrefix + "call_end"
+	wsEventCallRecordingState = wsEvPrefix + "call_recording_state"
 )
 
 var (
@@ -158,10 +159,10 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 			err := fmt.Errorf("ws error: %s", errMsg)
 			c.emit(ErrorEvent, err)
 			return err
-		case wsEventUserDisconnected:
-			sessionID, _ := ev.GetData()["sessionID"].(string)
+		case wsEventUserLeft:
+			sessionID, _ := ev.GetData()["session_d"].(string)
 			if sessionID == "" {
-				return fmt.Errorf("missing sessionID from disconnected event")
+				return fmt.Errorf("missing session_id from disconnected event")
 			}
 			c.mut.Lock()
 			if rx := c.receivers[sessionID]; rx != nil {
@@ -181,6 +182,14 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 				log.Printf("received call end event, closing client")
 				return errCallEnded
 			}
+		case wsEventCallRecordingState:
+			data, ok := ev.GetData()["recState"].(map[string]any)
+			if !ok {
+				return fmt.Errorf("invalid recording state")
+			}
+			var recState CallJobState
+			recState.FromMap(data)
+			c.emit(WSCallRecordingState, recState)
 		default:
 		}
 	case ws.BinaryMessage:
