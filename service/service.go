@@ -19,8 +19,8 @@ import (
 	"github.com/mattermost/rtcd/service/store"
 	"github.com/mattermost/rtcd/service/ws"
 
+	godeltaprof "github.com/grafana/pyroscope-go/godeltaprof/http/pprof"
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
-	godeltaprof "github.com/pyroscope-io/godeltaprof/http/pprof"
 )
 
 type Service struct {
