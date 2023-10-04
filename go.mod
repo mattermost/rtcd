@@ -6,6 +6,7 @@ require (
 	git.mills.io/prologic/bitcask v1.0.2
 	github.com/BurntSushi/toml v1.0.0
 	github.com/gorilla/websocket v1.5.0
+	github.com/grafana/pyroscope-go/godeltaprof v0.1.4
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/mattermost/mattermost/server/public v0.0.0-20230613002302-62a3ee8adcb5
 	github.com/pborman/uuid v1.2.1
@@ -17,7 +18,6 @@ require (
 	github.com/pion/stun v0.6.0
 	github.com/pion/webrtc/v3 v3.1.60
 	github.com/prometheus/client_golang v1.15.0
-	github.com/pyroscope-io/godeltaprof v0.1.2
 	github.com/stretchr/testify v1.8.3
 	github.com/vmihailenco/msgpack/v5 v5.3.5
 	golang.org/x/crypto v0.9.0
@@ -47,7 +47,6 @@ require (
 	github.com/pion/srtp/v2 v2.0.12 // indirect
 	github.com/pion/transport/v2 v2.2.1 // indirect
 	github.com/pion/turn/v2 v2.1.0 // indirect
-	github.com/pion/udp/v2 v2.0.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/plar/go-adaptive-radix-tree v1.0.4 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
