@@ -483,6 +483,10 @@ func TestTCPCandidates(t *testing.T) {
 
 	err = s.Start()
 	require.NoError(t, err)
+	defer func() {
+		err := s.Stop()
+		require.NoError(t, err)
+	}()
 
 	cfg := SessionConfig{
 		GroupID:   random.NewID(),
