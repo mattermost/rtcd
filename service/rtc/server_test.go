@@ -265,7 +265,7 @@ func TestInitSession(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func connectSession(t *testing.T, cfg SessionConfig, s *Server) {
+func connectSession(t *testing.T, cfg SessionConfig, s *Server, receiveCh chan Message) {
 	t.Helper()
 
 	connectCh := make(chan struct{})
@@ -323,18 +323,13 @@ func connectSession(t *testing.T, cfg SessionConfig, s *Server) {
 	require.NoError(t, err)
 
 	var connectWg sync.WaitGroup
-	iceCh := make(chan []byte, 10)
+	iceCh := make(chan []byte, 20)
 	connectWg.Add(1)
 	go func() {
 		defer connectWg.Done()
 		for {
 			select {
-			case msg := <-s.ReceiveCh():
-				if msg.SessionID != cfg.SessionID {
-					s.receiveCh <- msg
-					continue
-				}
-
+			case msg := <-receiveCh:
 				if msg.Type == ICEMessage {
 					iceCh <- msg.Data
 				} else if msg.Type == SDPMessage {
@@ -356,11 +351,17 @@ func connectSession(t *testing.T, cfg SessionConfig, s *Server) {
 				}
 			case <-connectCh:
 				return
+			case <-time.After(10 * time.Second):
+				require.FailNow(t, "timed out connecting")
 			}
 		}
 	}()
 
-	<-gatheringDoneCh
+	select {
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "timed out gathering candidates")
+	case <-gatheringDoneCh:
+	}
 	connectWg.Wait()
 }
 
@@ -393,19 +394,33 @@ func TestCalls(t *testing.T) {
 	err = s.Start()
 	require.NoError(t, err)
 
+	receiveChans := make(map[string]chan Message)
 	var sessions []SessionConfig
 	groupID := random.NewID()
 	for i := 0; i < nCalls; i++ {
 		callID := random.NewID()
 		for j := 0; j < nSessionsPerCall; j++ {
+			sessionID := random.NewID()
 			sessions = append(sessions, SessionConfig{
 				GroupID:   groupID,
 				CallID:    callID,
 				UserID:    random.NewID(),
-				SessionID: random.NewID(),
+				SessionID: sessionID,
 			})
+
+			receiveChans[sessionID] = make(chan Message, 50)
 		}
 	}
+
+	go func() {
+		for msg := range s.ReceiveCh() {
+			select {
+			case receiveChans[msg.SessionID] <- msg:
+			default:
+				require.FailNow(t, "channel is full")
+			}
+		}
+	}()
 
 	var initWg sync.WaitGroup
 	initWg.Add(len(sessions))
@@ -423,7 +438,7 @@ func TestCalls(t *testing.T) {
 	for _, cfg := range sessions {
 		go func(cfg SessionConfig) {
 			defer connectWg.Done()
-			connectSession(t, cfg, s)
+			connectSession(t, cfg, s, receiveChans[cfg.SessionID])
 		}(cfg)
 	}
 	connectWg.Wait()
