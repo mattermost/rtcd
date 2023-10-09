@@ -160,9 +160,9 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 			c.emit(ErrorEvent, err)
 			return err
 		case wsEventUserLeft:
-			sessionID, _ := ev.GetData()["session_d"].(string)
+			sessionID, _ := ev.GetData()["session_id"].(string)
 			if sessionID == "" {
-				return fmt.Errorf("missing session_id from disconnected event")
+				return fmt.Errorf("missing session_id from user_left event")
 			}
 			c.mut.Lock()
 			if rx := c.receivers[sessionID]; rx != nil {
