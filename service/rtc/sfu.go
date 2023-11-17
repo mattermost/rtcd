@@ -244,6 +244,8 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 	us.initBWEstimator(<-bwEstimatorCh)
 
 	peerConn.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		us.mut.RLock()
+		defer us.mut.RUnlock()
 		if candidate == nil {
 			return
 		}
@@ -252,6 +254,14 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			s.log.Error("failed to create ICE message", mlog.Err(err), mlog.String("sessionID", cfg.SessionID))
 			return
 		}
+
+		select {
+		case <-us.closeCh:
+			s.log.Debug("closeCh closed during ICE gathering", mlog.Any("sessionCfg", us.cfg))
+			return
+		default:
+		}
+
 		select {
 		case s.receiveCh <- msg:
 		default:
@@ -629,8 +639,10 @@ func (s *Server) CloseSession(sessionID string) error {
 	}
 	call.mut.Unlock()
 
-	us.rtcConn.Close()
+	us.mut.Lock()
 	close(us.closeCh)
+	us.mut.Unlock()
+	us.rtcConn.Close()
 
 	if us.closeCb != nil {
 		return us.closeCb()
