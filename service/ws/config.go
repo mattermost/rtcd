@@ -36,6 +36,13 @@ func (c ServerConfig) IsValid() error {
 	return nil
 }
 
+type ClientAuthType int
+
+const (
+	BasicClientAuthType ClientAuthType = iota + 1
+	BearerClientAuthType
+)
+
 type ClientConfig struct {
 	// URL specifies the WebSocket URL to connect to.
 	// Should start with either `ws://` or `wss://`.
@@ -46,6 +53,8 @@ type ClientConfig struct {
 	// AuthToken specifies the token to be used to authenticate
 	// the connection.
 	AuthToken string
+	// AuthType specifies the type of HTTP authentication to use when connecting.
+	AuthType ClientAuthType
 }
 
 func (c ClientConfig) IsValid() error {
@@ -59,6 +68,10 @@ func (c ClientConfig) IsValid() error {
 
 	if c.ConnID != "" && len(c.ConnID) != 26 {
 		return fmt.Errorf("invalid ConnID value: should be 26 characters long")
+	}
+
+	if c.AuthType != BasicClientAuthType && c.AuthType != BearerClientAuthType {
+		return fmt.Errorf("invalid AuthType value")
 	}
 
 	return nil

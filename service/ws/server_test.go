@@ -26,7 +26,8 @@ func setupClient(t *testing.T, serverAddr string, opts ...ClientOption) (*Client
 	u := url.URL{Scheme: "ws", Host: "localhost:" + port, Path: "/ws"}
 
 	cfg := ClientConfig{
-		URL: u.String(),
+		URL:      u.String(),
+		AuthType: BasicClientAuthType,
 	}
 	c, err := NewClient(cfg, opts...)
 	require.NoError(t, err)
@@ -363,7 +364,8 @@ func TestRaceReceiveClose(t *testing.T) {
 		u := url.URL{Scheme: "ws", Host: "localhost:" + port, Path: "/ws"}
 
 		cfg := ClientConfig{
-			URL: u.String(),
+			URL:      u.String(),
+			AuthType: BasicClientAuthType,
 		}
 		c, err := NewClient(cfg)
 		require.NoError(t, err)

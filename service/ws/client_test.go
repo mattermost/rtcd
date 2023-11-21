@@ -33,7 +33,8 @@ func TestNewClient(t *testing.T) {
 		u := url.URL{Scheme: "ws", Host: "localhost:" + port, Path: "/ws"}
 
 		cfg := ClientConfig{
-			URL: u.String(),
+			URL:      u.String(),
+			AuthType: BasicClientAuthType,
 		}
 		c, err := NewClient(cfg)
 		require.NoError(t, err)
@@ -71,7 +72,8 @@ func TestNewClient(t *testing.T) {
 		}
 
 		cfg := ClientConfig{
-			URL: u.String(),
+			URL:      u.String(),
+			AuthType: BasicClientAuthType,
 		}
 		c, err := NewClient(cfg, WithDialFunc(dialFn))
 		require.NoError(t, err)
@@ -111,7 +113,8 @@ func TestNewClientWithAuth(t *testing.T) {
 		u := url.URL{Scheme: "ws", Host: "localhost:" + port, Path: "/ws"}
 
 		cfg := ClientConfig{
-			URL: u.String(),
+			URL:      u.String(),
+			AuthType: BasicClientAuthType,
 		}
 		c, err := NewClient(cfg)
 		require.Error(t, err)
@@ -125,6 +128,7 @@ func TestNewClientWithAuth(t *testing.T) {
 		cfg := ClientConfig{
 			URL:       u.String(),
 			AuthToken: authToken,
+			AuthType:  BasicClientAuthType,
 		}
 		c, err := NewClient(cfg)
 		require.NoError(t, err)
@@ -159,7 +163,8 @@ func TestClientPing(t *testing.T) {
 	require.NoError(t, err)
 	u := url.URL{Scheme: "ws", Host: "localhost:" + port, Path: "/ws"}
 	cfg := ClientConfig{
-		URL: u.String(),
+		URL:      u.String(),
+		AuthType: BasicClientAuthType,
 	}
 	c, err := NewClient(cfg, withCustomPingHandler)
 	require.NoError(t, err)
@@ -180,4 +185,33 @@ func TestClientPing(t *testing.T) {
 	msg, ok = <-server.ReceiveCh()
 	require.True(t, ok)
 	require.Equal(t, CloseMessage, msg.Type)
+}
+
+func TestMultipleClose(t *testing.T) {
+	server, addr, shutdown := setupServer(t)
+	defer shutdown()
+
+	_, port, err := net.SplitHostPort(addr)
+	require.NoError(t, err)
+	u := url.URL{Scheme: "ws", Host: "localhost:" + port, Path: "/ws"}
+	cfg := ClientConfig{
+		URL:      u.String(),
+		AuthType: BasicClientAuthType,
+	}
+	c, err := NewClient(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, c)
+
+	msg, ok := <-server.ReceiveCh()
+	require.True(t, ok)
+	require.Equal(t, OpenMessage, msg.Type)
+
+	err = c.Close()
+	require.NoError(t, err)
+
+	err = c.Close()
+	require.Error(t, err)
+
+	err = c.Close()
+	require.Error(t, err)
 }

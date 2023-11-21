@@ -288,13 +288,42 @@ go-run: ## to run locally for development
 	$(AT)$(GO) run ${GO_BUILD_OPTS} ${CONFIG_APP_CODE} || ${FAIL}
 	@$(OK) running locally
 
+.PHONY: prepare-plugin
+prepare-plugin: ## prepare Calls plugin for testing
+ifeq (${CI}, true)
+	@$(INFO) preparing Calls plugin...
+	./build/test/prepare-plugin.sh && \
+	curl http://localhost:8065/plugins/com.mattermost.calls/version
+else
+	@$(INFO) skipping prepare-plugin target, not on CI
+endif
+
+.PHONY: start-mm
+start-mm: ## start MM server
+ifeq (${CI}, true)
+	@$(INFO) starting up MM server...
+	docker-compose -p mmserver -f ./build/test/docker-compose.yaml up -d
+else
+	@$(INFO) skipping start-mm target, not on CI
+endif
+
+.PHONY: stop-mm
+stop-mm: ## stop MM server
+ifeq (${CI}, true)
+	@$(INFO) stopping up MM server...
+	docker-compose -p mmserver -f ./build/test/docker-compose.yaml down
+else
+	@$(INFO) skipping stop-mm target, not on CI
+endif
+
 .PHONY: go-test
-go-test: ## to run tests
+go-test: start-mm prepare-plugin ## to run tests
 	@$(INFO) testing...
 	$(AT)$(DOCKER) run ${DOCKER_OPTS} \
 	-v $(PWD):/app -w /app \
 	-e GOCACHE="/tmp" \
 	-e CI=${CI} \
+	--network host \
 	$(DOCKER_IMAGE_GO) \
 	/bin/sh -c \
 	"cd /app && \

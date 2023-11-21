@@ -461,7 +461,7 @@ func TestCalls(t *testing.T) {
 func TestTCPCandidates(t *testing.T) {
 	log, err := logger.New(logger.Config{
 		EnableConsole: true,
-		ConsoleLevel:  "INFO",
+		ConsoleLevel:  "DEBUG",
 	})
 	require.NoError(t, err)
 	defer func() {
