@@ -18,7 +18,7 @@ docker pull mattermost/rtcd:latest
 To start `rtcd` we can run the following command:
 
 ```sh
-docker run --name rtcd -e "RTCD_LOGGER_ENABLEFILE=false" -e "RTCD_API_SECURITY_ALLOWSELFREGISTRATION=true" -p 8443:8443/udp -p 8045:8045/tcp mattermost/rtcd
+docker run --name rtcd -e "RTCD_LOGGER_ENABLEFILE=false" -e "RTCD_API_SECURITY_ALLOWSELFREGISTRATION=true" -p 8443:8443/udp -p 8443:8443/tcp -p 8045:8045/tcp mattermost/rtcd
 ```
 
 **Note**
@@ -27,7 +27,7 @@ docker run --name rtcd -e "RTCD_LOGGER_ENABLEFILE=false" -e "RTCD_API_SECURITY_A
     - `logger.enable_file` We set this to `false` to prevent warnings since the process has no permissions to write files. If a log file is needed a volume should be mounted accordingly.
     - `api.security.allow_self_registration` We set this to `true` so that clients (Mattermost instances) can automatically self register and authenticate to the service without manually having to create accounts. This is fine as long as the service is running in an internal/private network.
 - We are exposing to the host the two ports the service is listening on:
-    - `8443/udp` Is the port used to route all the calls related traffic.
+    - `8443/udp` and `8443/tcp` are the ports used to route all the calls related media traffic (i.e. voice, screen share). The first one (UDP) is preferred but the latter (TCP) can be used as a fallback.
     - `8045/tcp` Is the port used to serve the HTTP/WebSocket internal API to communicate with the Mattermost side (Calls plugin).
 
 ### Running with config file
