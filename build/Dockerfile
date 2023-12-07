@@ -1,7 +1,7 @@
 # This dockerfile is used to build Mattermost rtcd
 # A multi stage build, with golang used as a builder
 # and gcr.io/distroless/static as runner
-ARG GO_IMAGE=golang:1.19.8@sha256:dd9ad81920b63c7f9f18823d888d5fdcc7e7516086fd16654d07bc437f0e2427
+ARG GO_IMAGE
 # hadolint ignore=DL3006
 FROM ${GO_IMAGE} as builder
 
