@@ -437,6 +437,8 @@ func (s *session) signaling(offer webrtc.SessionDescription, sdpOutCh chan<- Mes
 		return err
 	}
 
+	s.log.Debug("generated answer, sending out", mlog.String("sessionID", s.cfg.SessionID))
+
 	select {
 	case sdpOutCh <- newMessage(s, SDPMessage, sdp):
 	default:
