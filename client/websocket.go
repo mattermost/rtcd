@@ -38,6 +38,7 @@ const (
 	wsEventUserLeft           = wsEvPrefix + "user_left"
 	wsEventCallEnd            = wsEvPrefix + "call_end"
 	wsEventCallRecordingState = wsEvPrefix + "call_recording_state"
+	wsEventJobStop            = wsEvPrefix + "job_stop"
 )
 
 var (
@@ -190,6 +191,9 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 			var recState CallJobState
 			recState.FromMap(data)
 			c.emit(WSCallRecordingState, recState)
+		case wsEventJobStop:
+			jobID, _ := ev.GetData()["job_id"].(string)
+			c.emit(WSJobStopEvent, jobID)
 		default:
 		}
 	case ws.BinaryMessage:
