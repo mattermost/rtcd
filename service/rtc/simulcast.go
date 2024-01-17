@@ -98,9 +98,9 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 			mlog.Int("lossRate", lossRate),
 			mlog.String("averageLoss", fmt.Sprintf("%.5f", averageLoss)),
 			mlog.String("state", state),
-			mlog.Float64("backoff", backoff.Seconds()),
-			mlog.Float64("lastLevelChange", time.Since(lastLevelChangeAt).Seconds()),
-			mlog.Float64("rateDiff", rateDiff),
+			mlog.Float("backoff", backoff.Seconds()),
+			mlog.Float("lastLevelChange", time.Since(lastLevelChangeAt).Seconds()),
+			mlog.Float("rateDiff", rateDiff),
 		)
 
 		// We want to give it some time for the rate estimation to stabilize
