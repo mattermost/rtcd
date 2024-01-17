@@ -545,8 +545,8 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 						mlog.String("sessionID", us.cfg.SessionID),
 						mlog.String("RID", rid),
 						mlog.Int("rate", rate),
-						mlog.Float64("duration", dur.Seconds()),
-						mlog.Float64("totalDuration", rm.GetSamplesDuration().Seconds()),
+						mlog.Float("duration", dur.Seconds()),
+						mlog.Float("totalDuration", rm.GetSamplesDuration().Seconds()),
 					)
 				}
 
