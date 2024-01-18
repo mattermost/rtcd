@@ -66,6 +66,7 @@ type SessionConfig struct {
 	UserID string
 	// SessionID specifies the unique identifier for the session.
 	SessionID string
+	UserAgent string
 }
 
 func (c SessionConfig) IsValid() error {

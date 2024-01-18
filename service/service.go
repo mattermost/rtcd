@@ -304,6 +304,7 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 			CallID:    callID,
 			UserID:    userID,
 			SessionID: sessionID,
+			UserAgent: data["userAgent"],
 		}
 		s.log.Debug("join message", mlog.Any("sessionCfg", cfg))
 		if err := s.rtcServer.InitSession(cfg, closeCb); err != nil {

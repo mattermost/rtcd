@@ -12,6 +12,8 @@ import (
 	"github.com/mattermost/rtcd/service/random"
 
 	"github.com/pion/webrtc/v3"
+
+	"github.com/mileusna/useragent"
 )
 
 type trackType string
@@ -30,6 +32,10 @@ var trackTypes = map[string]trackType{
 
 func genTrackID(tt trackType, baseID string) string {
 	return string(tt) + "_" + baseID + "_" + random.NewID()[0:8]
+}
+
+func getTrackIndex(mimeType, rid string) string {
+	return mimeType + "_" + rid
 }
 
 func isValidTrackID(trackID string) bool {
@@ -126,4 +132,15 @@ func generateAddrsPairs(localIPs []netip.Addr, publicAddrsMap map[netip.Addr]str
 	}
 
 	return pairs, nil
+}
+
+func userAgentSupportsCodec(ua useragent.UserAgent, mimeType string) bool {
+	switch mimeType {
+	case webrtc.MimeTypeAV1:
+		return ua.Name == "Chrome" || ua.Name == "Electron"
+	case webrtc.MimeTypeVP8:
+		return true
+	default:
+		return false
+	}
 }

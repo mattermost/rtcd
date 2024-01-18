@@ -10,6 +10,8 @@ import (
 	"github.com/pion/webrtc/v3"
 
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
+
+	"github.com/mileusna/useragent"
 )
 
 type call struct {
@@ -48,6 +50,7 @@ func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection, clo
 		screenRateMonitors: make(map[string]*RateMonitor),
 		log:                log,
 		call:               c,
+		ua:                 useragent.Parse(cfg.UserAgent),
 	}
 
 	c.sessions[cfg.SessionID] = s

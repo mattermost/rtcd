@@ -18,6 +18,8 @@ import (
 	"github.com/pion/webrtc/v3"
 
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
+
+	"github.com/mileusna/useragent"
 )
 
 const (
@@ -61,6 +63,8 @@ type session struct {
 	call *call
 
 	mut sync.RWMutex
+
+	ua useragent.UserAgent
 }
 
 func (s *Server) addSession(cfg SessionConfig, peerConn *webrtc.PeerConnection, closeCb func() error) (*session, error) {
@@ -108,13 +112,19 @@ func (s *Server) addSession(cfg SessionConfig, peerConn *webrtc.PeerConnection, 
 	return us, nil
 }
 
+func (s *session) getUserAgent() useragent.UserAgent {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+	return s.ua
+}
+
 func (s *session) getScreenStreamID() string {
 	s.mut.RLock()
 	defer s.mut.RUnlock()
 	return s.screenStreamID
 }
 
-func (s *session) getRemoteScreenTrack(rid string) *webrtc.TrackRemote {
+func (s *session) getRemoteScreenTrack(mimeType, rid string) *webrtc.TrackRemote {
 	s.mut.RLock()
 	defer s.mut.RUnlock()
 
@@ -122,7 +132,7 @@ func (s *session) getRemoteScreenTrack(rid string) *webrtc.TrackRemote {
 		rid = SimulcastLevelDefault
 	}
 
-	return s.remoteScreenTracks[rid]
+	return s.remoteScreenTracks[getTrackIndex(mimeType, rid)]
 }
 
 func (s *session) getSourceRate(rid string) int {
@@ -234,18 +244,23 @@ func (s *session) handleSenderRTCP(sender *webrtc.RTPSender) {
 					return
 				}
 
-				screenTrack := screenSession.getRemoteScreenTrack(sender.Track().RID())
-				if screenTrack == nil {
-					s.log.Error("screenTrack should not be nil", mlog.String("sessionID", s.cfg.SessionID))
-					return
+				for _, codec := range sender.GetParameters().RTPParameters.Codecs {
+					mimeType := codec.RTPCodecCapability.MimeType
+
+					screenTrack := screenSession.getRemoteScreenTrack(mimeType, sender.Track().RID())
+					if screenTrack == nil {
+						s.log.Error("screenTrack should not be nil", mlog.String("sessionID", s.cfg.SessionID))
+						return
+					}
+
+					// When a PLI is received the request is forwarded
+					// to the peer generating the track (e.g. presenter).
+					if err := screenSession.rtcConn.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(screenTrack.SSRC())}}); err != nil {
+						s.log.Error("failed to write RTCP packet", mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
+						return
+					}
 				}
 
-				// When a PLI is received the request is forwarded
-				// to the peer generating the track (e.g. presenter).
-				if err := screenSession.rtcConn.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(screenTrack.SSRC())}}); err != nil {
-					s.log.Error("failed to write RTCP packet", mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
-					return
-				}
 			}
 		}
 	}
@@ -490,4 +505,8 @@ func (s *session) clearScreenState() {
 	s.outScreenAudioTrack = nil
 	s.remoteScreenTracks = make(map[string]*webrtc.TrackRemote)
 	s.screenRateMonitors = make(map[string]*RateMonitor)
+}
+
+func (s *session) supportsCodec(mimeType string) bool {
+	return userAgentSupportsCodec(s.getUserAgent(), mimeType)
 }

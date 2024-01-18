@@ -9,6 +9,7 @@ require (
 	github.com/grafana/pyroscope-go/godeltaprof v0.1.4
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/mattermost/mattermost/server/public v0.0.12
+	github.com/mileusna/useragent v1.3.4
 	github.com/pborman/uuid v1.2.1
 	github.com/pion/ice/v2 v2.3.11
 	github.com/pion/interceptor v0.1.25
@@ -26,6 +27,8 @@ require (
 )
 
 replace github.com/pion/interceptor v0.1.25 => github.com/streamer45/interceptor v0.0.0-20231109204624-da39785ad37e
+
+replace github.com/pion/webrtc/v3 v3.2.21 => ../../pion/webrtc
 
 require (
 	github.com/abcum/lcp v0.0.0-20201209214815-7a3f3840be81 // indirect
