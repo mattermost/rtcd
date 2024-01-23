@@ -69,6 +69,20 @@ func TestServerConfigIsValid(t *testing.T) {
 		require.Equal(t, "invalid TURNConfig: invalid CredentialsExpirationMinutes value: should be less than 1 week", err.Error())
 	})
 
+	t.Run("invalid ICEHostPortOverride", func(t *testing.T) {
+		var cfg ServerConfig
+		cfg.ICEPortUDP = 8443
+		cfg.ICEPortTCP = 8443
+		cfg.ICEHostPortOverride = 45
+		err := cfg.IsValid()
+		require.Error(t, err)
+		require.Equal(t, "invalid ICEHostPortOverride value: 45 is not in allowed range [80, 49151]", err.Error())
+		cfg.ICEHostPortOverride = 65000
+		err = cfg.IsValid()
+		require.Error(t, err)
+		require.Equal(t, "invalid ICEHostPortOverride value: 65000 is not in allowed range [80, 49151]", err.Error())
+	})
+
 	t.Run("valid", func(t *testing.T) {
 		var cfg ServerConfig
 		cfg.ICEAddressUDP = "127.0.0.1"

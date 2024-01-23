@@ -52,6 +52,16 @@ enable_ipv6 = false
 # For more advanced usage this value can also be a comma separated list of
 # NAT mappings in the form of "external IP / internal IP" pairs, e.g. "8.8.8.8/10.0.2.2,8.8.4.4/10.0.2.1".
 ice_host_override = ""
+
+# An optional port number to be used as an override for host candidates in
+# place of the one used to listen on (ice_port_udp/ice_port_tcp).
+# This can be useful in case there are additional network components (e.g. NLBs)
+# in front of this service that may route the traffic through a different port.
+#
+# Note: this port will apply to both UDP and TCP host candidates.
+#
+# ice_host_port_override = 30443
+
 # A list of ICE servers (STUN/TURN) to be used by the service. It supports
 # advanced configurations.
 # Example

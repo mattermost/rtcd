@@ -22,6 +22,9 @@ type ServerConfig struct {
 	// ICEHostOverride optionally specifies an IP address (or hostname)
 	// to be used as the main host ICE candidate.
 	ICEHostOverride string `toml:"ice_host_override"`
+	// ICEHostPortOverride optionally specifies a port number to override the one
+	// used to listen on when sharing host candidates.
+	ICEHostPortOverride int `toml:"ice_host_port_override"`
 	// A list of ICE server (STUN/TURN) configurations to use.
 	ICEServers ICEServers `toml:"ice_servers"`
 	TURNConfig TURNConfig `toml:"turn"`
@@ -52,6 +55,10 @@ func (c ServerConfig) IsValid() error {
 
 	if err := c.TURNConfig.IsValid(); err != nil {
 		return fmt.Errorf("invalid TURNConfig: %w", err)
+	}
+
+	if c.ICEHostPortOverride != 0 && (c.ICEHostPortOverride < 80 || c.ICEHostPortOverride > 49151) {
+		return fmt.Errorf("invalid ICEHostPortOverride value: %d is not in allowed range [80, 49151]", c.ICEHostPortOverride)
 	}
 
 	return nil

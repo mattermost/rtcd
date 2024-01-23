@@ -249,6 +249,17 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		if candidate == nil {
 			return
 		}
+
+		if s.cfg.ICEHostPortOverride != 0 && candidate.Typ == webrtc.ICECandidateTypeHost {
+			s.log.Debug("overriding host candidate port",
+				mlog.String("sessionID", cfg.SessionID),
+				mlog.Uint("port", candidate.Port),
+				mlog.Int("override", s.cfg.ICEHostPortOverride),
+				mlog.String("addr", candidate.Address),
+				mlog.Int("protocol", candidate.Protocol))
+			candidate.Port = uint16(s.cfg.ICEHostPortOverride)
+		}
+
 		msg, err := newICEMessage(us, candidate)
 		if err != nil {
 			s.log.Error("failed to create ICE message", mlog.Err(err), mlog.String("sessionID", cfg.SessionID))
