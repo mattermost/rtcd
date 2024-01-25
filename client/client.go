@@ -140,6 +140,11 @@ func (c *Client) On(eventType EventType, h EventHandler) {
 	c.handlers[eventType] = h
 }
 
+// Send sends a websocket event to the server
+func (c *Client) Send(ev string, msg any, binary bool) error {
+	return c.wsSend(ev, msg, binary)
+}
+
 func (c *Client) emit(eventType EventType, ctx any) {
 	c.mut.RLock()
 	handler := c.handlers[eventType]
