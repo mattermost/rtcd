@@ -140,8 +140,8 @@ func (c *Client) On(eventType EventType, h EventHandler) {
 	c.handlers[eventType] = h
 }
 
-// WsSend sends a websocket event to the server
-func (c *Client) WsSend(ev string, msg any, binary bool) error {
+// SendWs sends a websocket event to the server
+func (c *Client) SendWs(ev string, msg any, binary bool) error {
 	return c.wsSend(ev, msg, binary)
 }
 
