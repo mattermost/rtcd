@@ -20,7 +20,7 @@ services:
       retries: 3
 
   server:
-    image: "mattermostdevelopment/mm-ee-test:master"
+    image: "mattermostdevelopment/mattermost-enterprise-edition:master"
     restart: always
     network_mode: "host"
     environment:
