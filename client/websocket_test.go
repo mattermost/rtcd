@@ -30,7 +30,7 @@ func TestClientWSDisconnect(t *testing.T) {
 
 	select {
 	case <-connectCh:
-	case <-time.After(2 * time.Second):
+	case <-time.After(waitTimeout):
 		require.Fail(t, "timed out waiting for connect event")
 	}
 
@@ -39,7 +39,7 @@ func TestClientWSDisconnect(t *testing.T) {
 
 	select {
 	case <-disconnectCh:
-	case <-time.After(2 * time.Second):
+	case <-time.After(waitTimeout):
 		require.Fail(t, "timed out waiting for disconnect event")
 	}
 
@@ -67,7 +67,7 @@ func TestClientWSReconnect(t *testing.T) {
 
 	select {
 	case <-connectCh:
-	case <-time.After(2 * time.Second):
+	case <-time.After(waitTimeout):
 		require.Fail(t, "timed out waiting for connect event")
 	}
 
@@ -76,13 +76,13 @@ func TestClientWSReconnect(t *testing.T) {
 
 	select {
 	case <-disconnectCh:
-	case <-time.After(2 * time.Second):
+	case <-time.After(waitTimeout):
 		require.Fail(t, "timed out waiting for disconnect event")
 	}
 
 	select {
 	case <-connectCh:
-	case <-time.After(2 * time.Second):
+	case <-time.After(waitTimeout):
 		require.Fail(t, "timed out waiting for reconnect event")
 	}
 
@@ -106,7 +106,7 @@ func TestClientWSReconnectTimeout(t *testing.T) {
 
 	select {
 	case <-connectCh:
-	case <-time.After(2 * time.Second):
+	case <-time.After(waitTimeout):
 		require.Fail(t, "timed out waiting for connect event")
 	}
 

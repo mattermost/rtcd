@@ -292,8 +292,7 @@ go-run: ## to run locally for development
 prepare-plugin: ## prepare Calls plugin for testing
 ifeq (${CI}, true)
 	@$(INFO) preparing Calls plugin...
-	./build/test/prepare-plugin.sh && \
-	curl http://localhost:8065/plugins/com.mattermost.calls/version
+	./build/test/prepare-plugin.sh
 else
 	@$(INFO) skipping prepare-plugin target, not on CI
 endif
