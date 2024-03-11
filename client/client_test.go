@@ -32,7 +32,7 @@ func TestClientConnect(t *testing.T) {
 
 	select {
 	case <-connectCh:
-	case <-time.After(2 * time.Second):
+	case <-time.After(waitTimeout):
 		require.Fail(t, "timed out waiting for connect event")
 	}
 
@@ -41,7 +41,7 @@ func TestClientConnect(t *testing.T) {
 
 	select {
 	case <-closeCh:
-	case <-time.After(2 * time.Second):
+	case <-time.After(waitTimeout):
 		require.Fail(t, "timed out waiting for close event")
 	}
 }
@@ -160,13 +160,13 @@ func TestClientJoinCall(t *testing.T) {
 
 		select {
 		case <-connectCh:
-		case <-time.After(2 * time.Second):
+		case <-time.After(waitTimeout):
 			require.Fail(t, "timed out waiting for connect event")
 		}
 
 		select {
 		case <-errorCh:
-		case <-time.After(2 * time.Second):
+		case <-time.After(waitTimeout):
 			require.Fail(t, "timed out waiting for error event")
 		}
 
@@ -175,7 +175,7 @@ func TestClientJoinCall(t *testing.T) {
 
 		select {
 		case <-closeCh:
-		case <-time.After(2 * time.Second):
+		case <-time.After(waitTimeout):
 			require.Fail(t, "timed out waiting for close event")
 		}
 	})
@@ -206,13 +206,13 @@ func TestClientJoinCall(t *testing.T) {
 
 		select {
 		case <-connectCh:
-		case <-time.After(2 * time.Second):
+		case <-time.After(waitTimeout):
 			require.Fail(t, "timed out waiting for connect event")
 		}
 
 		select {
 		case <-joinCh:
-		case <-time.After(2 * time.Second):
+		case <-time.After(waitTimeout):
 			require.Fail(t, "timed out waiting for join event")
 		}
 
@@ -221,7 +221,7 @@ func TestClientJoinCall(t *testing.T) {
 
 		select {
 		case <-closeCh:
-		case <-time.After(2 * time.Second):
+		case <-time.After(waitTimeout):
 			require.Fail(t, "timed out waiting for close event")
 		}
 	})
