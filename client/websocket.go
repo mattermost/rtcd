@@ -28,17 +28,17 @@ const (
 )
 
 const (
-	wsEventJoin               = wsEvPrefix + "join"
-	wsEventLeave              = wsEvPrefix + "leave"
-	wsEventReconnect          = wsEvPrefix + "reconnect"
-	wsEventSignal             = wsEvPrefix + "signal"
-	wsEventICE                = wsEvPrefix + "ice"
-	wsEventSDP                = wsEvPrefix + "sdp"
-	wsEventError              = wsEvPrefix + "error"
-	wsEventUserLeft           = wsEvPrefix + "user_left"
-	wsEventCallEnd            = wsEvPrefix + "call_end"
-	wsEventCallRecordingState = wsEvPrefix + "call_recording_state"
-	wsEventJobStop            = wsEvPrefix + "job_stop"
+	wsEventJoin         = wsEvPrefix + "join"
+	wsEventLeave        = wsEvPrefix + "leave"
+	wsEventReconnect    = wsEvPrefix + "reconnect"
+	wsEventSignal       = wsEvPrefix + "signal"
+	wsEventICE          = wsEvPrefix + "ice"
+	wsEventSDP          = wsEvPrefix + "sdp"
+	wsEventError        = wsEvPrefix + "error"
+	wsEventUserLeft     = wsEvPrefix + "user_left"
+	wsEventCallEnd      = wsEvPrefix + "call_end"
+	wsEventCallJobState = wsEvPrefix + "call_job_state"
+	wsEventJobStop      = wsEvPrefix + "job_stop"
 )
 
 var (
@@ -183,10 +183,17 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 				log.Printf("received call end event, closing client")
 				return errCallEnded
 			}
-		case wsEventCallRecordingState:
+		case wsEventCallJobState:
+			jobType, ok := ev.GetData()["type"].(string)
+			if !ok {
+				return fmt.Errorf("invalid type for job state event")
+			}
 			data, ok := ev.GetData()["jobState"].(map[string]any)
 			if !ok {
 				return fmt.Errorf("invalid recording state")
+			}
+			if jobType != "job_state_recording" {
+				return nil
 			}
 			var recState CallJobState
 			recState.FromMap(data)
