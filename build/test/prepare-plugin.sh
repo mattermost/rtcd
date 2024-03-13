@@ -31,4 +31,10 @@ docker exec mmserver_server_1 bin/mmctl --local config patch config_patch.json &
 docker cp ${PLUGIN_BUILD_PATH} mmserver_server_1:/mattermost && \
 docker exec mmserver_server_1 bin/mmctl --local plugin delete ${PLUGIN_ID} && \
 docker exec mmserver_server_1 bin/mmctl --local plugin add ${PLUGIN_FILE_NAME} && \
-docker exec mmserver_server_1 bin/mmctl --local plugin enable ${PLUGIN_ID}
+docker exec mmserver_server_1 bin/mmctl --local plugin enable ${PLUGIN_ID} && \
+sleep 5s
+
+STATUS_CODE=$(curl --silent --head http://localhost:8065/plugins/com.mattermost.calls/version | awk '/^HTTP/{print $2}')
+if [ "$STATUS_CODE" != "200" ]; then
+  echo "Status code check for plugin failed" && docker logs mmserver_server_1 && exit 1
+fi

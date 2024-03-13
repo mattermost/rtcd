@@ -6,7 +6,7 @@ require (
 	git.mills.io/prologic/bitcask v1.0.2
 	github.com/BurntSushi/toml v1.0.0
 	github.com/gorilla/websocket v1.5.1
-	github.com/grafana/pyroscope-go/godeltaprof v0.1.4
+	github.com/grafana/pyroscope-go/godeltaprof v0.1.7
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/mattermost/mattermost/server/public v0.0.12
 	github.com/pborman/uuid v1.2.1
@@ -39,6 +39,7 @@ require (
 	github.com/gofrs/flock v0.8.0 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/uuid v1.5.0 // indirect
+	github.com/klauspost/compress v1.17.7 // indirect
 	github.com/mattermost/go-i18n v1.11.1-0.20211013152124-5c415071e404 // indirect
 	github.com/mattermost/ldap v0.0.0-20231116144001-0f480c025956 // indirect
 	github.com/mattermost/logr/v2 v2.0.21 // indirect

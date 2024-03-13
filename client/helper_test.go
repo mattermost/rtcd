@@ -35,12 +35,13 @@ type TestHelper struct {
 }
 
 const (
-	adminName = "sysadmin"
-	adminPass = "Sys@dmin-sample1"
-	userName  = "calls-user0"
-	userPass  = "U$er-sample1"
-	teamName  = "calls"
-	nChannels = 2
+	adminName   = "sysadmin"
+	adminPass   = "Sys@dmin-sample1"
+	userName    = "calls-user0"
+	userPass    = "U$er-sample1"
+	teamName    = "calls"
+	nChannels   = 2
+	waitTimeout = 5 * time.Second
 )
 
 func (th *TestHelper) transmitAudioTrack(c *Client) {
