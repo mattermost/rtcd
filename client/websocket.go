@@ -184,7 +184,7 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 				return errCallEnded
 			}
 		case wsEventCallRecordingState:
-			data, ok := ev.GetData()["recState"].(map[string]any)
+			data, ok := ev.GetData()["jobState"].(map[string]any)
 			if !ok {
 				return fmt.Errorf("invalid recording state")
 			}
