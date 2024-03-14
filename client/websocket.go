@@ -184,19 +184,15 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 				return errCallEnded
 			}
 		case wsEventCallJobState:
-			jobType, ok := ev.GetData()["type"].(string)
-			if !ok {
-				return fmt.Errorf("invalid type for job state event")
-			}
 			data, ok := ev.GetData()["jobState"].(map[string]any)
 			if !ok {
 				return fmt.Errorf("invalid recording state")
 			}
-			if jobType != "job_state_recording" {
-				return nil
-			}
 			var recState CallJobState
 			recState.FromMap(data)
+			if recState.Type != "recording" {
+				return nil
+			}
 			c.emit(WSCallRecordingState, recState)
 		case wsEventJobStop:
 			jobID, _ := ev.GetData()["job_id"].(string)
