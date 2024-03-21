@@ -101,7 +101,7 @@ func (c *Client) handleWSEventSignal(evData map[string]any) error {
 			return fmt.Errorf("failed to encode answer: %w", err)
 		}
 		w.Close()
-		return c.wsSend(wsEventSDP, map[string]any{
+		return c.SendWS(wsEventSDP, map[string]any{
 			"data": sdpData.Bytes(),
 		}, true)
 	case signalMsgAnswer:
@@ -158,7 +158,7 @@ func (c *Client) initRTCSession() error {
 			return
 		}
 
-		if err := c.wsSend(wsEventICE, map[string]any{
+		if err := c.SendWS(wsEventICE, map[string]any{
 			"data": string(data),
 		}, true); err != nil {
 			log.Printf(err.Error())
@@ -258,7 +258,7 @@ func (c *Client) initRTCSession() error {
 			return
 		}
 		w.Close()
-		err = c.wsSend(wsEventSDP, map[string]any{
+		err = c.SendWS(wsEventSDP, map[string]any{
 			"data": sdpData.Bytes(),
 		}, true)
 		if err != nil {

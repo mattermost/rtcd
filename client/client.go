@@ -24,6 +24,7 @@ const (
 	WSDisconnectEvent              = "WSDisconnect"
 	WSCallJoinEvent                = "WSCallJoin"
 	WSCallRecordingState           = "WSCallRecordingState"
+	WSCallJobState                 = "WSCallJobState"
 	WSJobStopEvent                 = "WSStopJobEvent"
 	RTCConnectEvent                = "RTCConnect"
 	RTCDisconnectEvent             = "RTCDisconnect"
@@ -138,11 +139,6 @@ func (c *Client) On(eventType EventType, h EventHandler) {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 	c.handlers[eventType] = h
-}
-
-// SendWs sends a websocket event to the server
-func (c *Client) SendWs(ev string, msg any, binary bool) error {
-	return c.wsSend(ev, msg, binary)
 }
 
 func (c *Client) emit(eventType EventType, ctx any) {

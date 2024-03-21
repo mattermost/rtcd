@@ -46,7 +46,7 @@ var (
 	errCallEnded          = errors.New("call ended")
 )
 
-func (c *Client) wsSend(ev string, msg any, binary bool) error {
+func (c *Client) SendWS(ev string, msg any, binary bool) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
@@ -190,6 +190,10 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 			}
 			var recState CallJobState
 			recState.FromMap(data)
+			c.emit(WSCallJobState, recState)
+
+			// Below is deprecated as of v0.14.0, kept for compatibility with earlier versions
+			// of transcriber
 			if recState.Type != "recording" {
 				return nil
 			}
