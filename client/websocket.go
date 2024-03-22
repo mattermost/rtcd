@@ -188,16 +188,15 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 			if !ok {
 				return fmt.Errorf("invalid recording state")
 			}
-			var recState CallJobState
-			recState.FromMap(data)
-			c.emit(WSCallJobState, recState)
+			var jobState CallJobState
+			jobState.FromMap(data)
+			c.emit(WSCallJobState, jobState)
 
 			// Below is deprecated as of v0.14.0, kept for compatibility with earlier versions
 			// of transcriber
-			if recState.Type != "recording" {
-				return nil
+			if jobState.Type == "recording" {
+				c.emit(WSCallRecordingState, jobState)
 			}
-			c.emit(WSCallRecordingState, recState)
 		case wsEventJobStop:
 			jobID, _ := ev.GetData()["job_id"].(string)
 			c.emit(WSJobStopEvent, jobID)
