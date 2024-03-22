@@ -17,6 +17,7 @@ type CallReconnectMessage struct {
 }
 
 type CallJobState struct {
+	Type    string `json:"type"`
 	InitAt  int64  `json:"init_at"`
 	StartAt int64  `json:"start_at"`
 	EndAt   int64  `json:"end_at"`
@@ -24,11 +25,13 @@ type CallJobState struct {
 }
 
 func (cjs *CallJobState) FromMap(m map[string]any) {
+	jobType, _ := m["type"].(string)
 	initAt, _ := m["init_at"].(float64)
 	startAt, _ := m["start_at"].(float64)
 	endAt, _ := m["end_at"].(float64)
 	err, _ := m["err"].(string)
 
+	cjs.Type = jobType
 	cjs.InitAt = int64(initAt)
 	cjs.StartAt = int64(startAt)
 	cjs.EndAt = int64(endAt)

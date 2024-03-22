@@ -24,6 +24,7 @@ const (
 	WSDisconnectEvent              = "WSDisconnect"
 	WSCallJoinEvent                = "WSCallJoin"
 	WSCallRecordingState           = "WSCallRecordingState"
+	WSCallJobState                 = "WSCallJobState"
 	WSJobStopEvent                 = "WSStopJobEvent"
 	RTCConnectEvent                = "RTCConnect"
 	RTCDisconnectEvent             = "RTCDisconnect"

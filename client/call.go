@@ -8,7 +8,7 @@ import (
 )
 
 func (c *Client) joinCall() error {
-	if err := c.wsSend(wsEventJoin, CallJoinMessage{
+	if err := c.SendWS(wsEventJoin, CallJoinMessage{
 		ChannelID: c.cfg.ChannelID,
 		JobID:     c.cfg.JobID,
 	}, false); err != nil {
@@ -19,7 +19,7 @@ func (c *Client) joinCall() error {
 }
 
 func (c *Client) leaveCall() error {
-	if err := c.wsSend(wsEventLeave, nil, false); err != nil {
+	if err := c.SendWS(wsEventLeave, nil, false); err != nil {
 		return fmt.Errorf("failed to send ws msg: %w", err)
 	}
 
@@ -27,7 +27,7 @@ func (c *Client) leaveCall() error {
 }
 
 func (c *Client) reconnectCall() error {
-	if err := c.wsSend(wsEventReconnect, CallReconnectMessage{
+	if err := c.SendWS(wsEventReconnect, CallReconnectMessage{
 		ChannelID:      c.cfg.ChannelID,
 		OriginalConnID: c.originalConnID,
 		PrevConnID:     c.currentConnID,

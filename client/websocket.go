@@ -28,17 +28,17 @@ const (
 )
 
 const (
-	wsEventJoin               = wsEvPrefix + "join"
-	wsEventLeave              = wsEvPrefix + "leave"
-	wsEventReconnect          = wsEvPrefix + "reconnect"
-	wsEventSignal             = wsEvPrefix + "signal"
-	wsEventICE                = wsEvPrefix + "ice"
-	wsEventSDP                = wsEvPrefix + "sdp"
-	wsEventError              = wsEvPrefix + "error"
-	wsEventUserLeft           = wsEvPrefix + "user_left"
-	wsEventCallEnd            = wsEvPrefix + "call_end"
-	wsEventCallRecordingState = wsEvPrefix + "call_recording_state"
-	wsEventJobStop            = wsEvPrefix + "job_stop"
+	wsEventJoin         = wsEvPrefix + "join"
+	wsEventLeave        = wsEvPrefix + "leave"
+	wsEventReconnect    = wsEvPrefix + "reconnect"
+	wsEventSignal       = wsEvPrefix + "signal"
+	wsEventICE          = wsEvPrefix + "ice"
+	wsEventSDP          = wsEvPrefix + "sdp"
+	wsEventError        = wsEvPrefix + "error"
+	wsEventUserLeft     = wsEvPrefix + "user_left"
+	wsEventCallEnd      = wsEvPrefix + "call_end"
+	wsEventCallJobState = wsEvPrefix + "call_job_state"
+	wsEventJobStop      = wsEvPrefix + "job_stop"
 )
 
 var (
@@ -46,7 +46,7 @@ var (
 	errCallEnded          = errors.New("call ended")
 )
 
-func (c *Client) wsSend(ev string, msg any, binary bool) error {
+func (c *Client) SendWS(ev string, msg any, binary bool) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
@@ -183,14 +183,20 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 				log.Printf("received call end event, closing client")
 				return errCallEnded
 			}
-		case wsEventCallRecordingState:
-			data, ok := ev.GetData()["recState"].(map[string]any)
+		case wsEventCallJobState:
+			data, ok := ev.GetData()["jobState"].(map[string]any)
 			if !ok {
 				return fmt.Errorf("invalid recording state")
 			}
-			var recState CallJobState
-			recState.FromMap(data)
-			c.emit(WSCallRecordingState, recState)
+			var jobState CallJobState
+			jobState.FromMap(data)
+			c.emit(WSCallJobState, jobState)
+
+			// Below is deprecated as of v0.14.0, kept for compatibility with earlier versions
+			// of transcriber
+			if jobState.Type == "recording" {
+				c.emit(WSCallRecordingState, jobState)
+			}
 		case wsEventJobStop:
 			jobID, _ := ev.GetData()["job_id"].(string)
 			c.emit(WSJobStopEvent, jobID)
