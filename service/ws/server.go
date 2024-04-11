@@ -155,7 +155,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.log.Error("failed to set read deadline", mlog.Err(err))
 		return
 	}
-	ws.SetPongHandler(func(appData string) error {
+	ws.SetPongHandler(func(_ string) error {
 		return ws.SetReadDeadline(time.Now().Add(2 * s.cfg.PingInterval))
 	})
 

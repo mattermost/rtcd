@@ -55,7 +55,7 @@ func TestNewMultiConn(t *testing.T) {
 
 func TestMultiConnReadWrite(t *testing.T) {
 	listenConfig := net.ListenConfig{
-		Control: func(network, address string, c syscall.RawConn) error {
+		Control: func(_, _ string, c syscall.RawConn) error {
 			return c.Control(func(fd uintptr) {
 				err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEADDR, 1)
 				require.NoError(t, err)

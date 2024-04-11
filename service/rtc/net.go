@@ -76,7 +76,7 @@ func createUDPConnsForAddr(log mlog.LoggerIFace, network, listenAddress string) 
 
 	for i := 0; i < runtime.NumCPU(); i++ {
 		listenConfig := net.ListenConfig{
-			Control: func(network, address string, c syscall.RawConn) error {
+			Control: func(_, _ string, c syscall.RawConn) error {
 				return c.Control(func(fd uintptr) {
 					err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEADDR, 1)
 					if err != nil {
