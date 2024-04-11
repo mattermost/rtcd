@@ -25,7 +25,7 @@ require (
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 )
 
-replace github.com/pion/interceptor v0.1.28 => github.com/streamer45/interceptor v0.0.0-20240411183850-febf3ca5abce
+replace github.com/pion/interceptor v0.1.28 => github.com/streamer45/interceptor v0.0.0-20240411210059-c7d42d2dafc1
 
 require (
 	github.com/abcum/lcp v0.0.0-20201209214815-7a3f3840be81 // indirect
