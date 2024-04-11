@@ -249,7 +249,7 @@ func TestClientConnect(t *testing.T) {
 	})
 
 	t.Run("custom dialing function", func(t *testing.T) {
-		dialFn := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		dialFn := func(_ context.Context, _, _ string) (net.Conn, error) {
 			return nil, fmt.Errorf("test dial failure")
 		}
 		c, err := NewClient(ClientConfig{URL: th.apiURL}, WithDialFunc(dialFn))
@@ -713,7 +713,7 @@ func TestReconnectClientHerd(t *testing.T) {
 		go func(clientID string) {
 			connections := 0
 
-			reconnectCb := func(c *Client, attempt int) error {
+			reconnectCb := func(c *Client, _ int) error {
 				err := c.Register(clientID, authKey)
 				require.NoError(t, err)
 				return nil
@@ -742,7 +742,6 @@ func TestReconnectClientHerd(t *testing.T) {
 					}
 				}
 			}
-
 		}(fmt.Sprintf("client%d", i))
 	}
 

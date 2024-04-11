@@ -4,13 +4,14 @@
 package service
 
 import (
+	"net"
+	"os"
+	"testing"
+
 	"github.com/mattermost/rtcd/logger"
 	"github.com/mattermost/rtcd/service/api"
 	"github.com/mattermost/rtcd/service/auth"
 	"github.com/mattermost/rtcd/service/rtc"
-	"net"
-	"os"
-	"testing"
 
 	"github.com/stretchr/testify/require"
 )

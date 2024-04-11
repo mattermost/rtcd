@@ -161,7 +161,7 @@ func (c *Client) initRTCSession() error {
 		if err := c.SendWS(wsEventICE, map[string]any{
 			"data": string(data),
 		}, true); err != nil {
-			log.Printf(err.Error())
+			log.Print(err.Error())
 		}
 	})
 
@@ -262,7 +262,7 @@ func (c *Client) initRTCSession() error {
 			"data": sdpData.Bytes(),
 		}, true)
 		if err != nil {
-			log.Printf(err.Error())
+			log.Print(err.Error())
 			return
 		}
 	})

@@ -5,9 +5,10 @@ package service
 
 import (
 	"fmt"
-	"github.com/mattermost/rtcd/service/auth"
 	"net/url"
 	"time"
+
+	"github.com/mattermost/rtcd/service/auth"
 
 	"github.com/mattermost/rtcd/logger"
 	"github.com/mattermost/rtcd/service/api"

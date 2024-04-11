@@ -81,7 +81,7 @@ func (mc *multiConn) reader(conn net.PacketConn) {
 func (mc *multiConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	res := <-mc.readResultCh
 	copy(p, res.buf[:res.n])
-	mc.bufPool.Put(res.buf)
+	mc.bufPool.Put(res.buf) // nolint:staticcheck
 	return res.n, res.addr, res.err
 }
 

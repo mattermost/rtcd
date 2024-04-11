@@ -21,16 +21,16 @@ type EventType string
 
 const (
 	WSConnectEvent       EventType = "WSConnect"
-	WSDisconnectEvent              = "WSDisconnect"
-	WSCallJoinEvent                = "WSCallJoin"
-	WSCallRecordingState           = "WSCallRecordingState"
-	WSCallJobState                 = "WSCallJobState"
-	WSJobStopEvent                 = "WSStopJobEvent"
-	RTCConnectEvent                = "RTCConnect"
-	RTCDisconnectEvent             = "RTCDisconnect"
-	RTCTrackEvent                  = "RTCTrack"
-	CloseEvent                     = "Close"
-	ErrorEvent                     = "Error"
+	WSDisconnectEvent    EventType = "WSDisconnect"
+	WSCallJoinEvent      EventType = "WSCallJoin"
+	WSCallRecordingState EventType = "WSCallRecordingState"
+	WSCallJobState       EventType = "WSCallJobState"
+	WSJobStopEvent       EventType = "WSStopJobEvent"
+	RTCConnectEvent      EventType = "RTCConnect"
+	RTCDisconnectEvent   EventType = "RTCDisconnect"
+	RTCTrackEvent        EventType = "RTCTrack"
+	CloseEvent           EventType = "Close"
+	ErrorEvent           EventType = "Error"
 )
 
 const (

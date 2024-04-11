@@ -166,7 +166,7 @@ func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, <-chan cc.B
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to init congestion controller: %w", err)
 	}
-	congestionController.OnNewPeerConnection(func(id string, estimator cc.BandwidthEstimator) {
+	congestionController.OnNewPeerConnection(func(_ string, estimator cc.BandwidthEstimator) {
 		bwEstimatorCh <- estimator
 	})
 	i.Add(congestionController)
