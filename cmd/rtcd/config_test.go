@@ -4,7 +4,6 @@
 package main
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -17,7 +16,7 @@ func TestLoadConfig(t *testing.T) {
 	var defaultCfg service.Config
 	defaultCfg.SetDefaults()
 
-	t.Run("non existant file", func(t *testing.T) {
+	t.Run("non existent file", func(t *testing.T) {
 		cfg, err := loadConfig("")
 		require.NoError(t, err)
 		require.NotEmpty(t, cfg)
@@ -25,7 +24,7 @@ func TestLoadConfig(t *testing.T) {
 	})
 
 	t.Run("empty file", func(t *testing.T) {
-		file, err := ioutil.TempFile("", "config.toml")
+		file, err := os.CreateTemp("", "config.toml")
 		require.NoError(t, err)
 		require.NotNil(t, file)
 		defer file.Close()
@@ -37,7 +36,7 @@ func TestLoadConfig(t *testing.T) {
 	})
 
 	t.Run("invalid config", func(t *testing.T) {
-		file, err := ioutil.TempFile("", "config.toml")
+		file, err := os.CreateTemp("", "config.toml")
 		require.NoError(t, err)
 		require.NotNil(t, file)
 		defer file.Close()

@@ -18,8 +18,8 @@ type trackType string
 
 const (
 	trackTypeVoice       trackType = "voice"
-	trackTypeScreen                = "screen"
-	trackTypeScreenAudio           = "screen-audio"
+	trackTypeScreen      trackType = "screen"
+	trackTypeScreenAudio trackType = "screen-audio"
 )
 
 var trackTypes = map[string]trackType{

@@ -742,7 +742,6 @@ func TestReconnectClientHerd(t *testing.T) {
 					}
 				}
 			}
-
 		}(fmt.Sprintf("client%d", i))
 	}
 

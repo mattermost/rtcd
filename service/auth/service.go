@@ -66,7 +66,7 @@ func (s *Service) Register(id, key string) error {
 
 	if _, err := s.store.Get(id); err == nil {
 		return errors.New("registration failed: already registered")
-	} else if err != nil && !errors.Is(err, store.ErrNotFound) {
+	} else if !errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("registration failed: %w", err)
 	}
 

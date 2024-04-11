@@ -4,9 +4,10 @@
 package auth
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewSessionCache(t *testing.T) {
@@ -99,7 +100,6 @@ func TestPut(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, tc.sessionMap, 1)
 	})
-
 }
 
 func TestDelete(t *testing.T) {

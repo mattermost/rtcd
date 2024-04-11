@@ -233,7 +233,7 @@ func (c *Client) wsOpen() error {
 func (c *Client) wsReader() {
 	defer func() {
 		if err := c.leaveCall(); err != nil {
-			log.Printf(err.Error())
+			log.Print(err.Error())
 		}
 		close(c.wsDoneCh)
 	}()
@@ -258,7 +258,7 @@ func (c *Client) wsReader() {
 				log.Printf("ws disconnected, attemping reconnection in %v...", c.wsReconnectInterval)
 				time.Sleep(c.wsReconnectInterval)
 				if err := c.wsOpen(); err != nil {
-					log.Printf(err.Error())
+					log.Print(err.Error())
 				}
 
 				continue

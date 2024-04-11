@@ -20,7 +20,6 @@ func TestNewMultiConn(t *testing.T) {
 		require.Error(t, err)
 		require.Equal(t, "conns should not be empty", err.Error())
 		require.Nil(t, mc)
-
 	})
 
 	t.Run("error - empty conns", func(t *testing.T) {
