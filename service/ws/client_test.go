@@ -67,7 +67,7 @@ func TestNewClient(t *testing.T) {
 			return (&net.Dialer{}).DialContext(ctx, network, addr)
 		}
 
-		dialErrorFn := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		dialErrorFn := func(_ context.Context, _, _ string) (net.Conn, error) {
 			return nil, fmt.Errorf("dial error test")
 		}
 
@@ -94,7 +94,7 @@ func TestNewClientWithAuth(t *testing.T) {
 	authToken := random.NewID()
 	clientID := random.NewID()
 
-	authCb := func(w http.ResponseWriter, r *http.Request) (string, int, error) {
+	authCb := func(_ http.ResponseWriter, r *http.Request) (string, int, error) {
 		authHeader := r.Header.Get("Authorization")
 		require.NotEmpty(t, authHeader)
 		if fields := strings.Fields(authHeader); len(fields) > 1 && fields[1] == authToken {

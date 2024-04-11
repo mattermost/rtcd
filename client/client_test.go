@@ -199,7 +199,7 @@ func TestClientJoinCall(t *testing.T) {
 		})
 
 		joinCh := make(chan struct{})
-		th.userClient.On(WSCallJoinEvent, func(err any) error {
+		th.userClient.On(WSCallJoinEvent, func(_ any) error {
 			close(joinCh)
 			return nil
 		})

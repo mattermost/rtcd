@@ -16,7 +16,7 @@ func TestNewMonitor(t *testing.T) {
 	defaultCfg := (MonitorConfig{}).SetDefaults()
 
 	t.Run("invalid config", func(t *testing.T) {
-		m, err := NewMonitor(MonitorConfig{}, func(voice bool) {})
+		m, err := NewMonitor(MonitorConfig{}, func(_ bool) {})
 		require.EqualError(t, err, "invalid config: VoiceLevelsSampleSize should be > 0")
 		require.Nil(t, m)
 	})
@@ -28,7 +28,7 @@ func TestNewMonitor(t *testing.T) {
 	})
 
 	t.Run("default config", func(t *testing.T) {
-		m, err := NewMonitor(defaultCfg, func(voice bool) {})
+		m, err := NewMonitor(defaultCfg, func(_ bool) {})
 		require.NoError(t, err)
 		require.NotNil(t, m)
 
@@ -43,7 +43,7 @@ func TestNewMonitor(t *testing.T) {
 			VoiceActivationThreshold:   defaultVoiceActivationThreshold * 2,
 			VoiceDeactivationThreshold: defaultVoiceDeactivationThreshold * 2,
 		}
-		m, err := NewMonitor(cfg, func(voice bool) {})
+		m, err := NewMonitor(cfg, func(_ bool) {})
 		require.NoError(t, err)
 		require.NotNil(t, m)
 
