@@ -4,6 +4,7 @@
 package client
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -33,11 +34,26 @@ const (
 	ErrorEvent           EventType = "Error"
 )
 
+func (e EventType) IsValid() bool {
+	switch e {
+	case WSConnectEvent, WSDisconnectEvent, WSCallJoinEvent, WSCallRecordingState,
+		WSCallJobState, WSJobStopEvent, RTCConnectEvent, RTCDisconnectEvent,
+		RTCTrackEvent, CloseEvent, ErrorEvent:
+		return true
+	default:
+		return false
+	}
+}
+
 const (
 	clientStateNew int32 = iota
 	clientStateInit
 	clientStateClosing
 	clientStateClosed
+)
+
+var (
+	ErrAlreadySubscribed = errors.New("already subscribed")
 )
 
 // Client is a Golang implementation of a client for Mattermost Calls.
@@ -135,10 +151,21 @@ func (c *Client) Close() error {
 
 // On is used to subscribe to any events fired by the client.
 // Note: there can only be one subscriber per event type.
-func (c *Client) On(eventType EventType, h EventHandler) {
+func (c *Client) On(eventType EventType, h EventHandler) error {
+	if !eventType.IsValid() {
+		return fmt.Errorf("invalid event type %q", eventType)
+	}
+
 	c.mut.Lock()
 	defer c.mut.Unlock()
+
+	if _, ok := c.handlers[eventType]; ok {
+		return ErrAlreadySubscribed
+	}
+
 	c.handlers[eventType] = h
+
+	return nil
 }
 
 func (c *Client) emit(eventType EventType, ctx any) {
@@ -147,7 +174,7 @@ func (c *Client) emit(eventType EventType, ctx any) {
 	c.mut.RUnlock()
 	if handler != nil {
 		if err := handler(ctx); err != nil {
-			log.Printf("failed to emit event (%s): %s", eventType, err.Error())
+			log.Printf("failed to handle event (%s): %s", eventType, err.Error())
 		}
 	}
 }

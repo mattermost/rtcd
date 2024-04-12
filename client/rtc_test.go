@@ -15,24 +15,27 @@ func TestClientConnectCall(t *testing.T) {
 	th := setupTestHelper(t, "calls0")
 
 	closeCh := make(chan struct{})
-	th.userClient.On(CloseEvent, func(_ any) error {
+	err := th.userClient.On(CloseEvent, func(_ any) error {
 		close(closeCh)
 		return nil
 	})
+	require.NoError(t, err)
 
 	rtcConnectCh := make(chan struct{})
-	th.userClient.On(RTCConnectEvent, func(_ any) error {
+	err = th.userClient.On(RTCConnectEvent, func(_ any) error {
 		close(rtcConnectCh)
 		return nil
 	})
+	require.NoError(t, err)
 
 	rtcDisconnectCh := make(chan struct{})
-	th.userClient.On(RTCDisconnectEvent, func(_ any) error {
+	err = th.userClient.On(RTCDisconnectEvent, func(_ any) error {
 		close(rtcDisconnectCh)
 		return nil
 	})
+	require.NoError(t, err)
 
-	err := th.userClient.Connect()
+	err = th.userClient.Connect()
 	require.NoError(t, err)
 
 	select {
@@ -61,24 +64,27 @@ func TestRTCDisconnect(t *testing.T) {
 	th := setupTestHelper(t, "calls0")
 
 	closeCh := make(chan struct{})
-	th.userClient.On(CloseEvent, func(_ any) error {
+	err := th.userClient.On(CloseEvent, func(_ any) error {
 		close(closeCh)
 		return nil
 	})
+	require.NoError(t, err)
 
 	rtcConnectCh := make(chan struct{})
-	th.userClient.On(RTCConnectEvent, func(_ any) error {
+	err = th.userClient.On(RTCConnectEvent, func(_ any) error {
 		close(rtcConnectCh)
 		return nil
 	})
+	require.NoError(t, err)
 
 	rtcDisconnectCh := make(chan struct{})
-	th.userClient.On(RTCDisconnectEvent, func(_ any) error {
+	err = th.userClient.On(RTCDisconnectEvent, func(_ any) error {
 		close(rtcDisconnectCh)
 		return nil
 	})
+	require.NoError(t, err)
 
-	err := th.userClient.Connect()
+	err = th.userClient.Connect()
 	require.NoError(t, err)
 
 	select {
@@ -108,31 +114,35 @@ func TestRTCTrack(t *testing.T) {
 		th := setupTestHelper(t, "calls0")
 
 		rtcConnectChA := make(chan struct{})
-		th.userClient.On(RTCConnectEvent, func(_ any) error {
+		err := th.userClient.On(RTCConnectEvent, func(_ any) error {
 			close(rtcConnectChA)
 			return nil
 		})
+		require.NoError(t, err)
 
 		rtcConnectChB := make(chan struct{})
-		th.adminClient.On(RTCConnectEvent, func(_ any) error {
+		err = th.adminClient.On(RTCConnectEvent, func(_ any) error {
 			close(rtcConnectChB)
 			return nil
 		})
+		require.NoError(t, err)
 
 		closeChA := make(chan struct{})
-		th.userClient.On(CloseEvent, func(_ any) error {
+		err = th.userClient.On(CloseEvent, func(_ any) error {
 			close(closeChA)
 			return nil
 		})
+		require.NoError(t, err)
 
 		closeChB := make(chan struct{})
-		th.adminClient.On(CloseEvent, func(_ any) error {
+		err = th.adminClient.On(CloseEvent, func(_ any) error {
 			close(closeChB)
 			return nil
 		})
+		require.NoError(t, err)
 
 		rtcTrackCh := make(chan struct{})
-		th.userClient.On(RTCTrackEvent, func(ctx any) error {
+		err = th.userClient.On(RTCTrackEvent, func(ctx any) error {
 			track, ok := ctx.(*webrtc.TrackRemote)
 			require.True(t, ok)
 			require.Equal(t, webrtc.PayloadType(0x6f), track.PayloadType())
@@ -141,6 +151,7 @@ func TestRTCTrack(t *testing.T) {
 			close(rtcTrackCh)
 			return nil
 		})
+		require.NoError(t, err)
 
 		go func() {
 			err := th.userClient.Connect()
@@ -199,31 +210,35 @@ func TestRTCTrack(t *testing.T) {
 		th := setupTestHelper(t, "calls0")
 
 		rtcConnectChA := make(chan struct{})
-		th.userClient.On(RTCConnectEvent, func(_ any) error {
+		err := th.userClient.On(RTCConnectEvent, func(_ any) error {
 			close(rtcConnectChA)
 			return nil
 		})
+		require.NoError(t, err)
 
 		rtcConnectChB := make(chan struct{})
-		th.adminClient.On(RTCConnectEvent, func(_ any) error {
+		err = th.adminClient.On(RTCConnectEvent, func(_ any) error {
 			close(rtcConnectChB)
 			return nil
 		})
+		require.NoError(t, err)
 
 		closeChA := make(chan struct{})
-		th.userClient.On(CloseEvent, func(_ any) error {
+		err = th.userClient.On(CloseEvent, func(_ any) error {
 			close(closeChA)
 			return nil
 		})
+		require.NoError(t, err)
 
 		closeChB := make(chan struct{})
-		th.adminClient.On(CloseEvent, func(_ any) error {
+		err = th.adminClient.On(CloseEvent, func(_ any) error {
 			close(closeChB)
 			return nil
 		})
+		require.NoError(t, err)
 
 		rtcTrackCh := make(chan struct{})
-		th.userClient.On(RTCTrackEvent, func(ctx any) error {
+		err = th.userClient.On(RTCTrackEvent, func(ctx any) error {
 			track, ok := ctx.(*webrtc.TrackRemote)
 			require.True(t, ok)
 			require.Equal(t, webrtc.PayloadType(0x6f), track.PayloadType())
@@ -232,8 +247,9 @@ func TestRTCTrack(t *testing.T) {
 			close(rtcTrackCh)
 			return nil
 		})
+		require.NoError(t, err)
 
-		err := th.adminClient.Connect()
+		err = th.adminClient.Connect()
 		require.NoError(t, err)
 
 		select {
@@ -285,31 +301,35 @@ func TestRTCTrack(t *testing.T) {
 		th := setupTestHelper(t, "calls0")
 
 		rtcConnectChA := make(chan struct{})
-		th.userClient.On(RTCConnectEvent, func(_ any) error {
+		err := th.userClient.On(RTCConnectEvent, func(_ any) error {
 			close(rtcConnectChA)
 			return nil
 		})
+		require.NoError(t, err)
 
 		rtcConnectChB := make(chan struct{})
-		th.adminClient.On(RTCConnectEvent, func(_ any) error {
+		err = th.adminClient.On(RTCConnectEvent, func(_ any) error {
 			close(rtcConnectChB)
 			return nil
 		})
+		require.NoError(t, err)
 
 		closeChA := make(chan struct{})
-		th.userClient.On(CloseEvent, func(_ any) error {
+		err = th.userClient.On(CloseEvent, func(_ any) error {
 			close(closeChA)
 			return nil
 		})
+		require.NoError(t, err)
 
 		closeChB := make(chan struct{})
-		th.adminClient.On(CloseEvent, func(_ any) error {
+		err = th.adminClient.On(CloseEvent, func(_ any) error {
 			close(closeChB)
 			return nil
 		})
+		require.NoError(t, err)
 
 		rtcTrackCh := make(chan struct{})
-		th.userClient.On(RTCTrackEvent, func(ctx any) error {
+		err = th.userClient.On(RTCTrackEvent, func(ctx any) error {
 			track, ok := ctx.(*webrtc.TrackRemote)
 			require.True(t, ok)
 			require.Equal(t, webrtc.PayloadType(0x6f), track.PayloadType())
@@ -323,8 +343,9 @@ func TestRTCTrack(t *testing.T) {
 			close(rtcTrackCh)
 			return nil
 		})
+		require.NoError(t, err)
 
-		err := th.adminClient.Connect()
+		err = th.adminClient.Connect()
 		require.NoError(t, err)
 
 		select {
