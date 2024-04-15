@@ -75,7 +75,7 @@ func TestAPIMuteUnmute(t *testing.T) {
 	require.NoError(t, err)
 
 	userUnmutedCh := make(chan struct{})
-	err = th.adminClient.On(WSCallUserUnmuted, func(ctx any) error {
+	err = th.adminClient.On(WSCallUnmutedEvent, func(ctx any) error {
 		sessionID := ctx.(string)
 		if sessionID == th.userClient.originalConnID {
 			close(userUnmutedCh)
@@ -103,7 +103,7 @@ func TestAPIMuteUnmute(t *testing.T) {
 	}
 
 	userMutedCh := make(chan struct{})
-	err = th.adminClient.On(WSCallUserMuted, func(ctx any) error {
+	err = th.adminClient.On(WSCallMutedEvent, func(ctx any) error {
 		sessionID := ctx.(string)
 		if sessionID == th.userClient.originalConnID {
 			close(userMutedCh)
@@ -127,7 +127,7 @@ func TestAPIMuteUnmute(t *testing.T) {
 	require.NoError(t, err)
 
 	adminUnmutedCh := make(chan struct{})
-	err = th.userClient.On(WSCallUserUnmuted, func(ctx any) error {
+	err = th.userClient.On(WSCallUnmutedEvent, func(ctx any) error {
 		sessionID := ctx.(string)
 		if sessionID == th.adminClient.originalConnID {
 			close(adminUnmutedCh)
@@ -155,7 +155,7 @@ func TestAPIMuteUnmute(t *testing.T) {
 	}
 
 	adminMutedCh := make(chan struct{})
-	err = th.userClient.On(WSCallUserMuted, func(ctx any) error {
+	err = th.userClient.On(WSCallMutedEvent, func(ctx any) error {
 		sessionID := ctx.(string)
 		if sessionID == th.adminClient.originalConnID {
 			close(adminMutedCh)
@@ -252,7 +252,7 @@ func TestAPIRaiseLowerHand(t *testing.T) {
 	adminRaisedHandCh := make(chan struct{})
 	adminLoweredHandCh := make(chan struct{})
 
-	err = th.userClient.On(WSCallUserRaisedHand, func(ctx any) error {
+	err = th.userClient.On(WSCallRaisedHandEvent, func(ctx any) error {
 		sessionID := ctx.(string)
 		if sessionID == th.adminClient.originalConnID {
 			close(adminRaisedHandCh)
@@ -260,7 +260,7 @@ func TestAPIRaiseLowerHand(t *testing.T) {
 		return nil
 	})
 	require.NoError(t, err)
-	err = th.userClient.On(WSCallUserLoweredHand, func(ctx any) error {
+	err = th.userClient.On(WSCallLoweredHandEvent, func(ctx any) error {
 		sessionID := ctx.(string)
 		if sessionID == th.adminClient.originalConnID {
 			close(adminLoweredHandCh)
@@ -269,7 +269,7 @@ func TestAPIRaiseLowerHand(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = th.adminClient.On(WSCallUserRaisedHand, func(ctx any) error {
+	err = th.adminClient.On(WSCallRaisedHandEvent, func(ctx any) error {
 		sessionID := ctx.(string)
 		if sessionID == th.userClient.originalConnID {
 			close(userRaisedHandCh)
@@ -277,7 +277,7 @@ func TestAPIRaiseLowerHand(t *testing.T) {
 		return nil
 	})
 	require.NoError(t, err)
-	err = th.adminClient.On(WSCallUserLoweredHand, func(ctx any) error {
+	err = th.adminClient.On(WSCallLoweredHandEvent, func(ctx any) error {
 		sessionID := ctx.(string)
 		if sessionID == th.userClient.originalConnID {
 			close(userLoweredHandCh)
@@ -417,7 +417,7 @@ func TestAPIScreenShare(t *testing.T) {
 	require.NoError(t, err)
 
 	userScreenOnCh := make(chan struct{})
-	err = th.adminClient.On(WSCallScreenOn, func(ctx any) error {
+	err = th.adminClient.On(WSCallScreenOnEvent, func(ctx any) error {
 		sessionID := ctx.(string)
 		if sessionID == th.userClient.originalConnID {
 			close(userScreenOnCh)
@@ -439,7 +439,7 @@ func TestAPIScreenShare(t *testing.T) {
 	}
 
 	userScreenOffCh := make(chan struct{})
-	err = th.adminClient.On(WSCallScreenOff, func(ctx any) error {
+	err = th.adminClient.On(WSCallScreenOffEvent, func(ctx any) error {
 		sessionID := ctx.(string)
 		if sessionID == th.userClient.originalConnID {
 			close(userScreenOffCh)

@@ -23,41 +23,42 @@ type EventHandler func(ctx any) error
 type EventType string
 
 const (
-	WSConnectEvent         EventType = "WSConnect"
-	WSDisconnectEvent      EventType = "WSDisconnect"
-	WSCallJoinEvent        EventType = "WSCallJoin"
-	WSCallRecordingState   EventType = "WSCallRecordingState"
-	WSCallJobState         EventType = "WSCallJobState"
-	WSJobStopEvent         EventType = "WSStopJobEvent"
-	RTCConnectEvent        EventType = "RTCConnect"
-	RTCDisconnectEvent     EventType = "RTCDisconnect"
-	RTCTrackEvent          EventType = "RTCTrack"
-	CloseEvent             EventType = "Close"
-	ErrorEvent             EventType = "Error"
-	WSCallHostChangedEvent EventType = "WSCallHostChanged"
-	WSCallUserMuted        EventType = "WSCallUserMuted"
-	WSCallUserUnmuted      EventType = "WSCallUserUnmuted"
-	WSCallUserRaisedHand   EventType = "WSCallUserRaisedHand"
-	WSCallUserLoweredHand  EventType = "WSCallUserLoweredHand"
-	WSCallScreenOn         EventType = "WSCallScreenOn"
-	WSCallScreenOff        EventType = "WSCallScreenOff"
+	RTCConnectEvent    EventType = "RTCConnect"
+	RTCDisconnectEvent EventType = "RTCDisconnect"
+	RTCTrackEvent      EventType = "RTCTrack"
+
+	CloseEvent EventType = "Close"
+	ErrorEvent EventType = "Error"
+
+	WSConnectEvent            EventType = "WSConnect"
+	WSDisconnectEvent         EventType = "WSDisconnect"
+	WSCallJoinEvent           EventType = "WSCallJoin"
+	WSCallRecordingStateEvent EventType = "WSCallRecordingState" // DEPRECATED
+	WSCallJobStateEvent       EventType = "WSCallJobState"
+	WSJobStopEvent            EventType = "WSStopJobEvent"
+	WSCallHostChangedEvent    EventType = "WSCallHostChanged"
+	WSCallMutedEvent          EventType = "WSCallMuted"
+	WSCallUnmutedEvent        EventType = "WSCallUnmuted"
+	WSCallRaisedHandEvent     EventType = "WSCallRaisedHand"
+	WSCallLoweredHandEvent    EventType = "WSCallLoweredHand"
+	WSCallScreenOnEvent       EventType = "WSCallScreenOn"
+	WSCallScreenOffEvent      EventType = "WSCallScreenOff"
 )
 
 func (e EventType) IsValid() bool {
 	switch e {
-	case WSConnectEvent, WSDisconnectEvent,
-		WSCallJoinEvent,
-		WSCallRecordingState,
-		WSCallHostChangedEvent,
-		WSCallUserUnmuted, WSCallUserMuted,
-		WSCallUserLoweredHand, WSCallUserRaisedHand,
-		WSCallScreenOn, WSCallScreenOff,
-		WSCallJobState,
-		WSJobStopEvent,
-		RTCConnectEvent, RTCDisconnectEvent,
-		RTCTrackEvent,
+	case RTCConnectEvent, RTCDisconnectEvent, RTCTrackEvent,
 		CloseEvent,
-		ErrorEvent:
+		ErrorEvent,
+		WSConnectEvent, WSDisconnectEvent,
+		WSCallJoinEvent,
+		WSCallRecordingStateEvent,
+		WSCallHostChangedEvent,
+		WSCallUnmutedEvent, WSCallMutedEvent,
+		WSCallRaisedHandEvent, WSCallLoweredHandEvent,
+		WSCallScreenOnEvent, WSCallScreenOffEvent,
+		WSCallJobStateEvent,
+		WSJobStopEvent:
 		return true
 	default:
 		return false

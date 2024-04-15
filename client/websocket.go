@@ -28,31 +28,37 @@ const (
 )
 
 const (
-	wsEventJoin            = wsEvPrefix + "join"
-	wsEventLeave           = wsEvPrefix + "leave"
-	wsEventReconnect       = wsEvPrefix + "reconnect"
+	// Both client and server sent events
+	wsEventJoin = wsEvPrefix + "join"
+
+	// Client sent events
+	wsEventMute      = wsEvPrefix + "mute"
+	wsEventUnmute    = wsEvPrefix + "unmute"
+	wsEventScreenOn  = wsEvPrefix + "screen_on"
+	wsEventScreenOff = wsEvPrefix + "screen_off"
+	wsEventRaiseHand = wsEvPrefix + "raise_hand"
+	wsEventLowerHand = wsEvPrefix + "unraise_hand"
+	wsEventReact     = wsEvPrefix + "react"
+	wsEventICE       = wsEvPrefix + "ice"
+	wsEventSDP       = wsEvPrefix + "sdp"
+	wsEventLeave     = wsEvPrefix + "leave"
+	wsEventReconnect = wsEvPrefix + "reconnect"
+
+	// Server sent events
 	wsEventSignal          = wsEvPrefix + "signal"
-	wsEventICE             = wsEvPrefix + "ice"
-	wsEventSDP             = wsEvPrefix + "sdp"
 	wsEventError           = wsEvPrefix + "error"
 	wsEventUserLeft        = wsEvPrefix + "user_left"
 	wsEventCallEnd         = wsEvPrefix + "call_end"
 	wsEventCallJobState    = wsEvPrefix + "call_job_state"
 	wsEventJobStop         = wsEvPrefix + "job_stop"
-	wsEventMute            = wsEvPrefix + "mute"
-	wsEventUnmute          = wsEvPrefix + "unmute"
-	wsEventScreenOn        = wsEvPrefix + "screen_on"
-	wsEventScreenOff       = wsEvPrefix + "screen_off"
-	wsEventRaiseHand       = wsEvPrefix + "raise_hand"
-	wsEventLowerHand       = wsEvPrefix + "unraise_hand"
-	wsEventReact           = wsEvPrefix + "react"
 	wsEventCallHostChanged = wsEvPrefix + "call_host_changed"
-	wsEventMuted           = wsEvPrefix + "user_muted"
-	wsEventUnmuted         = wsEvPrefix + "user_unmuted"
-	wsEventRaisedHand      = wsEvPrefix + "user_raise_hand"
-	wsEventLoweredHand     = wsEvPrefix + "user_unraise_hand"
+	wsEventUserMuted       = wsEvPrefix + "user_muted"
+	wsEventUserUnmuted     = wsEvPrefix + "user_unmuted"
+	wsEventUserRaisedHand  = wsEvPrefix + "user_raise_hand"
+	wsEventUserLoweredHand = wsEvPrefix + "user_unraise_hand"
 	wsEventUserScreenOn    = wsEvPrefix + "user_screen_on"
 	wsEventUserScreenOff   = wsEvPrefix + "user_screen_off"
+	wsEventUserReacted     = wsEvPrefix + "user_reacted"
 )
 
 var (
@@ -214,12 +220,12 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 			}
 			var jobState CallJobState
 			jobState.FromMap(data)
-			c.emit(WSCallJobState, jobState)
+			c.emit(WSCallJobStateEvent, jobState)
 
 			// Below is deprecated as of v0.14.0, kept for compatibility with earlier versions
 			// of transcriber
 			if jobState.Type == "recording" {
-				c.emit(WSCallRecordingState, jobState)
+				c.emit(WSCallRecordingStateEvent, jobState)
 			}
 		case wsEventJobStop:
 			jobID, _ := ev.GetData()["job_id"].(string)
@@ -238,7 +244,7 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 			}
 
 			c.emit(WSCallHostChangedEvent, hostID)
-		case wsEventUnmuted, wsEventMuted:
+		case wsEventUserUnmuted, wsEventUserMuted:
 			channelID := ev.GetBroadcast().ChannelId
 			if channelID == "" {
 				channelID, _ = ev.GetData()["channelID"].(string)
@@ -250,12 +256,12 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 			if sessionID == "" {
 				return fmt.Errorf("missing session_id from %s event", ev.EventType())
 			}
-			evType := WSCallUserUnmuted
-			if ev.EventType() == wsEventMuted {
-				evType = WSCallUserMuted
+			evType := WSCallUnmutedEvent
+			if ev.EventType() == wsEventUserMuted {
+				evType = WSCallMutedEvent
 			}
 			c.emit(evType, sessionID)
-		case wsEventRaisedHand, wsEventLoweredHand:
+		case wsEventUserRaisedHand, wsEventUserLoweredHand:
 			channelID := ev.GetBroadcast().ChannelId
 			if channelID == "" {
 				channelID, _ = ev.GetData()["channelID"].(string)
@@ -267,9 +273,9 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 			if sessionID == "" {
 				return fmt.Errorf("missing session_id from %s event", ev.EventType())
 			}
-			evType := WSCallUserRaisedHand
-			if ev.EventType() == wsEventLoweredHand {
-				evType = WSCallUserLoweredHand
+			evType := WSCallRaisedHandEvent
+			if ev.EventType() == wsEventUserLoweredHand {
+				evType = WSCallLoweredHandEvent
 			}
 			c.emit(evType, sessionID)
 		case wsEventUserScreenOn, wsEventUserScreenOff:
@@ -284,9 +290,9 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 			if sessionID == "" {
 				return fmt.Errorf("missing session_id from %s event", ev.EventType())
 			}
-			evType := WSCallScreenOn
+			evType := WSCallScreenOnEvent
 			if ev.EventType() == wsEventUserScreenOff {
-				evType = WSCallScreenOff
+				evType = WSCallScreenOffEvent
 			}
 			c.emit(evType, sessionID)
 		default:
