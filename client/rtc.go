@@ -13,6 +13,7 @@ import (
 	"log"
 	"sync/atomic"
 
+	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -23,6 +24,14 @@ const (
 
 	iceChSize  = 20
 	receiveMTU = 1460
+)
+
+var (
+	rtpVideoExtensions = []string{
+		"urn:ietf:params:rtp-hdrext:sdes:mid",
+		"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id",
+		"urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id",
+	}
 )
 
 func (c *Client) handleWSEventSignal(evData map[string]any) error {
@@ -138,7 +147,25 @@ func (c *Client) initRTCSession() error {
 		SDPSemantics: webrtc.SDPSemanticsUnifiedPlan,
 	}
 
-	pc, err := webrtc.NewPeerConnection(cfg)
+	var m webrtc.MediaEngine
+	if err := m.RegisterDefaultCodecs(); err != nil {
+		return fmt.Errorf("failed to register default codecs: %w", err)
+	}
+
+	i := interceptor.Registry{}
+	if err := webrtc.RegisterDefaultInterceptors(&m, &i); err != nil {
+		return fmt.Errorf("failed to register default interceptors: %w", err)
+	}
+
+	for _, ext := range rtpVideoExtensions {
+		if err := m.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: ext}, webrtc.RTPCodecTypeVideo); err != nil {
+			return fmt.Errorf("failed to register header extension: %w", err)
+		}
+	}
+
+	api := webrtc.NewAPI(webrtc.WithMediaEngine(&m), webrtc.WithInterceptorRegistry(&i))
+
+	pc, err := api.NewPeerConnection(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create new peer connection: %s", err)
 	}
@@ -202,9 +229,8 @@ func (c *Client) initRTCSession() error {
 			return
 		}
 
-		if trackType != TrackTypeVoice {
-			// We ignore any non voice track for now.
-			log.Printf("ignoring non voice track")
+		if trackType != TrackTypeVoice && trackType != TrackTypeScreen {
+			log.Printf("ignoring unsupported track type: %q", trackType)
 			if err := receiver.Stop(); err != nil {
 				log.Printf("failed to stop receiver: %s", err)
 			}

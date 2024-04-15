@@ -13,6 +13,8 @@ import (
 
 	"github.com/mattermost/rtcd/service/ws"
 
+	"github.com/mattermost/mattermost/server/public/model"
+
 	"github.com/pion/webrtc/v3"
 )
 
@@ -21,24 +23,41 @@ type EventHandler func(ctx any) error
 type EventType string
 
 const (
-	WSConnectEvent       EventType = "WSConnect"
-	WSDisconnectEvent    EventType = "WSDisconnect"
-	WSCallJoinEvent      EventType = "WSCallJoin"
-	WSCallRecordingState EventType = "WSCallRecordingState"
-	WSCallJobState       EventType = "WSCallJobState"
-	WSJobStopEvent       EventType = "WSStopJobEvent"
-	RTCConnectEvent      EventType = "RTCConnect"
-	RTCDisconnectEvent   EventType = "RTCDisconnect"
-	RTCTrackEvent        EventType = "RTCTrack"
-	CloseEvent           EventType = "Close"
-	ErrorEvent           EventType = "Error"
+	WSConnectEvent         EventType = "WSConnect"
+	WSDisconnectEvent      EventType = "WSDisconnect"
+	WSCallJoinEvent        EventType = "WSCallJoin"
+	WSCallRecordingState   EventType = "WSCallRecordingState"
+	WSCallJobState         EventType = "WSCallJobState"
+	WSJobStopEvent         EventType = "WSStopJobEvent"
+	RTCConnectEvent        EventType = "RTCConnect"
+	RTCDisconnectEvent     EventType = "RTCDisconnect"
+	RTCTrackEvent          EventType = "RTCTrack"
+	CloseEvent             EventType = "Close"
+	ErrorEvent             EventType = "Error"
+	WSCallHostChangedEvent EventType = "WSCallHostChanged"
+	WSCallUserMuted        EventType = "WSCallUserMuted"
+	WSCallUserUnmuted      EventType = "WSCallUserUnmuted"
+	WSCallUserRaisedHand   EventType = "WSCallUserRaisedHand"
+	WSCallUserLoweredHand  EventType = "WSCallUserLoweredHand"
+	WSCallScreenOn         EventType = "WSCallScreenOn"
+	WSCallScreenOff        EventType = "WSCallScreenOff"
 )
 
 func (e EventType) IsValid() bool {
 	switch e {
-	case WSConnectEvent, WSDisconnectEvent, WSCallJoinEvent, WSCallRecordingState,
-		WSCallJobState, WSJobStopEvent, RTCConnectEvent, RTCDisconnectEvent,
-		RTCTrackEvent, CloseEvent, ErrorEvent:
+	case WSConnectEvent, WSDisconnectEvent,
+		WSCallJoinEvent,
+		WSCallRecordingState,
+		WSCallHostChangedEvent,
+		WSCallUserUnmuted, WSCallUserMuted,
+		WSCallUserLoweredHand, WSCallUserRaisedHand,
+		WSCallScreenOn, WSCallScreenOff,
+		WSCallJobState,
+		WSJobStopEvent,
+		RTCConnectEvent, RTCDisconnectEvent,
+		RTCTrackEvent,
+		CloseEvent,
+		ErrorEvent:
 		return true
 	default:
 		return false
@@ -62,6 +81,9 @@ type Client struct {
 
 	handlers map[EventType]EventHandler
 
+	// HTTP API
+	apiClient *model.Client4
+
 	// WebSocket
 	ws                  *ws.Client
 	wsDoneCh            chan struct{}
@@ -73,10 +95,12 @@ type Client struct {
 	currentConnID       string
 
 	// WebRTC
-	pc        *webrtc.PeerConnection
-	dc        *webrtc.DataChannel
-	iceCh     chan webrtc.ICECandidateInit
-	receivers map[string]*webrtc.RTPReceiver
+	pc                *webrtc.PeerConnection
+	dc                *webrtc.DataChannel
+	iceCh             chan webrtc.ICECandidateInit
+	receivers         map[string]*webrtc.RTPReceiver
+	voiceSender       *webrtc.RTPSender
+	screenTransceiver *webrtc.RTPTransceiver
 
 	state int32
 
@@ -91,6 +115,9 @@ func New(cfg Config, opts ...Option) (*Client, error) {
 		return nil, fmt.Errorf("failed to validate config: %w", err)
 	}
 
+	apiClient := model.NewAPIv4Client(cfg.SiteURL)
+	apiClient.SetToken(cfg.AuthToken)
+
 	c := &Client{
 		cfg:           cfg,
 		handlers:      make(map[EventType]EventHandler),
@@ -99,6 +126,7 @@ func New(cfg Config, opts ...Option) (*Client, error) {
 		wsClientSeqNo: 1,
 		iceCh:         make(chan webrtc.ICECandidateInit, iceChSize),
 		receivers:     make(map[string]*webrtc.RTPReceiver),
+		apiClient:     apiClient,
 	}
 
 	for _, opt := range opts {
