@@ -136,6 +136,29 @@ func (th *TestHelper) screenTrackWriter(track *webrtc.TrackLocalStaticRTP, close
 	}
 }
 
+func (th *TestHelper) transmitScreenTrack(c *Client) {
+	th.tb.Helper()
+
+	track := th.newScreenTrack()
+
+	sender, err := c.pc.AddTrack(track)
+	require.NoError(th.tb, err)
+
+	closeCh := make(chan struct{})
+	go func() {
+		rtcpBuf := make([]byte, receiveMTU)
+		for {
+			if _, _, rtcpErr := sender.Read(rtcpBuf); rtcpErr != nil {
+				log.Printf("failed to read rtcp: %s", rtcpErr.Error())
+				close(closeCh)
+				return
+			}
+		}
+	}()
+
+	go th.screenTrackWriter(track, closeCh)
+}
+
 func (th *TestHelper) newVoiceTrack() *webrtc.TrackLocalStaticSample {
 	th.tb.Helper()
 

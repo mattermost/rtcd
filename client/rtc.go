@@ -238,7 +238,7 @@ func (c *Client) initRTCSession() error {
 		}
 
 		c.mut.Lock()
-		c.receivers[sessionID] = receiver
+		c.receivers[sessionID] = append(c.receivers[sessionID], receiver)
 		c.mut.Unlock()
 
 		// RTCP handler
@@ -259,7 +259,10 @@ func (c *Client) initRTCSession() error {
 			}
 		}(track.RID())
 
-		c.emit(RTCTrackEvent, track)
+		c.emit(RTCTrackEvent, map[string]any{
+			"track":    track,
+			"receiver": receiver,
+		})
 	})
 
 	pc.OnNegotiationNeeded(func() {

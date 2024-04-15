@@ -190,7 +190,7 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 				return fmt.Errorf("missing session_id from user_left event")
 			}
 			c.mut.Lock()
-			if rx := c.receivers[sessionID]; rx != nil {
+			for _, rx := range c.receivers[sessionID] {
 				log.Printf("stopping receiver for disconnected session %q", sessionID)
 				if err := rx.Stop(); err != nil {
 					log.Printf("failed to stop receiver for session %q: %s", sessionID, err)

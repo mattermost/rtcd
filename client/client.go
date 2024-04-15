@@ -99,7 +99,7 @@ type Client struct {
 	pc                *webrtc.PeerConnection
 	dc                *webrtc.DataChannel
 	iceCh             chan webrtc.ICECandidateInit
-	receivers         map[string]*webrtc.RTPReceiver
+	receivers         map[string][]*webrtc.RTPReceiver
 	voiceSender       *webrtc.RTPSender
 	screenTransceiver *webrtc.RTPTransceiver
 
@@ -126,7 +126,7 @@ func New(cfg Config, opts ...Option) (*Client, error) {
 		wsCloseCh:     make(chan struct{}),
 		wsClientSeqNo: 1,
 		iceCh:         make(chan webrtc.ICECandidateInit, iceChSize),
-		receivers:     make(map[string]*webrtc.RTPReceiver),
+		receivers:     make(map[string][]*webrtc.RTPReceiver),
 		apiClient:     apiClient,
 	}
 
