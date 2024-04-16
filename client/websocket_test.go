@@ -14,18 +14,20 @@ func TestClientWSDisconnect(t *testing.T) {
 	th := setupTestHelper(t, "")
 
 	connectCh := make(chan struct{}, 2)
-	th.userClient.On(WSConnectEvent, func(_ any) error {
+	err := th.userClient.On(WSConnectEvent, func(_ any) error {
 		connectCh <- struct{}{}
 		return nil
 	})
+	require.NoError(t, err)
 
 	disconnectCh := make(chan struct{})
-	th.userClient.On(WSDisconnectEvent, func(_ any) error {
+	err = th.userClient.On(WSDisconnectEvent, func(_ any) error {
 		close(disconnectCh)
 		return nil
 	})
+	require.NoError(t, err)
 
-	err := th.userClient.Connect()
+	err = th.userClient.Connect()
 	require.NoError(t, err)
 
 	select {
@@ -51,18 +53,20 @@ func TestClientWSReconnect(t *testing.T) {
 	th := setupTestHelper(t, "")
 
 	connectCh := make(chan struct{}, 2)
-	th.userClient.On(WSConnectEvent, func(_ any) error {
+	err := th.userClient.On(WSConnectEvent, func(_ any) error {
 		connectCh <- struct{}{}
 		return nil
 	})
+	require.NoError(t, err)
 
 	disconnectCh := make(chan struct{})
-	th.userClient.On(WSDisconnectEvent, func(_ any) error {
+	err = th.userClient.On(WSDisconnectEvent, func(_ any) error {
 		close(disconnectCh)
 		return nil
 	})
+	require.NoError(t, err)
 
-	err := th.userClient.Connect()
+	err = th.userClient.Connect()
 	require.NoError(t, err)
 
 	select {
@@ -96,12 +100,13 @@ func TestClientWSReconnectTimeout(t *testing.T) {
 	th := setupTestHelper(t, "")
 
 	connectCh := make(chan struct{}, 2)
-	th.userClient.On(WSConnectEvent, func(_ any) error {
+	err := th.userClient.On(WSConnectEvent, func(_ any) error {
 		connectCh <- struct{}{}
 		return nil
 	})
+	require.NoError(t, err)
 
-	err := th.userClient.Connect()
+	err = th.userClient.Connect()
 	require.NoError(t, err)
 
 	select {
@@ -113,17 +118,19 @@ func TestClientWSReconnectTimeout(t *testing.T) {
 	th.userClient.cfg.wsURL = "ws://localhost:8080"
 
 	errorCh := make(chan struct{})
-	th.userClient.On(ErrorEvent, func(ctx any) error {
+	err = th.userClient.On(ErrorEvent, func(ctx any) error {
 		close(errorCh)
 		require.EqualError(t, ctx.(error), "ws reconnection timeout reached")
 		return nil
 	})
+	require.NoError(t, err)
 
 	closeCh := make(chan struct{})
-	th.userClient.On(CloseEvent, func(_ any) error {
+	err = th.userClient.On(CloseEvent, func(_ any) error {
 		close(closeCh)
 		return nil
 	})
+	require.NoError(t, err)
 
 	err = th.userClient.ws.Close()
 	require.NoError(t, err)

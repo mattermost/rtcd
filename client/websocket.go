@@ -28,17 +28,37 @@ const (
 )
 
 const (
-	wsEventJoin         = wsEvPrefix + "join"
-	wsEventLeave        = wsEvPrefix + "leave"
-	wsEventReconnect    = wsEvPrefix + "reconnect"
-	wsEventSignal       = wsEvPrefix + "signal"
-	wsEventICE          = wsEvPrefix + "ice"
-	wsEventSDP          = wsEvPrefix + "sdp"
-	wsEventError        = wsEvPrefix + "error"
-	wsEventUserLeft     = wsEvPrefix + "user_left"
-	wsEventCallEnd      = wsEvPrefix + "call_end"
-	wsEventCallJobState = wsEvPrefix + "call_job_state"
-	wsEventJobStop      = wsEvPrefix + "job_stop"
+	// Both client and server sent events
+	wsEventJoin = wsEvPrefix + "join"
+
+	// Client sent events
+	wsEventMute      = wsEvPrefix + "mute"
+	wsEventUnmute    = wsEvPrefix + "unmute"
+	wsEventScreenOn  = wsEvPrefix + "screen_on"
+	wsEventScreenOff = wsEvPrefix + "screen_off"
+	wsEventRaiseHand = wsEvPrefix + "raise_hand"
+	wsEventLowerHand = wsEvPrefix + "unraise_hand"
+	wsEventReact     = wsEvPrefix + "react"
+	wsEventICE       = wsEvPrefix + "ice"
+	wsEventSDP       = wsEvPrefix + "sdp"
+	wsEventLeave     = wsEvPrefix + "leave"
+	wsEventReconnect = wsEvPrefix + "reconnect"
+
+	// Server sent events
+	wsEventSignal          = wsEvPrefix + "signal"
+	wsEventError           = wsEvPrefix + "error"
+	wsEventUserLeft        = wsEvPrefix + "user_left"
+	wsEventCallEnd         = wsEvPrefix + "call_end"
+	wsEventCallJobState    = wsEvPrefix + "call_job_state"
+	wsEventJobStop         = wsEvPrefix + "job_stop"
+	wsEventCallHostChanged = wsEvPrefix + "call_host_changed"
+	wsEventUserMuted       = wsEvPrefix + "user_muted"
+	wsEventUserUnmuted     = wsEvPrefix + "user_unmuted"
+	wsEventUserRaisedHand  = wsEvPrefix + "user_raise_hand"
+	wsEventUserLoweredHand = wsEvPrefix + "user_unraise_hand"
+	wsEventUserScreenOn    = wsEvPrefix + "user_screen_on"
+	wsEventUserScreenOff   = wsEvPrefix + "user_screen_off"
+	wsEventUserReacted     = wsEvPrefix + "user_reacted"
 )
 
 var (
@@ -46,10 +66,7 @@ var (
 	errCallEnded          = errors.New("call ended")
 )
 
-func (c *Client) SendWS(ev string, msg any, binary bool) error {
-	c.mut.Lock()
-	defer c.mut.Unlock()
-
+func (c *Client) sendWS(ev string, msg any, binary bool) error {
 	var err error
 	var data []byte
 	var msgType ws.MessageType
@@ -78,6 +95,13 @@ func (c *Client) SendWS(ev string, msg any, binary bool) error {
 	}
 
 	return nil
+}
+
+func (c *Client) SendWS(ev string, msg any, binary bool) error {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
+	return c.sendWS(ev, msg, binary)
 }
 
 func (c *Client) handleWSEventHello(ev *model.WebSocketEvent) (isReconnect bool, err error) {
@@ -166,7 +190,7 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 				return fmt.Errorf("missing session_id from user_left event")
 			}
 			c.mut.Lock()
-			if rx := c.receivers[sessionID]; rx != nil {
+			for _, rx := range c.receivers[sessionID] {
 				log.Printf("stopping receiver for disconnected session %q", sessionID)
 				if err := rx.Stop(); err != nil {
 					log.Printf("failed to stop receiver for session %q: %s", sessionID, err)
@@ -184,22 +208,93 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 				return errCallEnded
 			}
 		case wsEventCallJobState:
+			callID, _ := ev.GetData()["callID"].(string)
+			if callID != c.cfg.ChannelID {
+				// Ignore if the event is not for the current call/channel.
+				return nil
+			}
+
 			data, ok := ev.GetData()["jobState"].(map[string]any)
 			if !ok {
 				return fmt.Errorf("invalid recording state")
 			}
 			var jobState CallJobState
 			jobState.FromMap(data)
-			c.emit(WSCallJobState, jobState)
+			c.emit(WSCallJobStateEvent, jobState)
 
 			// Below is deprecated as of v0.14.0, kept for compatibility with earlier versions
 			// of transcriber
 			if jobState.Type == "recording" {
-				c.emit(WSCallRecordingState, jobState)
+				c.emit(WSCallRecordingStateEvent, jobState)
 			}
 		case wsEventJobStop:
 			jobID, _ := ev.GetData()["job_id"].(string)
 			c.emit(WSJobStopEvent, jobID)
+		case wsEventCallHostChanged:
+			channelID := ev.GetBroadcast().ChannelId
+			if channelID == "" {
+				channelID, _ = ev.GetData()["channelID"].(string)
+			}
+			if channelID != c.cfg.ChannelID {
+				return nil
+			}
+			hostID, _ := ev.GetData()["hostID"].(string)
+			if hostID == "" {
+				return fmt.Errorf("unexpected empty hostID")
+			}
+
+			c.emit(WSCallHostChangedEvent, hostID)
+		case wsEventUserUnmuted, wsEventUserMuted:
+			channelID := ev.GetBroadcast().ChannelId
+			if channelID == "" {
+				channelID, _ = ev.GetData()["channelID"].(string)
+			}
+			if channelID != c.cfg.ChannelID {
+				return nil
+			}
+			sessionID, _ := ev.GetData()["session_id"].(string)
+			if sessionID == "" {
+				return fmt.Errorf("missing session_id from %s event", ev.EventType())
+			}
+			evType := WSCallUnmutedEvent
+			if ev.EventType() == wsEventUserMuted {
+				evType = WSCallMutedEvent
+			}
+			c.emit(evType, sessionID)
+		case wsEventUserRaisedHand, wsEventUserLoweredHand:
+			channelID := ev.GetBroadcast().ChannelId
+			if channelID == "" {
+				channelID, _ = ev.GetData()["channelID"].(string)
+			}
+			if channelID != c.cfg.ChannelID {
+				return nil
+			}
+			sessionID, _ := ev.GetData()["session_id"].(string)
+			if sessionID == "" {
+				return fmt.Errorf("missing session_id from %s event", ev.EventType())
+			}
+			evType := WSCallRaisedHandEvent
+			if ev.EventType() == wsEventUserLoweredHand {
+				evType = WSCallLoweredHandEvent
+			}
+			c.emit(evType, sessionID)
+		case wsEventUserScreenOn, wsEventUserScreenOff:
+			channelID := ev.GetBroadcast().ChannelId
+			if channelID == "" {
+				channelID, _ = ev.GetData()["channelID"].(string)
+			}
+			if channelID != c.cfg.ChannelID {
+				return nil
+			}
+			sessionID, _ := ev.GetData()["session_id"].(string)
+			if sessionID == "" {
+				return fmt.Errorf("missing session_id from %s event", ev.EventType())
+			}
+			evType := WSCallScreenOnEvent
+			if ev.EventType() == wsEventUserScreenOff {
+				evType = WSCallScreenOffEvent
+			}
+			c.emit(evType, sessionID)
 		default:
 		}
 	case ws.BinaryMessage:

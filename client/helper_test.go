@@ -16,9 +16,13 @@ import (
 
 	"github.com/mattermost/mattermost/server/public/model"
 
+	"github.com/pion/rtp"
+	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v3"
 	"github.com/pion/webrtc/v3/pkg/media"
+	"github.com/pion/webrtc/v3/pkg/media/ivfreader"
 	"github.com/pion/webrtc/v3/pkg/media/oggreader"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,17 +48,98 @@ const (
 	waitTimeout = 5 * time.Second
 )
 
-func (th *TestHelper) transmitAudioTrack(c *Client) {
+func (th *TestHelper) newScreenTrack() *webrtc.TrackLocalStaticRTP {
 	th.tb.Helper()
 
-	track, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{
-		MimeType:     "audio/opus",
-		ClockRate:    48000,
-		Channels:     2,
-		SDPFmtpLine:  "minptime=10;useinbandfec=1",
-		RTCPFeedback: nil,
-	}, "audio", "voice_"+random.NewID())
+	track, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{
+		MimeType:    "video/VP8",
+		ClockRate:   90000,
+		SDPFmtpLine: "",
+		RTCPFeedback: []webrtc.RTCPFeedback{
+			{Type: "goog-remb", Parameter: ""},
+			{Type: "ccm", Parameter: "fir"},
+			{Type: "nack", Parameter: ""},
+			{Type: "nack", Parameter: "pli"},
+		},
+	}, "screen", "screen_"+random.NewID())
 	require.NoError(th.tb, err)
+
+	return track
+}
+
+func (th *TestHelper) screenTrackWriter(track *webrtc.TrackLocalStaticRTP, closeCh <-chan struct{}) {
+	packetizer := rtp.NewPacketizer(
+		1200,
+		0,
+		0,
+		&codecs.VP8Payloader{
+			EnablePictureID: true,
+		},
+		rtp.NewRandomSequencer(),
+		90000,
+	)
+
+	// Open a IVF file and start reading using our IVFReader
+	file, ivfErr := os.Open("../testfiles/video.ivf")
+	if ivfErr != nil {
+		log.Fatalf(ivfErr.Error())
+	}
+	defer file.Close()
+
+	ivf, header, ivfErr := ivfreader.NewWith(file)
+	if ivfErr != nil {
+		log.Fatalf(ivfErr.Error())
+	}
+
+	// Send our video file frame at a time. Pace our sending so we send it at the same speed it should be played back as.
+	// This isn't required since the video is timestamped, but we will have much higher loss if we send all at once.
+	//
+	// It is important to use a time.Ticker instead of time.Sleep because
+	// * avoids accumulating skew, just calling time.Sleep didn't compensate for the time spent parsing the data
+	// * works around latency issues with Sleep (see https://github.com/golang/go/issues/44343)
+	frameDuration := time.Millisecond * time.Duration((float32(header.TimebaseNumerator)/float32(header.TimebaseDenominator))*1000)
+
+	ticker := time.NewTicker(frameDuration)
+	for {
+		select {
+		case <-closeCh:
+			log.Printf("existing ivf reader")
+			return
+		case <-ticker.C:
+		}
+
+		var frame []byte
+		var ivfErr error
+		frame, _, ivfErr = ivf.ParseNextFrame()
+		if ivfErr == io.EOF || (ivfErr != nil && ivfErr.Error() == "incomplete frame data") {
+			ivf.ResetReader(func(_ int64) io.Reader {
+				_, _ = file.Seek(0, 0)
+				ivf, header, ivfErr = ivfreader.NewWith(file)
+				if ivfErr != nil {
+					log.Fatalf(ivfErr.Error())
+				}
+				return file
+			})
+			frame, _, ivfErr = ivf.ParseNextFrame()
+		}
+		if ivfErr != nil {
+			log.Fatalf(ivfErr.Error())
+		}
+
+		packets := packetizer.Packetize(frame, 90000/header.TimebaseDenominator)
+		for _, p := range packets {
+			if err := track.WriteRTP(p); err != nil {
+				log.Printf("failed to write video sample: %s", err.Error())
+				return
+			}
+		}
+	}
+}
+
+func (th *TestHelper) transmitScreenTrack(c *Client) {
+	th.tb.Helper()
+
+	track := th.newScreenTrack()
 
 	sender, err := c.pc.AddTrack(track)
 	require.NoError(th.tb, err)
@@ -71,56 +156,98 @@ func (th *TestHelper) transmitAudioTrack(c *Client) {
 		}
 	}()
 
-	go func() {
-		// Open a OGG file and start reading using our OGGReader
-		file, oggErr := os.Open("../testfiles/audio.ogg")
-		require.NoError(th.tb, oggErr)
-		defer file.Close()
+	go th.screenTrackWriter(track, closeCh)
+}
 
-		// Open on oggfile in non-checksum mode.
-		ogg, _, oggErr := oggreader.NewWith(file)
-		require.NoError(th.tb, oggErr)
+func (th *TestHelper) newVoiceTrack() *webrtc.TrackLocalStaticSample {
+	th.tb.Helper()
 
-		// Keep track of last granule, the difference is the amount of samples in the buffer
-		var lastGranule uint64
+	track, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{
+		MimeType:     "audio/opus",
+		ClockRate:    48000,
+		Channels:     2,
+		SDPFmtpLine:  "minptime=10;useinbandfec=1",
+		RTCPFeedback: nil,
+	}, "audio", "voice_"+random.NewID())
+	require.NoError(th.tb, err)
 
-		// It is important to use a time.Ticker instead of time.Sleep because
-		// * avoids accumulating skew, just calling time.Sleep didn't compensate for the time spent parsing the data
-		// * works around latency issues with Sleep (see https://github.com/golang/go/issues/44343)
-		oggPageDuration := time.Millisecond * 20
-		ticker := time.NewTicker(oggPageDuration)
-		for {
-			select {
-			case <-closeCh:
-				log.Printf("existing ogg reader")
-				return
-			case <-ticker.C:
-			}
+	return track
+}
 
-			var oggErr error
-			var pageData []byte
-			var pageHeader *oggreader.OggPageHeader
+func (th *TestHelper) voiceTrackWriter(track *webrtc.TrackLocalStaticSample, closeCh <-chan struct{}) {
+	th.tb.Helper()
+
+	// Open a OGG file and start reading using our OGGReader
+	file, oggErr := os.Open("../testfiles/audio.ogg")
+	require.NoError(th.tb, oggErr)
+	defer file.Close()
+
+	// Open on oggfile in non-checksum mode.
+	ogg, _, oggErr := oggreader.NewWith(file)
+	require.NoError(th.tb, oggErr)
+
+	// Keep track of last granule, the difference is the amount of samples in the buffer
+	var lastGranule uint64
+
+	// It is important to use a time.Ticker instead of time.Sleep because
+	// * avoids accumulating skew, just calling time.Sleep didn't compensate for the time spent parsing the data
+	// * works around latency issues with Sleep (see https://github.com/golang/go/issues/44343)
+	oggPageDuration := time.Millisecond * 20
+	ticker := time.NewTicker(oggPageDuration)
+	for {
+		select {
+		case <-closeCh:
+			log.Printf("existing ogg reader")
+			return
+		case <-ticker.C:
+		}
+
+		var oggErr error
+		var pageData []byte
+		var pageHeader *oggreader.OggPageHeader
+		pageData, pageHeader, oggErr = ogg.ParseNextPage()
+		if oggErr == io.EOF {
+			ogg.ResetReader(func(_ int64) io.Reader {
+				_, _ = file.Seek(0, 0)
+				return file
+			})
 			pageData, pageHeader, oggErr = ogg.ParseNextPage()
-			if oggErr == io.EOF {
-				ogg.ResetReader(func(_ int64) io.Reader {
-					_, _ = file.Seek(0, 0)
-					return file
-				})
-				pageData, pageHeader, oggErr = ogg.ParseNextPage()
-			}
-			require.NoError(th.tb, oggErr)
+		}
+		require.NoError(th.tb, oggErr)
 
-			// The amount of samples is the difference between the last and current timestamp
-			sampleCount := float64(pageHeader.GranulePosition - lastGranule)
-			lastGranule = pageHeader.GranulePosition
-			sampleDuration := time.Duration((sampleCount/48000)*1000) * time.Millisecond
+		// The amount of samples is the difference between the last and current timestamp
+		sampleCount := float64(pageHeader.GranulePosition - lastGranule)
+		lastGranule = pageHeader.GranulePosition
+		sampleDuration := time.Duration((sampleCount/48000)*1000) * time.Millisecond
 
-			if err := track.WriteSample(media.Sample{Data: pageData, Duration: sampleDuration}); err != nil {
-				log.Printf("failed to write audio sample: %s", err)
+		if err := track.WriteSample(media.Sample{Data: pageData, Duration: sampleDuration}); err != nil {
+			log.Printf("failed to write audio sample: %s", err)
+			return
+		}
+	}
+}
+
+func (th *TestHelper) transmitAudioTrack(c *Client) {
+	th.tb.Helper()
+
+	track := th.newVoiceTrack()
+
+	sender, err := c.pc.AddTrack(track)
+	require.NoError(th.tb, err)
+
+	closeCh := make(chan struct{})
+	go func() {
+		rtcpBuf := make([]byte, receiveMTU)
+		for {
+			if _, _, rtcpErr := sender.Read(rtcpBuf); rtcpErr != nil {
+				log.Printf("failed to read rtcp: %s", rtcpErr.Error())
+				close(closeCh)
 				return
 			}
 		}
 	}()
+
+	go th.voiceTrackWriter(track, closeCh)
 }
 
 func (th *TestHelper) ensureUser(client *model.Client4, username, password string) *model.User {

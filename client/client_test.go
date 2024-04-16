@@ -16,18 +16,20 @@ func TestClientConnect(t *testing.T) {
 	th := setupTestHelper(t, "")
 
 	connectCh := make(chan struct{})
-	th.userClient.On(WSConnectEvent, func(_ any) error {
+	err := th.userClient.On(WSConnectEvent, func(_ any) error {
 		close(connectCh)
 		return nil
 	})
+	require.NoError(t, err)
 
 	closeCh := make(chan struct{})
-	th.userClient.On(CloseEvent, func(_ any) error {
+	err = th.userClient.On(CloseEvent, func(_ any) error {
 		close(closeCh)
 		return nil
 	})
+	require.NoError(t, err)
 
-	err := th.userClient.Connect()
+	err = th.userClient.Connect()
 	require.NoError(t, err)
 
 	select {
@@ -92,12 +94,12 @@ func TestClientConcurrency(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			th.userClient.On(WSConnectEvent, func(_ any) error {
+			_ = th.userClient.On(WSConnectEvent, func(_ any) error {
 				close(connectCh)
 				return nil
 			})
 
-			th.userClient.On(CloseEvent, func(_ any) error {
+			_ = th.userClient.On(CloseEvent, func(_ any) error {
 				close(closeCh)
 				return nil
 			})
@@ -140,23 +142,26 @@ func TestClientJoinCall(t *testing.T) {
 		require.NoError(t, err)
 
 		connectCh := make(chan struct{})
-		th.userClient.On(WSConnectEvent, func(_ any) error {
+		err = th.userClient.On(WSConnectEvent, func(_ any) error {
 			close(connectCh)
 			return nil
 		})
+		require.NoError(t, err)
 
 		closeCh := make(chan struct{})
-		th.userClient.On(CloseEvent, func(_ any) error {
+		err = th.userClient.On(CloseEvent, func(_ any) error {
 			close(closeCh)
 			return nil
 		})
+		require.NoError(t, err)
 
 		errorCh := make(chan struct{})
-		th.userClient.On(ErrorEvent, func(err any) error {
+		err = th.userClient.On(ErrorEvent, func(err any) error {
 			require.EqualError(t, err.(error), "ws error: forbidden")
 			close(errorCh)
 			return nil
 		})
+		require.NoError(t, err)
 
 		select {
 		case <-connectCh:
@@ -187,22 +192,25 @@ func TestClientJoinCall(t *testing.T) {
 		require.NoError(t, err)
 
 		connectCh := make(chan struct{})
-		th.userClient.On(WSConnectEvent, func(_ any) error {
+		err = th.userClient.On(WSConnectEvent, func(_ any) error {
 			close(connectCh)
 			return nil
 		})
+		require.NoError(t, err)
 
 		closeCh := make(chan struct{})
-		th.userClient.On(CloseEvent, func(_ any) error {
+		err = th.userClient.On(CloseEvent, func(_ any) error {
 			close(closeCh)
 			return nil
 		})
+		require.NoError(t, err)
 
 		joinCh := make(chan struct{})
-		th.userClient.On(WSCallJoinEvent, func(_ any) error {
+		err = th.userClient.On(WSCallJoinEvent, func(_ any) error {
 			close(joinCh)
 			return nil
 		})
+		require.NoError(t, err)
 
 		select {
 		case <-connectCh:
@@ -224,5 +232,28 @@ func TestClientJoinCall(t *testing.T) {
 		case <-time.After(waitTimeout):
 			require.Fail(t, "timed out waiting for close event")
 		}
+	})
+}
+
+func TestClientOn(t *testing.T) {
+	th := setupTestHelper(t, "")
+
+	t.Run("invalid event", func(t *testing.T) {
+		err := th.userClient.On("invalid", func(_ any) error {
+			return nil
+		})
+		require.EqualError(t, err, "invalid event type \"invalid\"")
+	})
+
+	t.Run("double registration", func(t *testing.T) {
+		err := th.userClient.On(WSConnectEvent, func(_ any) error {
+			return nil
+		})
+		require.NoError(t, err)
+
+		err = th.userClient.On(WSConnectEvent, func(_ any) error {
+			return nil
+		})
+		require.EqualError(t, err, "already subscribed")
 	})
 }

@@ -4,6 +4,7 @@
 package client
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -11,6 +12,8 @@ import (
 	"time"
 
 	"github.com/mattermost/rtcd/service/ws"
+
+	"github.com/mattermost/mattermost/server/public/model"
 
 	"github.com/pion/webrtc/v3"
 )
@@ -20,18 +23,47 @@ type EventHandler func(ctx any) error
 type EventType string
 
 const (
-	WSConnectEvent       EventType = "WSConnect"
-	WSDisconnectEvent    EventType = "WSDisconnect"
-	WSCallJoinEvent      EventType = "WSCallJoin"
-	WSCallRecordingState EventType = "WSCallRecordingState"
-	WSCallJobState       EventType = "WSCallJobState"
-	WSJobStopEvent       EventType = "WSStopJobEvent"
-	RTCConnectEvent      EventType = "RTCConnect"
-	RTCDisconnectEvent   EventType = "RTCDisconnect"
-	RTCTrackEvent        EventType = "RTCTrack"
-	CloseEvent           EventType = "Close"
-	ErrorEvent           EventType = "Error"
+	RTCConnectEvent    EventType = "RTCConnect"
+	RTCDisconnectEvent EventType = "RTCDisconnect"
+	RTCTrackEvent      EventType = "RTCTrack"
+
+	CloseEvent EventType = "Close"
+	ErrorEvent EventType = "Error"
+
+	WSConnectEvent            EventType = "WSConnect"
+	WSDisconnectEvent         EventType = "WSDisconnect"
+	WSCallJoinEvent           EventType = "WSCallJoin"
+	WSCallRecordingStateEvent EventType = "WSCallRecordingState" // DEPRECATED
+	WSCallJobStateEvent       EventType = "WSCallJobState"
+	WSJobStopEvent            EventType = "WSStopJobEvent"
+	WSCallHostChangedEvent    EventType = "WSCallHostChanged"
+	WSCallMutedEvent          EventType = "WSCallMuted"
+	WSCallUnmutedEvent        EventType = "WSCallUnmuted"
+	WSCallRaisedHandEvent     EventType = "WSCallRaisedHand"
+	WSCallLoweredHandEvent    EventType = "WSCallLoweredHand"
+	WSCallScreenOnEvent       EventType = "WSCallScreenOn"
+	WSCallScreenOffEvent      EventType = "WSCallScreenOff"
 )
+
+func (e EventType) IsValid() bool {
+	switch e {
+	case RTCConnectEvent, RTCDisconnectEvent, RTCTrackEvent,
+		CloseEvent,
+		ErrorEvent,
+		WSConnectEvent, WSDisconnectEvent,
+		WSCallJoinEvent,
+		WSCallRecordingStateEvent,
+		WSCallHostChangedEvent,
+		WSCallUnmutedEvent, WSCallMutedEvent,
+		WSCallRaisedHandEvent, WSCallLoweredHandEvent,
+		WSCallScreenOnEvent, WSCallScreenOffEvent,
+		WSCallJobStateEvent,
+		WSJobStopEvent:
+		return true
+	default:
+		return false
+	}
+}
 
 const (
 	clientStateNew int32 = iota
@@ -40,11 +72,18 @@ const (
 	clientStateClosed
 )
 
+var (
+	ErrAlreadySubscribed = errors.New("already subscribed")
+)
+
 // Client is a Golang implementation of a client for Mattermost Calls.
 type Client struct {
 	cfg Config
 
 	handlers map[EventType]EventHandler
+
+	// HTTP API
+	apiClient *model.Client4
 
 	// WebSocket
 	ws                  *ws.Client
@@ -57,10 +96,12 @@ type Client struct {
 	currentConnID       string
 
 	// WebRTC
-	pc        *webrtc.PeerConnection
-	dc        *webrtc.DataChannel
-	iceCh     chan webrtc.ICECandidateInit
-	receivers map[string]*webrtc.RTPReceiver
+	pc                *webrtc.PeerConnection
+	dc                *webrtc.DataChannel
+	iceCh             chan webrtc.ICECandidateInit
+	receivers         map[string][]*webrtc.RTPReceiver
+	voiceSender       *webrtc.RTPSender
+	screenTransceiver *webrtc.RTPTransceiver
 
 	state int32
 
@@ -75,6 +116,9 @@ func New(cfg Config, opts ...Option) (*Client, error) {
 		return nil, fmt.Errorf("failed to validate config: %w", err)
 	}
 
+	apiClient := model.NewAPIv4Client(cfg.SiteURL)
+	apiClient.SetToken(cfg.AuthToken)
+
 	c := &Client{
 		cfg:           cfg,
 		handlers:      make(map[EventType]EventHandler),
@@ -82,7 +126,8 @@ func New(cfg Config, opts ...Option) (*Client, error) {
 		wsCloseCh:     make(chan struct{}),
 		wsClientSeqNo: 1,
 		iceCh:         make(chan webrtc.ICECandidateInit, iceChSize),
-		receivers:     make(map[string]*webrtc.RTPReceiver),
+		receivers:     make(map[string][]*webrtc.RTPReceiver),
+		apiClient:     apiClient,
 	}
 
 	for _, opt := range opts {
@@ -135,10 +180,21 @@ func (c *Client) Close() error {
 
 // On is used to subscribe to any events fired by the client.
 // Note: there can only be one subscriber per event type.
-func (c *Client) On(eventType EventType, h EventHandler) {
+func (c *Client) On(eventType EventType, h EventHandler) error {
+	if !eventType.IsValid() {
+		return fmt.Errorf("invalid event type %q", eventType)
+	}
+
 	c.mut.Lock()
 	defer c.mut.Unlock()
+
+	if _, ok := c.handlers[eventType]; ok {
+		return ErrAlreadySubscribed
+	}
+
 	c.handlers[eventType] = h
+
+	return nil
 }
 
 func (c *Client) emit(eventType EventType, ctx any) {
@@ -147,7 +203,7 @@ func (c *Client) emit(eventType EventType, ctx any) {
 	c.mut.RUnlock()
 	if handler != nil {
 		if err := handler(ctx); err != nil {
-			log.Printf("failed to emit event (%s): %s", eventType, err.Error())
+			log.Printf("failed to handle event (%s): %s", eventType, err.Error())
 		}
 	}
 }
