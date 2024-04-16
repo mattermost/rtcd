@@ -28,6 +28,10 @@ func (c *Client) Unmute(track webrtc.TrackLocal) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
+	if c.pc == nil {
+		return fmt.Errorf("rtc client is not initialized")
+	}
+
 	sender := c.voiceSender
 
 	if sender == nil {
@@ -88,6 +92,10 @@ func (c *Client) StartScreenShare(tracks []webrtc.TrackLocal) (*webrtc.RTPTransc
 
 	c.mut.Lock()
 	defer c.mut.Unlock()
+
+	if c.pc == nil {
+		return nil, fmt.Errorf("rtc client is not initialized")
+	}
 
 	if err := c.sendWS(wsEventScreenOn, map[string]any{
 		"data": string(data),

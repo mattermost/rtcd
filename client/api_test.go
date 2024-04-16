@@ -41,6 +41,11 @@ func TestAPIMuteUnmute(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	t.Run("not initialized", func(t *testing.T) {
+		err := th.userClient.Unmute(th.newVoiceTrack())
+		require.EqualError(t, err, "rtc client is not initialized")
+	})
+
 	go func() {
 		err := th.userClient.Connect()
 		require.NoError(t, err)
@@ -376,6 +381,11 @@ func TestAPIScreenShare(t *testing.T) {
 		return nil
 	})
 	require.NoError(t, err)
+
+	t.Run("not initialized", func(t *testing.T) {
+		_, err := th.userClient.StartScreenShare([]webrtc.TrackLocal{th.newScreenTrack()})
+		require.EqualError(t, err, "rtc client is not initialized")
+	})
 
 	go func() {
 		err := th.userClient.Connect()

@@ -169,7 +169,9 @@ func (c *Client) initRTCSession() error {
 	if err != nil {
 		return fmt.Errorf("failed to create new peer connection: %s", err)
 	}
+	c.mut.Lock()
 	c.pc = pc
+	c.mut.Unlock()
 
 	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if candidate == nil {
