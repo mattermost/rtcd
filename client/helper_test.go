@@ -92,7 +92,7 @@ func (th *TestHelper) screenTrackWriter(track *webrtc.TrackLocalStaticRTP, close
 	}
 
 	// Send our video file frame at a time. Pace our sending so we send it at the same speed it should be played back as.
-	// This isn't required since the video is timestamped, but we will such much higher loss if we send all at once.
+	// This isn't required since the video is timestamped, but we will have much higher loss if we send all at once.
 	//
 	// It is important to use a time.Ticker instead of time.Sleep because
 	// * avoids accumulating skew, just calling time.Sleep didn't compensate for the time spent parsing the data

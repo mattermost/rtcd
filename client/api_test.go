@@ -4,6 +4,7 @@
 package client
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -492,4 +493,99 @@ func TestAPIScreenShare(t *testing.T) {
 	case <-time.After(waitTimeout):
 		require.Fail(t, "timed out waiting for close event")
 	}
+}
+
+func TestAPIConcurrency(t *testing.T) {
+	t.Run("Mute/Unmute", func(t *testing.T) {
+		th := setupTestHelper(t, "calls0")
+
+		// Setup
+		userConnectCh := make(chan struct{})
+		err := th.userClient.On(RTCConnectEvent, func(_ any) error {
+			close(userConnectCh)
+			return nil
+		})
+		require.NoError(t, err)
+
+		err = th.userClient.Connect()
+		require.NoError(t, err)
+
+		select {
+		case <-userConnectCh:
+		case <-time.After(waitTimeout):
+			require.Fail(t, "timed out waiting for user connect event")
+		}
+
+		userCloseCh := make(chan struct{})
+
+		t.Run("nil track", func(t *testing.T) {
+			var wg sync.WaitGroup
+			wg.Add(10)
+			for i := 0; i < 10; i++ {
+				go func() {
+					defer wg.Done()
+					err := th.userClient.Unmute(nil)
+					require.EqualError(t, err, "invalid nil track")
+				}()
+			}
+			wg.Wait()
+		})
+
+		t.Run("same track", func(t *testing.T) {
+			var wg sync.WaitGroup
+			wg.Add(20)
+
+			track := th.newVoiceTrack()
+
+			for i := 0; i < 10; i++ {
+				go func() {
+					defer wg.Done()
+					err := th.userClient.Unmute(track)
+					require.NoError(t, err)
+				}()
+
+				go func() {
+					defer wg.Done()
+					err := th.userClient.Mute()
+					require.NoError(t, err)
+				}()
+			}
+			wg.Wait()
+		})
+
+		t.Run("different tracks", func(t *testing.T) {
+			var wg sync.WaitGroup
+			wg.Add(20)
+
+			for i := 0; i < 10; i++ {
+				go func() {
+					defer wg.Done()
+					err := th.userClient.Unmute(th.newVoiceTrack())
+					require.NoError(t, err)
+				}()
+
+				go func() {
+					defer wg.Done()
+					err := th.userClient.Mute()
+					require.NoError(t, err)
+				}()
+			}
+			wg.Wait()
+		})
+
+		err = th.userClient.On(CloseEvent, func(_ any) error {
+			close(userCloseCh)
+			return nil
+		})
+		require.NoError(t, err)
+
+		err = th.userClient.Close()
+		require.NoError(t, err)
+
+		select {
+		case <-userCloseCh:
+		case <-time.After(waitTimeout):
+			require.Fail(t, "timed out waiting for close event")
+		}
+	})
 }

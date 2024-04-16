@@ -25,19 +25,18 @@ func (c *Client) Unmute(track webrtc.TrackLocal) error {
 		return fmt.Errorf("invalid nil track")
 	}
 
-	c.mut.RLock()
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
 	sender := c.voiceSender
-	c.mut.RUnlock()
 
 	if sender == nil {
 		snd, err := c.pc.AddTrack(track)
 		if err != nil {
 			return fmt.Errorf("failed to add track: %w", err)
 		}
-		c.mut.Lock()
 		c.voiceSender = snd
 		sender = snd
-		c.mut.Unlock()
 	} else {
 		if err := sender.ReplaceTrack(track); err != nil {
 			return fmt.Errorf("failed to replace track: %w", err)
@@ -55,7 +54,7 @@ func (c *Client) Unmute(track webrtc.TrackLocal) error {
 		}
 	}()
 
-	return c.SendWS(wsEventUnmute, nil, false)
+	return c.sendWS(wsEventUnmute, nil, false)
 }
 
 func (c *Client) Mute() error {
@@ -87,7 +86,10 @@ func (c *Client) StartScreenShare(tracks []webrtc.TrackLocal) (*webrtc.RTPTransc
 		return nil, fmt.Errorf("failed to marshal data: %w", err)
 	}
 
-	if err := c.SendWS(wsEventScreenOn, map[string]any{
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
+	if err := c.sendWS(wsEventScreenOn, map[string]any{
 		"data": string(data),
 	}, false); err != nil {
 		return nil, fmt.Errorf("failed to send screen on event: %w", err)
@@ -105,9 +107,7 @@ func (c *Client) StartScreenShare(tracks []webrtc.TrackLocal) (*webrtc.RTPTransc
 		}
 	}
 
-	c.mut.Lock()
 	c.screenTransceiver = trx
-	c.mut.Unlock()
 
 	sender := trx.Sender()
 
