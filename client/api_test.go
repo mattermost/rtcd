@@ -213,6 +213,124 @@ func TestAPIMuteUnmute(t *testing.T) {
 	}
 }
 
+func TestAPIMuteUnmuteNegotiation(t *testing.T) {
+	th := setupTestHelper(t, "calls0")
+
+	// Setup
+	userConnectCh := make(chan struct{})
+	err := th.userClient.On(RTCConnectEvent, func(_ any) error {
+		close(userConnectCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	adminConnectCh := make(chan struct{})
+	err = th.adminClient.On(RTCConnectEvent, func(_ any) error {
+		close(adminConnectCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	go func() {
+		err := th.userClient.Connect()
+		require.NoError(t, err)
+	}()
+
+	go func() {
+		err := th.adminClient.Connect()
+		require.NoError(t, err)
+	}()
+
+	select {
+	case <-userConnectCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for user connect event")
+	}
+
+	select {
+	case <-adminConnectCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for admin connect event")
+	}
+
+	userCloseCh := make(chan struct{})
+	adminCloseCh := make(chan struct{})
+
+	userVoiceTrack := th.newVoiceTrack()
+	err = th.userClient.Unmute(userVoiceTrack)
+	require.NoError(t, err)
+	go th.voiceTrackWriter(userVoiceTrack, userCloseCh)
+
+	time.Sleep(time.Second)
+
+	err = th.userClient.Mute()
+	require.NoError(t, err)
+
+	th.adminClient.pc.OnSignalingStateChange(func(st webrtc.SignalingState) {
+		if st == webrtc.SignalingStateStable {
+			th.adminClient.pc.OnNegotiationNeeded(func() {
+				require.FailNow(t, "negotiation should not be needed")
+			})
+		}
+	})
+
+	th.userClient.pc.OnSignalingStateChange(func(st webrtc.SignalingState) {
+		if st == webrtc.SignalingStateStable {
+			th.userClient.pc.OnNegotiationNeeded(func() {
+				require.FailNow(t, "negotiation should not be needed")
+			})
+		}
+	})
+
+	adminVoiceTrack := th.newVoiceTrack()
+	err = th.adminClient.Unmute(adminVoiceTrack)
+	require.NoError(t, err)
+	go th.voiceTrackWriter(adminVoiceTrack, adminCloseCh)
+
+	time.Sleep(time.Second)
+
+	err = th.userClient.Unmute(userVoiceTrack)
+	require.NoError(t, err)
+
+	time.Sleep(time.Second)
+
+	// Teardown
+
+	err = th.userClient.On(CloseEvent, func(_ any) error {
+		close(userCloseCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	err = th.adminClient.On(CloseEvent, func(_ any) error {
+		close(adminCloseCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	go func() {
+		err := th.userClient.Close()
+		require.NoError(t, err)
+	}()
+
+	go func() {
+		err := th.adminClient.Close()
+		require.NoError(t, err)
+	}()
+
+	select {
+	case <-userCloseCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for close event")
+	}
+
+	select {
+	case <-adminCloseCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for close event")
+	}
+}
+
 func TestAPIRaiseLowerHand(t *testing.T) {
 	th := setupTestHelper(t, "calls0")
 
