@@ -65,12 +65,6 @@ func (c *Client) Mute() error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	if c.voiceSender != nil {
-		if err := c.voiceSender.ReplaceTrack(nil); err != nil {
-			return fmt.Errorf("failed to replace track: %w", err)
-		}
-	}
-
 	return c.sendWS(wsEventMute, nil, false)
 }
 
