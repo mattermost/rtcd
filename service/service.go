@@ -19,8 +19,10 @@ import (
 	"github.com/mattermost/rtcd/service/store"
 	"github.com/mattermost/rtcd/service/ws"
 
-	godeltaprof "github.com/grafana/pyroscope-go/godeltaprof/http/pprof"
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
+
+	godeltaprof "github.com/grafana/pyroscope-go/godeltaprof/http/pprof"
+	"github.com/prometheus/procfs"
 )
 
 type Service struct {
@@ -31,6 +33,7 @@ type Service struct {
 	store        store.Store
 	auth         *auth.Service
 	metrics      *perf.Metrics
+	proc         procfs.FS
 	log          *mlog.Logger
 	sessionCache *auth.SessionCache
 	// connMap maps user sessions to the websocket connection they originated
@@ -59,6 +62,12 @@ func New(cfg Config) (*Service, error) {
 	}
 
 	s.log.Info("rtcd: starting up", getVersionInfo().logFields()...)
+
+	proc, err := procfs.NewDefaultFS()
+	if err != nil {
+		s.log.Error("failed to create proc file-system", mlog.Err(err))
+	}
+	s.proc = proc
 
 	s.store, err = store.New(cfg.Store.DataSource)
 	if err != nil {
@@ -102,6 +111,7 @@ func New(cfg Config) (*Service, error) {
 	s.apiServer.RegisterHandleFunc("/register", s.registerClient)
 	s.apiServer.RegisterHandleFunc("/unregister", s.unregisterClient)
 	s.apiServer.RegisterHandler("/ws", s.wsServer)
+	s.apiServer.RegisterHandleFunc("/system", s.getSystemInfo)
 
 	if val := os.Getenv("PERF_PROFILES"); val == "true" {
 		runtime.SetMutexProfileFraction(5)

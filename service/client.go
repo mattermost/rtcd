@@ -232,6 +232,17 @@ func (c *Client) Send(msg ClientMessage) error {
 	return c.wsClient.Send(ws.BinaryMessage, data)
 }
 
+func (c *Client) Connected() bool {
+	c.mut.RLock()
+	defer c.mut.RUnlock()
+
+	if c.closed || c.wsClient == nil {
+		return false
+	}
+
+	return c.wsClient.GetConnState() == ws.WSConnOpen
+}
+
 func (c *Client) ReceiveCh() <-chan ClientMessage {
 	return c.receiveCh
 }
@@ -365,6 +376,34 @@ func (c *Client) GetVersionInfo() (VersionInfo, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		return VersionInfo{}, fmt.Errorf("request failed with status %s", resp.Status)
+	}
+
+	return info, nil
+}
+
+func (c *Client) GetSystemInfo() (SystemInfo, error) {
+	if c.httpClient == nil {
+		return SystemInfo{}, fmt.Errorf("http client is not initialized")
+	}
+
+	req, err := http.NewRequest("GET", c.cfg.httpURL+"/system", nil)
+	if err != nil {
+		return SystemInfo{}, fmt.Errorf("failed to build request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return SystemInfo{}, fmt.Errorf("http request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var info SystemInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return SystemInfo{}, fmt.Errorf("decoding http response failed: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return SystemInfo{}, fmt.Errorf("request failed with status %s", resp.Status)
 	}
 
 	return info, nil
