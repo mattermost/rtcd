@@ -20,16 +20,16 @@ const (
 	httpResponseBodyMaxSizeBytes = 1024 * 1024 // 1MB
 )
 
-func (c *Client) Unmute(track webrtc.TrackLocal) error {
+func (c *Client) Unmute(track webrtc.TrackLocal) (*webrtc.RTPSender, error) {
 	if track == nil {
-		return fmt.Errorf("invalid nil track")
+		return nil, fmt.Errorf("invalid nil track")
 	}
 
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
 	if c.pc == nil {
-		return fmt.Errorf("rtc client is not initialized")
+		return nil, fmt.Errorf("rtc client is not initialized")
 	}
 
 	sender := c.voiceSender
@@ -37,13 +37,13 @@ func (c *Client) Unmute(track webrtc.TrackLocal) error {
 	if sender == nil {
 		snd, err := c.pc.AddTrack(track)
 		if err != nil {
-			return fmt.Errorf("failed to add track: %w", err)
+			return nil, fmt.Errorf("failed to add track: %w", err)
 		}
 		c.voiceSender = snd
 		sender = snd
 	} else {
 		if err := sender.ReplaceTrack(track); err != nil {
-			return fmt.Errorf("failed to replace track: %w", err)
+			return nil, fmt.Errorf("failed to replace track: %w", err)
 		}
 	}
 
@@ -58,7 +58,7 @@ func (c *Client) Unmute(track webrtc.TrackLocal) error {
 		}
 	}()
 
-	return c.sendWS(wsEventUnmute, nil, false)
+	return sender, c.sendWS(wsEventUnmute, nil, false)
 }
 
 func (c *Client) Mute() error {

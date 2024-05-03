@@ -43,6 +43,8 @@ const (
 	WSCallLoweredHandEvent    EventType = "WSCallLoweredHand"
 	WSCallScreenOnEvent       EventType = "WSCallScreenOn"
 	WSCallScreenOffEvent      EventType = "WSCallScreenOff"
+	WSSummonAIEvent           EventType = "WSSummonAI"
+	WSGenericEvent            EventType = "WSGeneric"
 )
 
 func (e EventType) IsValid() bool {
@@ -58,7 +60,9 @@ func (e EventType) IsValid() bool {
 		WSCallRaisedHandEvent, WSCallLoweredHandEvent,
 		WSCallScreenOnEvent, WSCallScreenOffEvent,
 		WSCallJobStateEvent,
-		WSJobStopEvent:
+		WSJobStopEvent,
+		WSSummonAIEvent,
+		WSGenericEvent:
 		return true
 	default:
 		return false

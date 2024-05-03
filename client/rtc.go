@@ -32,6 +32,9 @@ var (
 		"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id",
 		"urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id",
 	}
+	rtpAudioExtensions = []string{
+		"urn:ietf:params:rtp-hdrext:ssrc-audio-level",
+	}
 )
 
 func (c *Client) handleWSEventSignal(evData map[string]any) error {
@@ -159,6 +162,12 @@ func (c *Client) initRTCSession() error {
 
 	for _, ext := range rtpVideoExtensions {
 		if err := m.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: ext}, webrtc.RTPCodecTypeVideo); err != nil {
+			return fmt.Errorf("failed to register header extension: %w", err)
+		}
+	}
+
+	for _, ext := range rtpAudioExtensions {
+		if err := m.RegisterHeaderExtension(webrtc.RTPHeaderExtensionCapability{URI: ext}, webrtc.RTPCodecTypeAudio); err != nil {
 			return fmt.Errorf("failed to register header extension: %w", err)
 		}
 	}

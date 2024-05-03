@@ -59,6 +59,7 @@ const (
 	wsEventUserScreenOn    = wsEvPrefix + "user_screen_on"
 	wsEventUserScreenOff   = wsEvPrefix + "user_screen_off"
 	wsEventUserReacted     = wsEvPrefix + "user_reacted"
+	wsEventSummonAI        = wsEvPrefix + "summon_ai"
 )
 
 var (
@@ -195,8 +196,8 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 				if err := rx.Stop(); err != nil {
 					log.Printf("failed to stop receiver for session %q: %s", sessionID, err)
 				}
-				delete(c.receivers, sessionID)
 			}
+			delete(c.receivers, sessionID)
 			c.mut.Unlock()
 		case wsEventCallEnd:
 			channelID := ev.GetBroadcast().ChannelId
@@ -295,7 +296,15 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 				evType = WSCallScreenOffEvent
 			}
 			c.emit(evType, sessionID)
+		case wsEventSummonAI:
+			channelID, _ := ev.GetData()["channel_id"].(string)
+			if channelID != c.cfg.ChannelID {
+				return nil
+			}
+			authToken, _ := ev.GetData()["auth_token"].(string)
+			c.emit(WSSummonAIEvent, authToken)
 		default:
+			c.emit(WSGenericEvent, ev)
 		}
 	case ws.BinaryMessage:
 	default:

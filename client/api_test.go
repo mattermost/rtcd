@@ -42,7 +42,7 @@ func TestAPIMuteUnmute(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("not initialized", func(t *testing.T) {
-		err := th.userClient.Unmute(th.newVoiceTrack())
+		_, err := th.userClient.Unmute(th.newVoiceTrack())
 		require.EqualError(t, err, "rtc client is not initialized")
 	})
 
@@ -92,7 +92,7 @@ func TestAPIMuteUnmute(t *testing.T) {
 
 	// User unmutes, admin should receive the track
 	userVoiceTrack := th.newVoiceTrack()
-	err = th.userClient.Unmute(userVoiceTrack)
+	_, err = th.userClient.Unmute(userVoiceTrack)
 	require.NoError(t, err)
 	go th.voiceTrackWriter(userVoiceTrack, userCloseCh)
 
@@ -144,7 +144,7 @@ func TestAPIMuteUnmute(t *testing.T) {
 
 	// Admin unmutes, user should receive the track
 	adminVoiceTrack := th.newVoiceTrack()
-	err = th.adminClient.Unmute(adminVoiceTrack)
+	_, err = th.adminClient.Unmute(adminVoiceTrack)
 	require.NoError(t, err)
 	go th.voiceTrackWriter(adminVoiceTrack, adminCloseCh)
 
@@ -257,7 +257,7 @@ func TestAPIMuteUnmuteNegotiation(t *testing.T) {
 	adminCloseCh := make(chan struct{})
 
 	userVoiceTrack := th.newVoiceTrack()
-	err = th.userClient.Unmute(userVoiceTrack)
+	_, err = th.userClient.Unmute(userVoiceTrack)
 	require.NoError(t, err)
 	go th.voiceTrackWriter(userVoiceTrack, userCloseCh)
 
@@ -283,13 +283,13 @@ func TestAPIMuteUnmuteNegotiation(t *testing.T) {
 	})
 
 	adminVoiceTrack := th.newVoiceTrack()
-	err = th.adminClient.Unmute(adminVoiceTrack)
+	_, err = th.adminClient.Unmute(adminVoiceTrack)
 	require.NoError(t, err)
 	go th.voiceTrackWriter(adminVoiceTrack, adminCloseCh)
 
 	time.Sleep(time.Second)
 
-	err = th.userClient.Unmute(userVoiceTrack)
+	_, err = th.userClient.Unmute(userVoiceTrack)
 	require.NoError(t, err)
 
 	time.Sleep(time.Second)
@@ -652,7 +652,7 @@ func TestAPIConcurrency(t *testing.T) {
 			for i := 0; i < 10; i++ {
 				go func() {
 					defer wg.Done()
-					err := th.userClient.Unmute(nil)
+					_, err := th.userClient.Unmute(nil)
 					require.EqualError(t, err, "invalid nil track")
 				}()
 			}
@@ -668,7 +668,7 @@ func TestAPIConcurrency(t *testing.T) {
 			for i := 0; i < 10; i++ {
 				go func() {
 					defer wg.Done()
-					err := th.userClient.Unmute(track)
+					_, err := th.userClient.Unmute(track)
 					require.NoError(t, err)
 				}()
 
@@ -688,7 +688,7 @@ func TestAPIConcurrency(t *testing.T) {
 			for i := 0; i < 10; i++ {
 				go func() {
 					defer wg.Done()
-					err := th.userClient.Unmute(th.newVoiceTrack())
+					_, err := th.userClient.Unmute(th.newVoiceTrack())
 					require.NoError(t, err)
 				}()
 
