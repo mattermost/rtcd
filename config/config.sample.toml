@@ -61,6 +61,21 @@ ice_host_override = ""
 # Note: this port will apply to both UDP and TCP host candidates.
 #
 # ice_host_port_override = 30443
+#
+# This setting supports an advanced syntax that can be used to provide a full mapping
+# of local addresses and the port that should be used to override the generated host candidate.
+#
+# Example:
+#
+# ice_host_override      = "8.8.8.8"
+# ice_host_port_override = "localIPA/8443,localIPB/8444,localIPC/8445"
+#
+# In the above example, if the rtcd process is running on an instance with localIPA it will override
+# the port of the host candidate using the address 8.8.8.8 with 8443.
+#
+# A reason to set a full mapping, including addresses of other instances, is to make it possible to pass the same
+# config to multiple pods in Kubernetes deployments. In that case, each pod should match against one
+# local (node) IP and greatly simplify load balancing across multiple nodes.
 
 # A list of ICE servers (STUN/TURN) to be used by the service. It supports
 # advanced configurations.
