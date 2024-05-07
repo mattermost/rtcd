@@ -127,3 +127,19 @@ func generateAddrsPairs(localIPs []netip.Addr, publicAddrsMap map[netip.Addr]str
 
 	return pairs, nil
 }
+
+func getExternalAddrMapFromHostOverride(override string) map[string]bool {
+	if override == "" {
+		return nil
+	}
+
+	pairs := strings.Split(override, ",")
+	m := make(map[string]bool, len(pairs))
+
+	for _, p := range pairs {
+		pair := strings.Split(p, "/")
+		m[pair[0]] = true
+	}
+
+	return m
+}

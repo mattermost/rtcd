@@ -105,6 +105,19 @@ func (s *Server) Start() error {
 
 	s.log.Debug("rtc: found local IPs", mlog.Any("ips", s.localIPs))
 
+	if m, _ := s.cfg.ICEHostPortOverride.ParseMap(); len(m) > 0 {
+		s.log.Debug("rtc: found ice host port override mappings", mlog.Any("mappings", s.cfg.ICEHostPortOverride))
+
+		for _, ip := range localIPs {
+			if port, ok := m[ip.String()]; ok {
+				s.log.Debug("rtc: found port override for local address", mlog.String("address", ip.String()), mlog.Int("port", port))
+				s.cfg.ICEHostPortOverride = ICEHostPortOverride(fmt.Sprintf("%d", port))
+				// NOTE: currently not supporting multiple ip/port mappings for the same rtcd instance.
+				break
+			}
+		}
+	}
+
 	// Populate public IP addresses map if override is not set and STUN is provided.
 	if s.cfg.ICEHostOverride == "" && len(s.cfg.ICEServers) > 0 {
 		for _, ip := range localIPs {

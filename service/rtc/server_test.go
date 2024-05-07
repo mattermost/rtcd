@@ -547,3 +547,155 @@ func TestTCPCandidates(t *testing.T) {
 	err = s.CloseSession(cfg.SessionID)
 	require.NoError(t, err)
 }
+
+func TestICEHostPortOverride(t *testing.T) {
+	log, err := logger.New(logger.Config{
+		EnableConsole: true,
+		ConsoleLevel:  "DEBUG",
+	})
+	require.NoError(t, err)
+	defer func() {
+		err := log.Shutdown()
+		require.NoError(t, err)
+	}()
+
+	metrics := perf.NewMetrics("rtcd", nil)
+	require.NotNil(t, metrics)
+
+	gatherCandidates := func(serverCfg ServerConfig) <-chan ice.Candidate {
+		s, err := NewServer(serverCfg, log, metrics)
+		require.NoError(t, err)
+		require.NotNil(t, s)
+
+		err = s.Start()
+		require.NoError(t, err)
+		defer func() {
+			err := s.Stop()
+			require.NoError(t, err)
+		}()
+
+		cfg := SessionConfig{
+			GroupID:   random.NewID(),
+			CallID:    random.NewID(),
+			UserID:    random.NewID(),
+			SessionID: random.NewID(),
+		}
+		err = s.InitSession(cfg, nil)
+		require.NoError(t, err)
+
+		pc, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+		require.NoError(t, err)
+		defer pc.Close()
+
+		dc, err := pc.CreateDataChannel("calls-dc", nil)
+		require.NoError(t, err)
+		require.NotNil(t, dc)
+
+		offer, err := pc.CreateOffer(nil)
+		require.NoError(t, err)
+
+		err = pc.SetLocalDescription(offer)
+		require.NoError(t, err)
+
+		offerData, err := json.Marshal(&offer)
+		require.NoError(t, err)
+
+		err = s.Send(Message{
+			GroupID:   cfg.GroupID,
+			CallID:    cfg.CallID,
+			UserID:    cfg.UserID,
+			SessionID: cfg.SessionID,
+			Type:      SDPMessage,
+			Data:      offerData,
+		})
+		require.NoError(t, err)
+
+		candidatesCh := make(chan ice.Candidate, 10)
+		go func() {
+			for msg := range s.ReceiveCh() {
+				if msg.Type == ICEMessage {
+					data := make(map[string]any)
+					err := json.Unmarshal(msg.Data, &data)
+					require.NoError(t, err)
+
+					iceString := data["candidate"].(map[string]interface{})["candidate"].(string)
+
+					candidate, err := ice.UnmarshalCandidate(iceString)
+					require.NoError(t, err)
+
+					candidatesCh <- candidate
+				}
+			}
+		}()
+
+		time.Sleep(time.Second)
+
+		err = s.CloseSession(cfg.SessionID)
+		require.NoError(t, err)
+
+		return candidatesCh
+	}
+
+	t.Run("no host override", func(t *testing.T) {
+		serverCfg := ServerConfig{
+			ICEPortUDP:          30433,
+			ICEPortTCP:          30433,
+			ICEHostPortOverride: "8443",
+		}
+
+		candidatesCh := gatherCandidates(serverCfg)
+
+		require.NotEmpty(t, candidatesCh)
+		for i := 0; i < len(candidatesCh); i++ {
+			candidate := <-candidatesCh
+			require.Equal(t, ice.CandidateTypeHost, candidate.Type())
+			require.Equal(t, serverCfg.ICEPortUDP, candidate.Port())
+		}
+	})
+
+	t.Run("host override - single port", func(t *testing.T) {
+		serverCfg := ServerConfig{
+			ICEPortUDP:          30433,
+			ICEPortTCP:          30433,
+			ICEHostOverride:     "8.8.8.8",
+			ICEHostPortOverride: "8443",
+		}
+
+		candidatesCh := gatherCandidates(serverCfg)
+
+		require.NotEmpty(t, candidatesCh)
+		for i := 0; i < len(candidatesCh); i++ {
+			candidate := <-candidatesCh
+			require.Equal(t, ice.CandidateTypeHost, candidate.Type())
+
+			if candidate.Address() == serverCfg.ICEHostOverride {
+				require.Equal(t, 8443, candidate.Port())
+			} else {
+				require.Equal(t, serverCfg.ICEPortUDP, candidate.Port())
+			}
+		}
+	})
+
+	t.Run("host override - mapping", func(t *testing.T) {
+		serverCfg := ServerConfig{
+			ICEPortUDP:          30433,
+			ICEPortTCP:          30433,
+			ICEHostOverride:     "8.8.8.8",
+			ICEHostPortOverride: "127.0.0.1/8443",
+		}
+
+		candidatesCh := gatherCandidates(serverCfg)
+
+		require.NotEmpty(t, candidatesCh)
+		for i := 0; i < len(candidatesCh); i++ {
+			candidate := <-candidatesCh
+			require.Equal(t, ice.CandidateTypeHost, candidate.Type())
+
+			if candidate.Address() == serverCfg.ICEHostOverride {
+				require.Equal(t, 8443, candidate.Port())
+			} else {
+				require.Equal(t, serverCfg.ICEPortUDP, candidate.Port())
+			}
+		}
+	})
+}

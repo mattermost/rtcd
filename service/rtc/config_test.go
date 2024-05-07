@@ -70,17 +70,29 @@ func TestServerConfigIsValid(t *testing.T) {
 	})
 
 	t.Run("invalid ICEHostPortOverride", func(t *testing.T) {
-		var cfg ServerConfig
-		cfg.ICEPortUDP = 8443
-		cfg.ICEPortTCP = 8443
-		cfg.ICEHostPortOverride = 45
-		err := cfg.IsValid()
-		require.Error(t, err)
-		require.Equal(t, "invalid ICEHostPortOverride value: 45 is not in allowed range [80, 49151]", err.Error())
-		cfg.ICEHostPortOverride = 65000
-		err = cfg.IsValid()
-		require.Error(t, err)
-		require.Equal(t, "invalid ICEHostPortOverride value: 65000 is not in allowed range [80, 49151]", err.Error())
+		t.Run("single port", func(t *testing.T) {
+			var cfg ServerConfig
+			cfg.ICEPortUDP = 8443
+			cfg.ICEPortTCP = 8443
+			cfg.ICEHostPortOverride = "45"
+			err := cfg.IsValid()
+			require.Error(t, err)
+			require.Equal(t, "invalid ICEHostPortOverride value: 45 is not in allowed range [80, 49151]", err.Error())
+			cfg.ICEHostPortOverride = "65000"
+			err = cfg.IsValid()
+			require.Error(t, err)
+			require.Equal(t, "invalid ICEHostPortOverride value: 65000 is not in allowed range [80, 49151]", err.Error())
+		})
+
+		t.Run("mapping", func(t *testing.T) {
+			var cfg ServerConfig
+			cfg.ICEPortUDP = 8443
+			cfg.ICEPortTCP = 8443
+			cfg.ICEHostPortOverride = "127.0.0.1,8443"
+			err := cfg.IsValid()
+			require.Error(t, err)
+			require.Equal(t, "invalid ICEHostPortOverride value: failed to parse mapping: invalid map pairing syntax", err.Error())
+		})
 	})
 
 	t.Run("valid", func(t *testing.T) {
@@ -260,5 +272,46 @@ func TestICEServerConfigIsValid(t *testing.T) {
 		}
 		err := cfg.IsValid()
 		require.NoError(t, err)
+	})
+}
+
+func TestICEHostPortOverrideParseMap(t *testing.T) {
+	t.Run("nil", func(t *testing.T) {
+		var override *ICEHostPortOverride
+		m, err := override.ParseMap()
+		require.EqualError(t, err, "should not be nil")
+		require.Nil(t, m)
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		var override ICEHostPortOverride
+		m, err := override.ParseMap()
+		require.NoError(t, err)
+		require.Nil(t, m)
+	})
+
+	t.Run("duplicate addresses", func(t *testing.T) {
+		override := ICEHostPortOverride("127.0.0.1/8444,127.0.0.1/8445")
+		m, err := override.ParseMap()
+		require.EqualError(t, err, "duplicate mapping found for 127.0.0.1")
+		require.Nil(t, m)
+	})
+
+	t.Run("duplicate ports", func(t *testing.T) {
+		override := ICEHostPortOverride("127.0.0.1/8444,127.0.0.2/8444")
+		m, err := override.ParseMap()
+		require.EqualError(t, err, "duplicate port found for 8444")
+		require.Nil(t, m)
+	})
+
+	t.Run("valid mapping", func(t *testing.T) {
+		override := ICEHostPortOverride("127.0.0.1/8443,127.0.0.2/8445,127.0.0.3/8444")
+		m, err := override.ParseMap()
+		require.NoError(t, err)
+		require.Equal(t, map[string]int{
+			"127.0.0.1": 8443,
+			"127.0.0.2": 8445,
+			"127.0.0.3": 8444,
+		}, m)
 	})
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 )
 
@@ -24,7 +25,7 @@ type ServerConfig struct {
 	ICEHostOverride string `toml:"ice_host_override"`
 	// ICEHostPortOverride optionally specifies a port number to override the one
 	// used to listen on when sharing host candidates.
-	ICEHostPortOverride int `toml:"ice_host_port_override"`
+	ICEHostPortOverride ICEHostPortOverride `toml:"ice_host_port_override"`
 	// A list of ICE server (STUN/TURN) configurations to use.
 	ICEServers ICEServers `toml:"ice_servers"`
 	TURNConfig TURNConfig `toml:"turn"`
@@ -57,8 +58,8 @@ func (c ServerConfig) IsValid() error {
 		return fmt.Errorf("invalid TURNConfig: %w", err)
 	}
 
-	if c.ICEHostPortOverride != 0 && (c.ICEHostPortOverride < 80 || c.ICEHostPortOverride > 49151) {
-		return fmt.Errorf("invalid ICEHostPortOverride value: %d is not in allowed range [80, 49151]", c.ICEHostPortOverride)
+	if err := c.ICEHostPortOverride.IsValid(); err != nil {
+		return fmt.Errorf("invalid ICEHostPortOverride value: %w", err)
 	}
 
 	return nil
@@ -156,8 +157,6 @@ func (s ICEServers) getSTUN() string {
 }
 
 func (s *ICEServers) Decode(value string) error {
-	fmt.Println(value)
-
 	var urls []string
 	err := json.Unmarshal([]byte(value), &urls)
 	if err == nil {
@@ -203,6 +202,93 @@ func (s *ICEServers) UnmarshalTOML(data interface{}) error {
 	}
 
 	*s = iceServers
+
+	return nil
+}
+
+type ICEHostPortOverride string
+
+func (s *ICEHostPortOverride) SinglePort() int {
+	if s == nil {
+		return 0
+	}
+	p, _ := strconv.Atoi(string(*s))
+	return p
+}
+
+func (s *ICEHostPortOverride) ParseMap() (map[string]int, error) {
+	if s == nil {
+		return nil, fmt.Errorf("should not be nil")
+	}
+
+	if *s == "" {
+		return nil, nil
+	}
+
+	pairs := strings.Split(string(*s), ",")
+
+	m := make(map[string]int, len(pairs))
+	ports := make(map[int]bool, len(pairs))
+
+	for _, p := range pairs {
+		pair := strings.Split(p, "/")
+		if len(pair) != 2 {
+			return nil, fmt.Errorf("invalid map pairing syntax")
+		}
+
+		port, err := strconv.Atoi(pair[1])
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse port number: %w", err)
+		}
+
+		if _, ok := m[pair[0]]; ok {
+			return nil, fmt.Errorf("duplicate mapping found for %s", pair[0])
+		}
+
+		if ports[port] {
+			return nil, fmt.Errorf("duplicate port found for %d", port)
+		}
+
+		m[pair[0]] = port
+		ports[port] = true
+	}
+
+	return m, nil
+}
+
+func (s *ICEHostPortOverride) IsValid() error {
+	if s == nil {
+		return fmt.Errorf("should not be nil")
+	}
+
+	if *s == "" {
+		return nil
+	}
+
+	if port := s.SinglePort(); port != 0 {
+		if port < 80 || port > 49151 {
+			return fmt.Errorf("%d is not in allowed range [80, 49151]", port)
+		}
+		return nil
+	}
+
+	if _, err := s.ParseMap(); err != nil {
+		return fmt.Errorf("failed to parse mapping: %w", err)
+	}
+
+	return nil
+}
+
+func (s *ICEHostPortOverride) UnmarshalTOML(data interface{}) error {
+	switch t := data.(type) {
+	case string:
+		*s = ICEHostPortOverride(data.(string))
+		return nil
+	case int, int32, int64:
+		*s = ICEHostPortOverride(fmt.Sprintf("%v", data))
+	default:
+		return fmt.Errorf("unknown type %T", t)
+	}
 
 	return nil
 }

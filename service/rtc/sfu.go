@@ -250,14 +250,17 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			return
 		}
 
-		if s.cfg.ICEHostPortOverride != 0 && candidate.Typ == webrtc.ICECandidateTypeHost {
-			s.log.Debug("overriding host candidate port",
-				mlog.String("sessionID", cfg.SessionID),
-				mlog.Uint("port", candidate.Port),
-				mlog.Int("override", s.cfg.ICEHostPortOverride),
-				mlog.String("addr", candidate.Address),
-				mlog.Int("protocol", candidate.Protocol))
-			candidate.Port = uint16(s.cfg.ICEHostPortOverride)
+		if port := s.cfg.ICEHostPortOverride.SinglePort(); port != 0 && candidate.Typ == webrtc.ICECandidateTypeHost {
+			m := getExternalAddrMapFromHostOverride(s.cfg.ICEHostOverride)
+			if m[candidate.Address] {
+				s.log.Debug("overriding host candidate port",
+					mlog.String("sessionID", cfg.SessionID),
+					mlog.Uint("port", candidate.Port),
+					mlog.Int("override", port),
+					mlog.String("addr", candidate.Address),
+					mlog.Int("protocol", candidate.Protocol))
+				candidate.Port = uint16(port)
+			}
 		}
 
 		msg, err := newICEMessage(us, candidate)

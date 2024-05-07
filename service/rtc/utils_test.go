@@ -154,3 +154,26 @@ func TestIsValidTrackID(t *testing.T) {
 		})
 	}
 }
+
+func TestGetExternalAddrMapFromHostOverride(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		m := getExternalAddrMapFromHostOverride("")
+		require.Empty(t, m)
+	})
+
+	t.Run("single host", func(t *testing.T) {
+		m := getExternalAddrMapFromHostOverride("10.0.0.1")
+		require.Equal(t, map[string]bool{
+			"10.0.0.1": true,
+		}, m)
+	})
+
+	t.Run("mapping", func(t *testing.T) {
+		m := getExternalAddrMapFromHostOverride("10.0.0.1/127.0.0.1,10.0.0.3/127.0.0.2,10.0.0.2/127.0.0.3")
+		require.Equal(t, map[string]bool{
+			"10.0.0.1": true,
+			"10.0.0.2": true,
+			"10.0.0.3": true,
+		}, m)
+	})
+}

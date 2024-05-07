@@ -15,7 +15,7 @@ RTCD_RTC_ICEPORTUDP                                 Integer
 RTCD_RTC_ICEADDRESSTCP                              String
 RTCD_RTC_ICEPORTTCP                                 Integer
 RTCD_RTC_ICEHOSTOVERRIDE                            String
-RTCD_RTC_ICEHOSTPORTOVERRIDE                        Integer
+RTCD_RTC_ICEHOSTPORTOVERRIDE                        ICEHostPortOverride
 RTCD_RTC_ICESERVERS                                 Comma-separated list of 
 RTCD_RTC_TURNCONFIG_STATICAUTHSECRET                String
 RTCD_RTC_TURNCONFIG_CREDENTIALSEXPIRATIONMINUTES    Integer
