@@ -43,7 +43,7 @@ func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection, clo
 		closeCh:            make(chan struct{}),
 		closeCb:            closeCb,
 		tracksCh:           make(chan trackActionContext, tracksChSize),
-		outScreenTracks:    make(map[string]*webrtc.TrackLocalStaticRTP),
+		outScreenTracks:    make(map[string][]*webrtc.TrackLocalStaticRTP),
 		remoteScreenTracks: make(map[string]*webrtc.TrackRemote),
 		screenRateMonitors: make(map[string]*RateMonitor),
 		log:                log,
@@ -181,8 +181,10 @@ func (c *call) handleSessionClose(us *session) {
 	if us.outScreenAudioTrack != nil {
 		outTracks[us.outScreenAudioTrack.ID()] = true
 	}
-	for _, track := range us.outScreenTracks {
-		outTracks[track.ID()] = true
+	for _, tracks := range us.outScreenTracks {
+		for _, track := range tracks {
+			outTracks[track.ID()] = true
+		}
 	}
 
 	// Nothing left to do if the closing session wasn't sending anything.

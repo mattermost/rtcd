@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
+	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -60,6 +62,7 @@ var (
 const (
 	nackResponderBufferSize = 256
 	audioLevelExtensionURI  = "urn:ietf:params:rtp-hdrext:ssrc-audio-level"
+	writerQueueSize         = 100
 )
 
 func (s *Server) initSettingEngine() (webrtc.SettingEngine, error) {
@@ -484,7 +487,14 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 			s.log.Debug("received screen sharing stream", mlog.String("streamID", streamID), mlog.String("sessionID", us.cfg.SessionID))
 
-			outScreenTrack, err := webrtc.NewTrackLocalStaticRTP(params.RTPCodecCapability, genTrackID(trackTypeScreen, us.cfg.SessionID), random.NewID(), webrtc.WithRTPStreamID(remoteTrack.RID()))
+			outScreenTrackA, err := webrtc.NewTrackLocalStaticRTP(params.RTPCodecCapability, genTrackID(trackTypeScreen, us.cfg.SessionID), random.NewID(), webrtc.WithRTPStreamID(remoteTrack.RID()))
+			if err != nil {
+				s.log.Error("failed to create local track",
+					mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+				return
+			}
+
+			outScreenTrackB, err := webrtc.NewTrackLocalStaticRTP(params.RTPCodecCapability, genTrackID(trackTypeScreen, us.cfg.SessionID), random.NewID(), webrtc.WithRTPStreamID(remoteTrack.RID()))
 			if err != nil {
 				s.log.Error("failed to create local track",
 					mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
@@ -503,7 +513,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			}
 
 			us.mut.Lock()
-			us.outScreenTracks[rid] = outScreenTrack
+			us.outScreenTracks[rid] = []*webrtc.TrackLocalStaticRTP{outScreenTrackA, outScreenTrackB}
 			us.remoteScreenTracks[rid] = remoteTrack
 			us.screenRateMonitors[rid] = rm
 			us.mut.Unlock()
@@ -527,6 +537,10 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					mlog.String("sessionID", ss.cfg.SessionID),
 				)
 
+				us.mut.RLock()
+				outScreenTrack := us.outScreenTracks[rid][rand.Intn(len(us.outScreenTracks[rid]))]
+				us.mut.RUnlock()
+
 				select {
 				case ss.tracksCh <- trackActionContext{action: trackActionAdd, track: outScreenTrack}:
 				default:
@@ -539,8 +553,38 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				}
 			})
 
-			limiter := rate.NewLimiter(0.25, 1)
+			writerChA := make(chan *rtp.Packet, writerQueueSize)
+			writerChB := make(chan *rtp.Packet, writerQueueSize)
+			writerChs := map[string]chan *rtp.Packet{
+				outScreenTrackA.ID(): writerChA,
+				outScreenTrackB.ID(): writerChB,
+			}
+			var writerWg sync.WaitGroup
+			doneCh := make(chan struct{})
+			defer close(doneCh)
+			defer writerWg.Wait()
+			writerWg.Add(2)
 
+			writeTrack := func(writerCh <-chan *rtp.Packet, outTrack *webrtc.TrackLocalStaticRTP) {
+				defer writerWg.Done()
+				for {
+					select {
+					case pkt := <-writerCh:
+						if err := outTrack.WriteRTP(pkt); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+							s.log.Error("failed to write RTP packet",
+								mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+							s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
+						}
+					case <-doneCh:
+						return
+					}
+				}
+			}
+
+			go writeTrack(writerChA, outScreenTrackA)
+			go writeTrack(writerChB, outScreenTrackB)
+
+			limiter := rate.NewLimiter(0.25, 1)
 			for {
 				packet, _, readErr := remoteTrack.ReadRTP()
 				if readErr != nil {
@@ -564,11 +608,17 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					)
 				}
 
-				if err := outScreenTrack.WriteRTP(packet); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-					s.log.Error("failed to write RTP packet",
-						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
-					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
-					return
+				for trackID, writerCh := range writerChs {
+					// Need to copy the packet header to keep it race free in case
+					// of simulcast.
+					pkt := *packet
+					pkt.Header = packet.Header.Clone()
+
+					select {
+					case writerCh <- &pkt:
+					default:
+						s.log.Error("failed to write RTP packet to writer channel", mlog.String("trackID", trackID))
+					}
 				}
 			}
 		}
@@ -683,7 +733,7 @@ func (s *Server) handleTracks(call *call, us *session) {
 
 		ss.mut.RLock()
 		outVoiceTrack := ss.outVoiceTrack
-		outScreenTrack := ss.outScreenTracks[SimulcastLevelDefault]
+		outScreenTracks := ss.outScreenTracks[SimulcastLevelDefault]
 		outScreenAudioTrack := ss.outScreenAudioTrack
 		ss.mut.RUnlock()
 
@@ -691,8 +741,8 @@ func (s *Server) handleTracks(call *call, us *session) {
 		if outVoiceTrack != nil {
 			outTracks = append(outTracks, outVoiceTrack)
 		}
-		if outScreenTrack != nil {
-			outTracks = append(outTracks, outScreenTrack)
+		if len(outScreenTracks) > 0 {
+			outTracks = append(outTracks, outScreenTracks[rand.Intn(len(outScreenTracks))])
 		}
 		if outScreenAudioTrack != nil {
 			outTracks = append(outTracks, outScreenAudioTrack)
