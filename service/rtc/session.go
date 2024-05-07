@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"sync"
 	"time"
 
@@ -150,11 +149,7 @@ func (s *session) getOutScreenTrack(rid string) *webrtc.TrackLocalStaticRTP {
 	s.mut.RLock()
 	defer s.mut.RUnlock()
 
-	if len(s.outScreenTracks[rid]) == 0 {
-		return nil
-	}
-
-	return s.outScreenTracks[rid][rand.Intn(len(s.outScreenTracks))]
+	return pickRandom(s.outScreenTracks[rid])
 }
 
 func (s *session) getExpectedSimulcastLevel() string {
