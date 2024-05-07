@@ -9,6 +9,7 @@ import (
 	"io"
 	"math/rand"
 	"os"
+	"runtime"
 	"sync"
 	"time"
 
@@ -487,14 +488,21 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 			s.log.Debug("received screen sharing stream", mlog.String("streamID", streamID), mlog.String("sessionID", us.cfg.SessionID))
 
-			outScreenTrackA, err := webrtc.NewTrackLocalStaticRTP(params.RTPCodecCapability, genTrackID(trackTypeScreen, us.cfg.SessionID), random.NewID(), webrtc.WithRTPStreamID(remoteTrack.RID()))
-			if err != nil {
-				s.log.Error("failed to create local track",
-					mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
-				return
+			// To improve concurrency and support larger calls we create NumCPU output tracks and randomly distribute the receivers among them.
+			createOutScreenTracks := func(num int) ([]*webrtc.TrackLocalStaticRTP, error) {
+				outTracks := make([]*webrtc.TrackLocalStaticRTP, num)
+				for i := 0; i < num; i++ {
+					outTrack, err := webrtc.NewTrackLocalStaticRTP(params.RTPCodecCapability,
+						genTrackID(trackTypeScreen, us.cfg.SessionID), random.NewID(), webrtc.WithRTPStreamID(remoteTrack.RID()))
+					if err != nil {
+						return nil, fmt.Errorf("failed to create screen track")
+					}
+					outTracks[i] = outTrack
+				}
+				return outTracks, nil
 			}
 
-			outScreenTrackB, err := webrtc.NewTrackLocalStaticRTP(params.RTPCodecCapability, genTrackID(trackTypeScreen, us.cfg.SessionID), random.NewID(), webrtc.WithRTPStreamID(remoteTrack.RID()))
+			outScreenTracks, err := createOutScreenTracks(runtime.NumCPU())
 			if err != nil {
 				s.log.Error("failed to create local track",
 					mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
@@ -513,7 +521,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			}
 
 			us.mut.Lock()
-			us.outScreenTracks[rid] = []*webrtc.TrackLocalStaticRTP{outScreenTrackA, outScreenTrackB}
+			us.outScreenTracks[rid] = outScreenTracks
 			us.remoteScreenTracks[rid] = remoteTrack
 			us.screenRateMonitors[rid] = rm
 			us.mut.Unlock()
@@ -537,12 +545,8 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					mlog.String("sessionID", ss.cfg.SessionID),
 				)
 
-				us.mut.RLock()
-				outScreenTrack := us.outScreenTracks[rid][rand.Intn(len(us.outScreenTracks[rid]))]
-				us.mut.RUnlock()
-
 				select {
-				case ss.tracksCh <- trackActionContext{action: trackActionAdd, track: outScreenTrack}:
+				case ss.tracksCh <- trackActionContext{action: trackActionAdd, track: pickRandom(outScreenTracks)}:
 				default:
 					s.log.Error("failed to send screen track: channel is full",
 						mlog.String("userID", ss.cfg.UserID),
@@ -553,18 +557,8 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				}
 			})
 
-			writerChA := make(chan *rtp.Packet, writerQueueSize)
-			writerChB := make(chan *rtp.Packet, writerQueueSize)
-			writerChs := map[string]chan *rtp.Packet{
-				outScreenTrackA.ID(): writerChA,
-				outScreenTrackB.ID(): writerChB,
-			}
 			var writerWg sync.WaitGroup
 			doneCh := make(chan struct{})
-			defer close(doneCh)
-			defer writerWg.Wait()
-			writerWg.Add(2)
-
 			writeTrack := func(writerCh <-chan *rtp.Packet, outTrack *webrtc.TrackLocalStaticRTP) {
 				defer writerWg.Done()
 				for {
@@ -581,8 +575,14 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				}
 			}
 
-			go writeTrack(writerChA, outScreenTrackA)
-			go writeTrack(writerChB, outScreenTrackB)
+			writerChs := make([]chan *rtp.Packet, len(outScreenTracks))
+			writerWg.Add(len(outScreenTracks))
+			defer close(doneCh)
+			defer writerWg.Wait()
+			for i := 0; i < len(outScreenTracks); i++ {
+				writerChs[i] = make(chan *rtp.Packet, writerQueueSize)
+				go writeTrack(writerChs[i], outScreenTracks[i])
+			}
 
 			limiter := rate.NewLimiter(0.25, 1)
 			for {
@@ -608,16 +608,16 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					)
 				}
 
-				for trackID, writerCh := range writerChs {
-					// Need to copy the packet header to keep it race free in case
-					// of simulcast.
+				for i, writerCh := range writerChs {
+					// We need to copy the packet header to keep it race free in case
+					// of simulcast as we are dealing with concurrent writers.
 					pkt := *packet
 					pkt.Header = packet.Header.Clone()
 
 					select {
 					case writerCh <- &pkt:
 					default:
-						s.log.Error("failed to write RTP packet to writer channel", mlog.String("trackID", trackID))
+						s.log.Error("failed to write RTP packet to writer channel", mlog.String("trackID", outScreenTracks[i].ID()))
 					}
 				}
 			}
