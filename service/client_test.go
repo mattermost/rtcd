@@ -756,3 +756,23 @@ func TestReconnectClientHerd(t *testing.T) {
 	// We wait for all clients to reconnect successfully.
 	reconnectWg.Wait()
 }
+
+func TestClientGetSystemInfo(t *testing.T) {
+	th := SetupTestHelper(t, nil)
+	defer th.Teardown()
+
+	c, err := NewClient(ClientConfig{
+		URL:     th.apiURL,
+		AuthKey: th.srvc.cfg.API.Security.AdminSecretKey,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, c)
+	defer c.Close()
+
+	t.Run("success", func(t *testing.T) {
+		info, err := c.GetSystemInfo()
+		require.NoError(t, err)
+		require.NotEmpty(t, info)
+		require.NotEmpty(t, info)
+	})
+}

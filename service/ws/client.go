@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	wsConnClosed int32 = iota
-	wsConnOpen
-	wsConnClosing
+	WSConnClosed int32 = iota
+	WSConnOpen
+	WSConnClosing
 )
 
 type Client struct {
@@ -86,7 +86,7 @@ func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
 	c.wg.Add(2)
 	go c.connReader()
 	go c.connWriter()
-	c.setConnState(wsConnOpen)
+	c.setConnState(WSConnOpen)
 
 	return c, nil
 }
@@ -98,7 +98,7 @@ func (c *Client) connReader() {
 		close(c.conn.closeCh)
 		c.wg.Wait()
 		close(c.errorCh)
-		c.setConnState(wsConnClosed)
+		c.setConnState(WSConnClosed)
 	}()
 
 	c.conn.ws.SetReadLimit(connMaxReadBytes)
@@ -164,7 +164,7 @@ func (c *Client) connWriter() {
 }
 
 func (c *Client) sendError(err error) {
-	if c.getConnState() != wsConnOpen {
+	if c.GetConnState() != WSConnOpen {
 		return
 	}
 	select {
@@ -176,7 +176,7 @@ func (c *Client) sendError(err error) {
 
 // SendMsg sends a WebSocket message with the specified type and data.
 func (c *Client) Send(mt MessageType, data []byte) error {
-	if c.getConnState() != wsConnOpen {
+	if c.GetConnState() != WSConnOpen {
 		return fmt.Errorf("failed to send message: connection is closed")
 	}
 
@@ -206,7 +206,7 @@ func (c *Client) ErrorCh() <-chan error {
 
 // Close closes the underlying WebSocket connection.
 func (c *Client) Close() error {
-	c.setConnState(wsConnClosing)
+	c.setConnState(WSConnClosing)
 	if err := c.flush(); err != nil {
 		return err
 	}
@@ -219,7 +219,7 @@ func (c *Client) setConnState(st int32) {
 	atomic.StoreInt32(&c.connState, st)
 }
 
-func (c *Client) getConnState() int32 {
+func (c *Client) GetConnState() int32 {
 	return atomic.LoadInt32(&c.connState)
 }
 
