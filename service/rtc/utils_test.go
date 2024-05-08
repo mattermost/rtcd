@@ -176,4 +176,12 @@ func TestGetExternalAddrMapFromHostOverride(t *testing.T) {
 			"10.0.0.3": true,
 		}, m)
 	})
+
+	t.Run("mixed mapping", func(t *testing.T) {
+		m := getExternalAddrMapFromHostOverride("10.0.0.1/127.0.0.1,127.0.0.2/127.0.0.2,10.0.0.2/127.0.0.3")
+		require.Equal(t, map[string]bool{
+			"10.0.0.1": true,
+			"10.0.0.2": true,
+		}, m)
+	})
 }
