@@ -10,7 +10,6 @@ import (
 	"math/rand"
 	"os"
 	"runtime"
-	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -557,30 +556,20 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				}
 			})
 
-			var writerWg sync.WaitGroup
-			doneCh := make(chan struct{})
 			writeTrack := func(writerCh <-chan *rtp.Packet, outTrack *webrtc.TrackLocalStaticRTP) {
-				defer writerWg.Done()
-				for {
-					select {
-					case pkt := <-writerCh:
-						if err := outTrack.WriteRTP(pkt); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-							s.log.Error("failed to write RTP packet",
-								mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
-							s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
-						}
-					case <-doneCh:
-						return
+				for pkt := range writerCh {
+					if err := outTrack.WriteRTP(pkt); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+						s.log.Error("failed to write RTP packet",
+							mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+						s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					}
 				}
 			}
 
 			writerChs := make([]chan *rtp.Packet, len(outScreenTracks))
-			writerWg.Add(len(outScreenTracks))
-			defer close(doneCh)
-			defer writerWg.Wait()
 			for i := 0; i < len(outScreenTracks); i++ {
 				writerChs[i] = make(chan *rtp.Packet, writerQueueSize)
+				defer close(writerChs[i])
 				go writeTrack(writerChs[i], outScreenTracks[i])
 			}
 
