@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"os"
 	"runtime"
 	"time"
@@ -731,7 +730,7 @@ func (s *Server) handleTracks(call *call, us *session) {
 			outTracks = append(outTracks, outVoiceTrack)
 		}
 		if len(outScreenTracks) > 0 {
-			outTracks = append(outTracks, outScreenTracks[rand.Intn(len(outScreenTracks))])
+			outTracks = append(outTracks, pickRandom(outScreenTracks))
 		}
 		if outScreenAudioTrack != nil {
 			outTracks = append(outTracks, outScreenAudioTrack)
