@@ -133,12 +133,24 @@ func getExternalAddrMapFromHostOverride(override string) map[string]bool {
 		return nil
 	}
 
+	m := make(map[string]bool)
+
+	if !strings.Contains(override, "/") {
+		m[override] = true
+		return m
+	}
+
 	pairs := strings.Split(override, ",")
-	m := make(map[string]bool, len(pairs))
 
 	for _, p := range pairs {
 		pair := strings.Split(p, "/")
-		m[pair[0]] = true
+		if len(pair) != 2 {
+			continue
+		}
+
+		if pair[0] != pair[1] {
+			m[pair[0]] = true
+		}
 	}
 
 	return m
