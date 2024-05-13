@@ -97,7 +97,9 @@ func createUDPConnsForAddr(log mlog.LoggerIFace, network, listenAddress string) 
 			return nil, fmt.Errorf("failed to listen on udp: %w", err)
 		}
 
-		log.Info(fmt.Sprintf("rtc: server is listening on udp %s", listenAddress))
+		if i == 0 {
+			log.Info(fmt.Sprintf("rtc: server is listening on udp %s", listenAddress))
+		}
 
 		if err := udpConn.(*net.UDPConn).SetWriteBuffer(udpSocketBufferSize); err != nil {
 			log.Warn("rtc: failed to set udp send buffer", mlog.Err(err))
@@ -128,7 +130,9 @@ func createUDPConnsForAddr(log mlog.LoggerIFace, network, listenAddress string) 
 				log.Error("failed to get buffer size", mlog.Err(err))
 				return
 			}
-			log.Debug("rtc: udp buffers", mlog.Int("writeBufSize", writeBufSize), mlog.Int("readBufSize", readBufSize))
+			if i == 0 {
+				log.Debug("rtc: udp buffers", mlog.Int("writeBufSize", writeBufSize), mlog.Int("readBufSize", readBufSize))
+			}
 		})
 		if err != nil {
 			return nil, fmt.Errorf("Control call failed: %w", err)
