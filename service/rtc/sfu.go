@@ -61,7 +61,7 @@ var (
 const (
 	nackResponderBufferSize = 256
 	audioLevelExtensionURI  = "urn:ietf:params:rtp-hdrext:ssrc-audio-level"
-	writerQueueSize         = 100
+	writerQueueSize         = 200 // Enough to hold up to one second of video packets.
 )
 
 func (s *Server) initSettingEngine() (webrtc.SettingEngine, error) {
