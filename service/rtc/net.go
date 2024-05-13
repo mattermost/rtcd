@@ -74,7 +74,7 @@ func getSystemIPs(log mlog.LoggerIFace, dualStack bool) ([]netip.Addr, error) {
 func createUDPConnsForAddr(log mlog.LoggerIFace, network, listenAddress string) ([]net.PacketConn, error) {
 	var conns []net.PacketConn
 
-	for i := 0; i < runtime.NumCPU(); i++ {
+	for i := 0; i < runtime.NumCPU()*100; i++ {
 		listenConfig := net.ListenConfig{
 			Control: func(_, _ string, c syscall.RawConn) error {
 				return c.Control(func(fd uintptr) {
