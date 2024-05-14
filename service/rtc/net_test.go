@@ -6,7 +6,6 @@ package rtc
 import (
 	"net/netip"
 	"os"
-	"runtime"
 	"testing"
 
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
@@ -74,7 +73,7 @@ func TestCreateUDPConnsForAddr(t *testing.T) {
 		for _, ip := range ips {
 			conns, err := createUDPConnsForAddr(log, "udp4", netip.AddrPortFrom(ip, 30443).String())
 			require.NoError(t, err)
-			require.Len(t, conns, runtime.NumCPU())
+			require.Len(t, conns, getUDPListeningSocketsCount())
 			for _, conn := range conns {
 				require.NoError(t, conn.Close())
 			}
@@ -94,7 +93,7 @@ func TestCreateUDPConnsForAddr(t *testing.T) {
 		for _, ip := range ips {
 			conns, err := createUDPConnsForAddr(log, "udp", netip.AddrPortFrom(ip, 30443).String())
 			require.NoError(t, err)
-			require.Len(t, conns, runtime.NumCPU())
+			require.Len(t, conns, getUDPListeningSocketsCount())
 			for _, conn := range conns {
 				require.NoError(t, conn.Close())
 			}
