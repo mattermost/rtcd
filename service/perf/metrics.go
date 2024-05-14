@@ -20,6 +20,7 @@ type Metrics struct {
 	registry *prometheus.Registry
 
 	RTPTracks            *prometheus.GaugeVec
+	RTPTrackWrites       *prometheus.HistogramVec
 	RTCSessions          *prometheus.GaugeVec
 	RTCConnStateCounters *prometheus.CounterVec
 	RTCErrors            *prometheus.CounterVec
@@ -51,6 +52,17 @@ func NewMetrics(namespace string, registry *prometheus.Registry) *Metrics {
 		[]string{"groupID", "direction", "type"},
 	)
 	m.registry.MustRegister(m.RTPTracks)
+
+	m.RTPTrackWrites = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: metricsSubSystemRTC,
+			Name:      "rtp_tracks_writes_time",
+			Help:      "Time taken to write to RTP tracks",
+		},
+		[]string{"groupID", "type"},
+	)
+	m.registry.MustRegister(m.RTPTrackWrites)
 
 	m.RTCSessions = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -148,4 +160,8 @@ func (m *Metrics) IncWSMessages(clientID, msgType, direction string) {
 
 func (m *Metrics) Handler() http.Handler {
 	return promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{})
+}
+
+func (m *Metrics) ObserveRTPTracksWrite(groupID, trackType string, dur float64) {
+	m.RTPTrackWrites.With(prometheus.Labels{"groupID": groupID, "type": trackType}).Observe(dur)
 }
