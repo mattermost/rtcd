@@ -610,6 +610,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					case writerCh <- &pkt:
 					default:
 						s.log.Error("failed to write RTP packet to writer channel", mlog.String("trackID", outScreenTracks[i].ID()))
+						s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					}
 				}
 			}
