@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -22,6 +23,9 @@ func TestGetSystem(t *testing.T) {
 	})
 
 	t.Run("valid response", func(t *testing.T) {
+		// Give enough time to collect a sample.
+		time.Sleep(2 * time.Second)
+
 		resp, err := http.Get(th.apiURL + "/system")
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, resp.StatusCode)

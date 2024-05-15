@@ -8,11 +8,46 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/prometheus/procfs"
+
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
 )
 
 type SystemInfo struct {
 	CPULoad float64 `json:"cpu_load"`
+}
+
+func (s *Service) collectSystemInfo() {
+	// One second sampling interval.
+	ticker := time.NewTicker(time.Second)
+
+	var prevStat procfs.Stat
+	var prevTime time.Time
+
+	for {
+		select {
+		case currTime := <-ticker.C:
+			currStat, err := s.proc.Stat()
+
+			if err != nil {
+				s.log.Error("failed to get cpu stat", mlog.Err(err))
+				continue
+			}
+
+			idleDiff := currStat.CPUTotal.Idle - prevStat.CPUTotal.Idle
+
+			if !prevTime.IsZero() {
+				s.mut.Lock()
+				s.systemInfo.CPULoad = 1 / (idleDiff / currTime.Sub(prevTime).Seconds())
+				s.mut.Unlock()
+			}
+
+			prevStat = currStat
+			prevTime = currTime
+		case <-s.stopCh:
+			return
+		}
+	}
 }
 
 func (s *Service) getSystemInfo(w http.ResponseWriter, req *http.Request) {
@@ -21,27 +56,11 @@ func (s *Service) getSystemInfo(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var info SystemInfo
-	st1, err1 := s.proc.Stat()
-	t0 := time.Now()
-	// We take a one second sample.
-	time.Sleep(time.Second)
-	st2, err2 := s.proc.Stat()
-	t1 := time.Now()
-	if err1 == nil && err2 == nil {
-		idleDiff := st2.CPUTotal.Idle - st1.CPUTotal.Idle
-		info.CPULoad = 1 / (idleDiff / t1.Sub(t0).Seconds())
-	} else {
-		if err1 != nil {
-			s.log.Error("failed to get cpu stat", mlog.Err(err1))
-		}
-		if err2 != nil {
-			s.log.Error("failed to get cpu stat", mlog.Err(err2))
-		}
-	}
+	s.mut.RLock()
+	defer s.mut.RUnlock()
 
 	w.Header().Add("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(&info); err != nil {
+	if err := json.NewEncoder(w).Encode(&s.systemInfo); err != nil {
 		s.log.Error("failed to encode data", mlog.Err(err))
 	}
 }

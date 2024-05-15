@@ -770,6 +770,8 @@ func TestClientGetSystemInfo(t *testing.T) {
 	defer c.Close()
 
 	t.Run("success", func(t *testing.T) {
+		// Give enough time to collect a sample.
+		time.Sleep(2 * time.Second)
 		info, err := c.GetSystemInfo()
 		require.NoError(t, err)
 		require.NotEmpty(t, info)
