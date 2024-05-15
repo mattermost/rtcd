@@ -34,6 +34,7 @@ type Service struct {
 	auth         *auth.Service
 	metrics      *perf.Metrics
 	proc         procfs.FS
+	systemInfo   SystemInfo
 	log          *mlog.Logger
 	sessionCache *auth.SessionCache
 	// connMap maps user sessions to the websocket connection they originated
@@ -42,6 +43,7 @@ type Service struct {
 	// intra-cluster messaging layer that can introduce race conditions.
 	connMap map[string]string
 	mut     sync.RWMutex
+	stopCh  chan struct{}
 }
 
 func New(cfg Config) (*Service, error) {
@@ -53,6 +55,7 @@ func New(cfg Config) (*Service, error) {
 		cfg:     cfg,
 		metrics: perf.NewMetrics("rtcd", nil),
 		connMap: map[string]string{},
+		stopCh:  make(chan struct{}),
 	}
 
 	var err error
@@ -68,6 +71,8 @@ func New(cfg Config) (*Service, error) {
 		s.log.Error("failed to create proc file-system", mlog.Err(err))
 	}
 	s.proc = proc
+
+	go s.collectSystemInfo()
 
 	s.store, err = store.New(cfg.Store.DataSource)
 	if err != nil {
@@ -199,6 +204,8 @@ func (s *Service) Start() error {
 func (s *Service) Stop() error {
 	defer s.log.Flush()
 	s.log.Info("rtcd: shutting down")
+
+	close(s.stopCh)
 
 	if err := s.rtcServer.Stop(); err != nil {
 		return fmt.Errorf("failed to stop rtc server: %w", err)
