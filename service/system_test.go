@@ -29,6 +29,6 @@ func TestGetSystem(t *testing.T) {
 		var info SystemInfo
 		err = json.NewDecoder(resp.Body).Decode(&info)
 		require.NoError(t, err)
-		require.NotEmpty(t, info.Load)
+		require.NotZero(t, info.CPULoad)
 	})
 }
