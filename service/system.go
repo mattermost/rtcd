@@ -6,14 +6,13 @@ package service
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
-
-	"github.com/prometheus/procfs"
 )
 
 type SystemInfo struct {
-	Load procfs.LoadAvg `json:"load"`
+	CPULoad float64 `json:"cpu_load"`
 }
 
 func (s *Service) getSystemInfo(w http.ResponseWriter, req *http.Request) {
@@ -23,11 +22,22 @@ func (s *Service) getSystemInfo(w http.ResponseWriter, req *http.Request) {
 	}
 
 	var info SystemInfo
-	avg, err := s.proc.LoadAvg()
-	if err == nil {
-		info.Load = *avg
+	st1, err1 := s.proc.Stat()
+	t0 := time.Now()
+	// We take a one second sample.
+	time.Sleep(time.Second)
+	st2, err2 := s.proc.Stat()
+	t1 := time.Now()
+	if err1 == nil && err2 == nil {
+		idleDiff := st2.CPUTotal.Idle - st1.CPUTotal.Idle
+		info.CPULoad = 1 / (idleDiff / t1.Sub(t0).Seconds())
 	} else {
-		s.log.Error("failed to get load average", mlog.Err(err))
+		if err1 != nil {
+			s.log.Error("failed to get cpu stat", mlog.Err(err1))
+		}
+		if err2 != nil {
+			s.log.Error("failed to get cpu stat", mlog.Err(err2))
+		}
 	}
 
 	w.Header().Add("Content-Type", "application/json")

@@ -773,6 +773,6 @@ func TestClientGetSystemInfo(t *testing.T) {
 		info, err := c.GetSystemInfo()
 		require.NoError(t, err)
 		require.NotEmpty(t, info)
-		require.NotEmpty(t, info)
+		require.NotZero(t, info.CPULoad)
 	})
 }
