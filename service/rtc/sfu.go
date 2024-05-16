@@ -251,8 +251,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		}
 
 		if port := s.cfg.ICEHostPortOverride.SinglePort(); port != 0 && candidate.Typ == webrtc.ICECandidateTypeHost {
-			m := getExternalAddrMapFromHostOverride(s.cfg.ICEHostOverride)
-			if m[candidate.Address] {
+			if m := getExternalAddrMapFromHostOverride(s.cfg.ICEHostOverride, s.publicAddrsMap); m[candidate.Address] {
 				s.log.Debug("overriding host candidate port",
 					mlog.String("sessionID", cfg.SessionID),
 					mlog.Uint("port", candidate.Port),

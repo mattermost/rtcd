@@ -128,20 +128,25 @@ func generateAddrsPairs(localIPs []netip.Addr, publicAddrsMap map[netip.Addr]str
 	return pairs, nil
 }
 
-func getExternalAddrMapFromHostOverride(override string) map[string]bool {
-	if override == "" {
-		return nil
-	}
-
+func getExternalAddrMapFromHostOverride(override string, publicAddrsMap map[netip.Addr]string) map[string]bool {
 	m := make(map[string]bool)
 
+	// If the override is empty we add any external address found through STUN.
+	if override == "" {
+		for _, addr := range publicAddrsMap {
+			m[addr] = true
+		}
+		return m
+	}
+
+	// If the override is set and it's a single address we only need that.
 	if !strings.Contains(override, "/") {
 		m[override] = true
 		return m
 	}
 
+	// Otherwise we need to add all the external addresses passed through the advanced syntax.
 	pairs := strings.Split(override, ",")
-
 	for _, p := range pairs {
 		pair := strings.Split(p, "/")
 		if len(pair) != 2 {

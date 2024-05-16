@@ -157,19 +157,19 @@ func TestIsValidTrackID(t *testing.T) {
 
 func TestGetExternalAddrMapFromHostOverride(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
-		m := getExternalAddrMapFromHostOverride("")
+		m := getExternalAddrMapFromHostOverride("", nil)
 		require.Empty(t, m)
 	})
 
 	t.Run("single host", func(t *testing.T) {
-		m := getExternalAddrMapFromHostOverride("10.0.0.1")
+		m := getExternalAddrMapFromHostOverride("10.0.0.1", nil)
 		require.Equal(t, map[string]bool{
 			"10.0.0.1": true,
 		}, m)
 	})
 
 	t.Run("mapping", func(t *testing.T) {
-		m := getExternalAddrMapFromHostOverride("10.0.0.1/127.0.0.1,10.0.0.3/127.0.0.2,10.0.0.2/127.0.0.3")
+		m := getExternalAddrMapFromHostOverride("10.0.0.1/127.0.0.1,10.0.0.3/127.0.0.2,10.0.0.2/127.0.0.3", nil)
 		require.Equal(t, map[string]bool{
 			"10.0.0.1": true,
 			"10.0.0.2": true,
@@ -178,10 +178,19 @@ func TestGetExternalAddrMapFromHostOverride(t *testing.T) {
 	})
 
 	t.Run("mixed mapping", func(t *testing.T) {
-		m := getExternalAddrMapFromHostOverride("10.0.0.1/127.0.0.1,127.0.0.2/127.0.0.2,10.0.0.2/127.0.0.3")
+		m := getExternalAddrMapFromHostOverride("10.0.0.1/127.0.0.1,127.0.0.2/127.0.0.2,10.0.0.2/127.0.0.3", nil)
 		require.Equal(t, map[string]bool{
 			"10.0.0.1": true,
 			"10.0.0.2": true,
+		}, m)
+	})
+
+	t.Run("public address map", func(t *testing.T) {
+		m := getExternalAddrMapFromHostOverride("", map[netip.Addr]string{
+			netip.MustParseAddr("127.0.0.1"): "10.0.0.1",
+		})
+		require.Equal(t, map[string]bool{
+			"10.0.0.1": true,
 		}, m)
 	})
 }
