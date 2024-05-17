@@ -366,6 +366,7 @@ func (c *Client) wsReader() {
 					return
 				}
 				c.log.Error("failed to handle ws message", slog.String("err", err.Error()))
+				c.emit(ErrorEvent, err)
 			}
 		case err := <-c.ws.ErrorCh():
 			if err != nil {

@@ -281,6 +281,7 @@ func (c *Client) initRTCSession() error {
 
 		if err := pc.SetLocalDescription(offer); err != nil {
 			c.log.Error("failed to set local description", slog.String("err", err.Error()))
+			c.emit(ErrorEvent, err)
 			return
 		}
 
