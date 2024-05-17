@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"sync/atomic"
+	"time"
 
 	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v3"
@@ -86,6 +87,18 @@ func (c *Client) handleWSEventSignal(evData map[string]any) error {
 		}
 
 		log.Printf("received sdp offer: %v", sdp)
+
+		if c.pc.SignalingState() != webrtc.SignalingStateStable {
+			log.Printf("signaling conflict on offer, queuing")
+			go func() {
+				time.Sleep(100 * time.Millisecond)
+				log.Printf("going to apply previously queued offer")
+				if err := c.handleWSEventSignal(evData); err != nil {
+					log.Printf("failed to handle queued signal event: %s", err.Error())
+				}
+			}()
+			return nil
+		}
 
 		if err := c.pc.SetRemoteDescription(webrtc.SessionDescription{
 			Type: webrtc.SDPTypeOffer,
