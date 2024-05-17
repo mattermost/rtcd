@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -48,11 +48,11 @@ func (c *Client) Unmute(track webrtc.TrackLocal) error {
 	}
 
 	go func() {
-		defer log.Printf("exiting RTCP handler")
+		defer c.log.Debug("exiting RTCP handler")
 		rtcpBuf := make([]byte, receiveMTU)
 		for {
 			if _, _, rtcpErr := sender.Read(rtcpBuf); rtcpErr != nil {
-				log.Printf("failed to read rtcp: %s", rtcpErr.Error())
+				c.log.Error("failed to read rtcp", slog.String("err", rtcpErr.Error()))
 				return
 			}
 		}
@@ -114,11 +114,11 @@ func (c *Client) StartScreenShare(tracks []webrtc.TrackLocal) (*webrtc.RTPTransc
 	sender := trx.Sender()
 
 	go func() {
-		defer log.Printf("exiting RTCP handler")
+		defer c.log.Debug("exiting RTCP handler")
 		rtcpBuf := make([]byte, receiveMTU)
 		for {
 			if _, _, rtcpErr := sender.Read(rtcpBuf); rtcpErr != nil {
-				log.Printf("failed to read rtcp: %s", rtcpErr.Error())
+				c.log.Error("failed to read rtcp", slog.String("err", rtcpErr.Error()))
 				return
 			}
 		}
