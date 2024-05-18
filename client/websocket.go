@@ -59,6 +59,7 @@ const (
 	wsEventUserScreenOn    = wsEvPrefix + "user_screen_on"
 	wsEventUserScreenOff   = wsEvPrefix + "user_screen_off"
 	wsEventUserReacted     = wsEvPrefix + "user_reacted"
+	wsEventHostMute        = wsEvPrefix + "host_mute"
 	wsEventSummonAI        = wsEvPrefix + "summon_ai"
 )
 
@@ -303,6 +304,11 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 			}
 			authToken, _ := ev.GetData()["auth_token"].(string)
 			c.emit(WSSummonAIEvent, authToken)
+		case wsEventHostMute:
+			sessionID, _ := ev.GetData()["session_id"].(string)
+			if sessionID == c.originalConnID || sessionID == c.currentConnID {
+				c.emit(WSHostMuteEvent, nil)
+			}
 		default:
 			c.emit(WSGenericEvent, ev)
 		}
