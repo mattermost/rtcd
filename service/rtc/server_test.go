@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/netip"
 	"sync"
 	"testing"
 	"time"
@@ -562,10 +563,14 @@ func TestICEHostPortOverride(t *testing.T) {
 	metrics := perf.NewMetrics("rtcd", nil)
 	require.NotNil(t, metrics)
 
-	gatherCandidates := func(serverCfg ServerConfig) <-chan ice.Candidate {
+	gatherCandidates := func(serverCfg ServerConfig, publicAddrsMap map[netip.Addr]string) <-chan ice.Candidate {
 		s, err := NewServer(serverCfg, log, metrics)
 		require.NoError(t, err)
 		require.NotNil(t, s)
+
+		if publicAddrsMap != nil {
+			s.publicAddrsMap = publicAddrsMap
+		}
 
 		err = s.Start()
 		require.NoError(t, err)
@@ -643,7 +648,7 @@ func TestICEHostPortOverride(t *testing.T) {
 			ICEHostPortOverride: "8443",
 		}
 
-		candidatesCh := gatherCandidates(serverCfg)
+		candidatesCh := gatherCandidates(serverCfg, nil)
 
 		require.NotEmpty(t, candidatesCh)
 		for i := 0; i < len(candidatesCh); i++ {
@@ -661,7 +666,7 @@ func TestICEHostPortOverride(t *testing.T) {
 			ICEHostPortOverride: "8443",
 		}
 
-		candidatesCh := gatherCandidates(serverCfg)
+		candidatesCh := gatherCandidates(serverCfg, nil)
 
 		require.NotEmpty(t, candidatesCh)
 		for i := 0; i < len(candidatesCh); i++ {
@@ -684,7 +689,7 @@ func TestICEHostPortOverride(t *testing.T) {
 			ICEHostPortOverride: "127.0.0.1/8443",
 		}
 
-		candidatesCh := gatherCandidates(serverCfg)
+		candidatesCh := gatherCandidates(serverCfg, nil)
 
 		require.NotEmpty(t, candidatesCh)
 		for i := 0; i < len(candidatesCh); i++ {
@@ -692,6 +697,32 @@ func TestICEHostPortOverride(t *testing.T) {
 			require.Equal(t, ice.CandidateTypeHost, candidate.Type())
 
 			if candidate.Address() == serverCfg.ICEHostOverride {
+				require.Equal(t, 8443, candidate.Port())
+			} else {
+				require.Equal(t, serverCfg.ICEPortUDP, candidate.Port())
+			}
+		}
+	})
+
+	t.Run("host override from STUN", func(t *testing.T) {
+		serverCfg := ServerConfig{
+			ICEPortUDP:          30433,
+			ICEPortTCP:          30433,
+			ICEHostPortOverride: "8443",
+			ICEHostOverride:     "",
+		}
+
+		publicIP := "8.8.8.8"
+		candidatesCh := gatherCandidates(serverCfg, map[netip.Addr]string{
+			netip.MustParseAddr("127.0.0.1"): publicIP,
+		})
+
+		require.NotEmpty(t, candidatesCh)
+		for i := 0; i < len(candidatesCh); i++ {
+			candidate := <-candidatesCh
+			require.Equal(t, ice.CandidateTypeHost, candidate.Type())
+
+			if candidate.Address() == publicIP {
 				require.Equal(t, 8443, candidate.Port())
 			} else {
 				require.Equal(t, serverCfg.ICEPortUDP, candidate.Port())
