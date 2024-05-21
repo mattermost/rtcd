@@ -288,9 +288,10 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 				return nil
 			}
 			sessionID, _ := ev.GetData()["session_id"].(string)
-			if sessionID == "" {
+			if ev.EventType() == wsEventUserScreenOn && sessionID == "" {
 				return fmt.Errorf("missing session_id from %s event", ev.EventType())
 			}
+
 			evType := WSCallScreenOnEvent
 			if ev.EventType() == wsEventUserScreenOff {
 				evType = WSCallScreenOffEvent
