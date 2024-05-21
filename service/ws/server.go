@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	ReceiveChSize = 512
+	ReceiveChSize = 1024
 	sendChSize    = ReceiveChSize
 	writeWaitTime = 10 * time.Second
 )
