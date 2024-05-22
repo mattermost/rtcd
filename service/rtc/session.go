@@ -40,7 +40,7 @@ type session struct {
 	outVoiceTrack        *webrtc.TrackLocalStaticRTP
 	outVoiceTrackEnabled bool
 	screenStreamID       string
-	outScreenTracks      map[string]*webrtc.TrackLocalStaticRTP
+	outScreenTracks      map[string][]*webrtc.TrackLocalStaticRTP
 	outScreenAudioTrack  *webrtc.TrackLocalStaticRTP
 	remoteScreenTracks   map[string]*webrtc.TrackRemote
 	screenRateMonitors   map[string]*RateMonitor
@@ -148,7 +148,8 @@ func (s *session) getSourceRate(rid string) int {
 func (s *session) getOutScreenTrack(rid string) *webrtc.TrackLocalStaticRTP {
 	s.mut.RLock()
 	defer s.mut.RUnlock()
-	return s.outScreenTracks[rid]
+
+	return pickRandom(s.outScreenTracks[rid])
 }
 
 func (s *session) getExpectedSimulcastLevel() string {
@@ -486,7 +487,7 @@ func (s *session) InitVAD(log mlog.LoggerIFace, msgCh chan<- Message) error {
 
 func (s *session) clearScreenState() {
 	s.screenStreamID = ""
-	s.outScreenTracks = make(map[string]*webrtc.TrackLocalStaticRTP)
+	s.outScreenTracks = make(map[string][]*webrtc.TrackLocalStaticRTP)
 	s.outScreenAudioTrack = nil
 	s.remoteScreenTracks = make(map[string]*webrtc.TrackRemote)
 	s.screenRateMonitors = make(map[string]*RateMonitor)

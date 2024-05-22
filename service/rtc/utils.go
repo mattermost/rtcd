@@ -5,6 +5,7 @@ package rtc
 
 import (
 	"fmt"
+	"math/rand"
 	"net/netip"
 	"strings"
 	"time"
@@ -159,4 +160,11 @@ func getExternalAddrMapFromHostOverride(override string, publicAddrsMap map[neti
 	}
 
 	return m
+}
+
+func pickRandom[S ~[]*E, E any](s S) *E {
+	if len(s) == 0 {
+		return nil
+	}
+	return s[rand.Intn(len(s))]
 }
