@@ -248,12 +248,17 @@ func TestInitSession(t *testing.T) {
 		}
 	}
 
+	var wg sync.WaitGroup
+	wg.Add(len(sessions))
 	for _, cfg := range sessions {
 		go func(cfg SessionConfig) {
+			defer wg.Done()
 			err := s.InitSession(cfg, nil)
 			require.NoError(t, err)
 		}(cfg)
 	}
+
+	wg.Wait()
 
 	for _, cfg := range sessions {
 		go func(id string) {
