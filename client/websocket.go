@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"math/rand"
 	"time"
 
@@ -111,14 +111,14 @@ func (c *Client) handleWSEventHello(ev *model.WebSocketEvent) (isReconnect bool,
 	}
 
 	if connID != c.currentConnID {
-		log.Printf("new connection id from server")
+		c.log.Debug("new connection id from server")
 	}
 
 	if c.originalConnID == "" {
-		log.Printf("initial ws connection")
+		c.log.Debug("initial ws connection")
 		c.originalConnID = connID
 	} else {
-		log.Printf("ws reconnected successfully")
+		c.log.Debug("ws reconnected successfully")
 		c.wsLastDisconnect = time.Time{}
 		c.wsReconnectInterval = 0
 		isReconnect = true
@@ -191,9 +191,10 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 			}
 			c.mut.Lock()
 			for _, rx := range c.receivers[sessionID] {
-				log.Printf("stopping receiver for disconnected session %q", sessionID)
+				c.log.Debug("stopping receiver for disconnected session", slog.String("sessionID", sessionID))
 				if err := rx.Stop(); err != nil {
-					log.Printf("failed to stop receiver for session %q: %s", sessionID, err)
+					c.log.Error("failed to stop receiver for session",
+						slog.String("sessionID", sessionID), slog.String("err", err.Error()))
 				}
 				delete(c.receivers, sessionID)
 			}
@@ -204,7 +205,7 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 				channelID, _ = ev.GetData()["channelID"].(string)
 			}
 			if channelID == c.cfg.ChannelID {
-				log.Printf("received call end event, closing client")
+				c.log.Debug("received call end event, closing client")
 				return errCallEnded
 			}
 		case wsEventCallJobState:
@@ -287,9 +288,10 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 				return nil
 			}
 			sessionID, _ := ev.GetData()["session_id"].(string)
-			if sessionID == "" {
+			if ev.EventType() == wsEventUserScreenOn && sessionID == "" {
 				return fmt.Errorf("missing session_id from %s event", ev.EventType())
 			}
+
 			evType := WSCallScreenOnEvent
 			if ev.EventType() == wsEventUserScreenOff {
 				evType = WSCallScreenOffEvent
@@ -310,7 +312,7 @@ func (c *Client) wsOpen() error {
 		URL:       c.cfg.wsURL,
 		AuthToken: c.cfg.AuthToken,
 		AuthType:  ws.BearerClientAuthType,
-	})
+	}, ws.WithLogger(c.log))
 	if err != nil {
 		return fmt.Errorf("failed to create websocket client: %w", err)
 	}
@@ -328,7 +330,7 @@ func (c *Client) wsOpen() error {
 func (c *Client) wsReader() {
 	defer func() {
 		if err := c.leaveCall(); err != nil {
-			log.Print(err.Error())
+			c.log.Error("failed to leave call", slog.String("err", err.Error()))
 		}
 		close(c.wsDoneCh)
 	}()
@@ -343,17 +345,18 @@ func (c *Client) wsReader() {
 				if c.wsLastDisconnect.IsZero() {
 					c.wsLastDisconnect = time.Now()
 				} else if time.Since(c.wsLastDisconnect) > wsReconnectionTimeout {
-					log.Printf("ws reconnection timeout reached, closing")
+					c.log.Debug("ws reconnection timeout reached, closing")
 					c.emit(ErrorEvent, fmt.Errorf("ws reconnection timeout reached"))
 					c.close()
 					return
 				}
 
 				c.wsReconnectInterval += wsMinReconnectRetryInterval + time.Duration(rand.Int63n(wsReconnectRetryIntervalJitter.Milliseconds()))*time.Millisecond
-				log.Printf("ws disconnected, attemping reconnection in %v...", c.wsReconnectInterval)
+				c.log.Debug("ws disconnected, attemping reconnection in wsReconnectInterval",
+					slog.Duration("wsReconnectInterval", c.wsReconnectInterval))
 				time.Sleep(c.wsReconnectInterval)
 				if err := c.wsOpen(); err != nil {
-					log.Print(err.Error())
+					c.log.Error("failed to open ws", slog.String("err", err.Error()))
 				}
 
 				continue
@@ -363,11 +366,12 @@ func (c *Client) wsReader() {
 					c.close()
 					return
 				}
-				log.Printf("failed to handle ws message: %s", err.Error())
+				c.log.Error("failed to handle ws message", slog.String("err", err.Error()))
+				c.emit(ErrorEvent, err)
 			}
 		case err := <-c.ws.ErrorCh():
 			if err != nil {
-				log.Printf("ws error: %s", err.Error())
+				c.log.Error("ws error", slog.String("err", err.Error()))
 			}
 		case <-c.wsCloseCh:
 			return

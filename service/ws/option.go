@@ -5,6 +5,7 @@ package ws
 
 import (
 	"context"
+	"log/slog"
 	"net"
 )
 
@@ -26,6 +27,14 @@ func WithAuthCb(cb AuthCb) ServerOption {
 func WithDialFunc(dialFn DialContextFn) ClientOption {
 	return func(c *Client) error {
 		c.dialFn = dialFn
+		return nil
+	}
+}
+
+// WithLogger lets the caller set an optional logger.
+func WithLogger(log *slog.Logger) ClientOption {
+	return func(c *Client) error {
+		c.log = log
 		return nil
 	}
 }
