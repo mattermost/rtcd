@@ -50,6 +50,8 @@ func TestAddSession(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, us)
 
+		close(us.doneCh)
+
 		err = server.CloseSession(cfg.SessionID)
 		require.NoError(t, err)
 	})
@@ -80,6 +82,8 @@ func TestAddSession(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, us)
 
+		close(us.doneCh)
+
 		err = server.CloseSession(cfg.SessionID)
 		require.Error(t, err)
 		require.Equal(t, cbError, err)
@@ -87,6 +91,8 @@ func TestAddSession(t *testing.T) {
 		us, err = server.addSession(cfg, peerConn, closeCbSuccess)
 		require.NoError(t, err)
 		require.NotNil(t, us)
+
+		close(us.doneCh)
 
 		err = server.CloseSession(cfg.SessionID)
 		require.NoError(t, err)
@@ -111,6 +117,8 @@ func TestCloseSessionConcurrent(t *testing.T) {
 	us, err := server.addSession(cfg, peerConn, nil)
 	require.NoError(t, err)
 	require.NotNil(t, us)
+
+	close(us.doneCh)
 
 	var wg sync.WaitGroup
 	n := 20
