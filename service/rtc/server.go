@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	msgChSize        = 512
+	msgChSize        = 2000
 	signalingTimeout = 10 * time.Second
 	catchAllIP       = "0.0.0.0"
 )

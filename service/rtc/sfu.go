@@ -61,7 +61,7 @@ var (
 const (
 	nackResponderBufferSize = 256
 	audioLevelExtensionURI  = "urn:ietf:params:rtp-hdrext:ssrc-audio-level"
-	writerQueueSize         = 100
+	writerQueueSize         = 200 // Enough to hold up to one second of video packets.
 )
 
 func (s *Server) initSettingEngine() (webrtc.SettingEngine, error) {
@@ -469,12 +469,14 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					}
 				}
 
+				writeStartTime := time.Now()
 				if err := outAudioTrack.WriteRTP(packet); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 					s.log.Error("failed to write RTP packet",
 						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
 				}
+				s.metrics.ObserveRTPTracksWrite(us.cfg.GroupID, string(trackType), time.Since(writeStartTime).Seconds())
 			}
 		} else if params, ok := rtpVideoCodecs[trackMimeType]; ok {
 			if screenStreamID != "" && screenStreamID != streamID {
@@ -556,11 +558,14 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 			writeTrack := func(writerCh <-chan *rtp.Packet, outTrack *webrtc.TrackLocalStaticRTP) {
 				for pkt := range writerCh {
+					writeStartTime := time.Now()
 					if err := outTrack.WriteRTP(pkt); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 						s.log.Error("failed to write RTP packet",
 							mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 						s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
+						continue
 					}
+					s.metrics.ObserveRTPTracksWrite(us.cfg.GroupID, string(trackTypeScreen), time.Since(writeStartTime).Seconds())
 				}
 			}
 
@@ -605,6 +610,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					case writerCh <- &pkt:
 					default:
 						s.log.Error("failed to write RTP packet to writer channel", mlog.String("trackID", outScreenTracks[i].ID()))
+						s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					}
 				}
 			}

@@ -10,4 +10,5 @@ type Metrics interface {
 	IncRTCErrors(groupID string, errType string)
 	IncRTPTracks(groupID string, direction, trackType string)
 	DecRTPTracks(groupID string, direction, trackType string)
+	ObserveRTPTracksWrite(groupID, trackType string, dur float64)
 }

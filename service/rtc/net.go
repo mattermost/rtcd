@@ -23,6 +23,13 @@ const (
 	tcpSocketWriteBufferSize = 1024 * 1024 * 4 // 4MB
 )
 
+func getUDPListeningSocketsCount() int {
+	// Originally we used runtime.NumCPU() but increased it as a result of v1 ceiling tests.
+	// The reason is that having just a few sockets caused significant lock contentions on
+	// the underlying file descriptors (at WriteToInet4 in internal/poll/fd_unix.go).
+	return runtime.NumCPU() * 100
+}
+
 // getSystemIPs returns a list of all the available local addresses.
 func getSystemIPs(log mlog.LoggerIFace, dualStack bool) ([]netip.Addr, error) {
 	var ips []netip.Addr
@@ -74,7 +81,7 @@ func getSystemIPs(log mlog.LoggerIFace, dualStack bool) ([]netip.Addr, error) {
 func createUDPConnsForAddr(log mlog.LoggerIFace, network, listenAddress string) ([]net.PacketConn, error) {
 	var conns []net.PacketConn
 
-	for i := 0; i < runtime.NumCPU(); i++ {
+	for i := 0; i < getUDPListeningSocketsCount(); i++ {
 		listenConfig := net.ListenConfig{
 			Control: func(_, _ string, c syscall.RawConn) error {
 				return c.Control(func(fd uintptr) {
@@ -97,7 +104,9 @@ func createUDPConnsForAddr(log mlog.LoggerIFace, network, listenAddress string) 
 			return nil, fmt.Errorf("failed to listen on udp: %w", err)
 		}
 
-		log.Info(fmt.Sprintf("rtc: server is listening on udp %s", listenAddress))
+		if i == 0 {
+			log.Info(fmt.Sprintf("rtc: server is listening on udp %s", listenAddress))
+		}
 
 		if err := udpConn.(*net.UDPConn).SetWriteBuffer(udpSocketBufferSize); err != nil {
 			log.Warn("rtc: failed to set udp send buffer", mlog.Err(err))
@@ -128,7 +137,9 @@ func createUDPConnsForAddr(log mlog.LoggerIFace, network, listenAddress string) 
 				log.Error("failed to get buffer size", mlog.Err(err))
 				return
 			}
-			log.Debug("rtc: udp buffers", mlog.Int("writeBufSize", writeBufSize), mlog.Int("readBufSize", readBufSize))
+			if i == 0 {
+				log.Debug("rtc: udp buffers", mlog.Int("writeBufSize", writeBufSize), mlog.Int("readBufSize", readBufSize))
+			}
 		})
 		if err != nil {
 			return nil, fmt.Errorf("Control call failed: %w", err)

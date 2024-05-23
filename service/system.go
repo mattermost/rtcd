@@ -6,14 +6,48 @@ package service
 import (
 	"encoding/json"
 	"net/http"
-
-	"github.com/mattermost/mattermost/server/public/shared/mlog"
+	"time"
 
 	"github.com/prometheus/procfs"
+
+	"github.com/mattermost/mattermost/server/public/shared/mlog"
 )
 
 type SystemInfo struct {
-	Load procfs.LoadAvg `json:"load"`
+	CPULoad float64 `json:"cpu_load"`
+}
+
+func (s *Service) collectSystemInfo() {
+	// One second sampling interval.
+	ticker := time.NewTicker(time.Second)
+
+	var prevStat procfs.Stat
+	var prevTime time.Time
+
+	for {
+		select {
+		case currTime := <-ticker.C:
+			currStat, err := s.proc.Stat()
+
+			if err != nil {
+				s.log.Error("failed to get cpu stat", mlog.Err(err))
+				continue
+			}
+
+			idleDiff := currStat.CPUTotal.Idle - prevStat.CPUTotal.Idle
+
+			if !prevTime.IsZero() {
+				s.mut.Lock()
+				s.systemInfo.CPULoad = 1 / (idleDiff / currTime.Sub(prevTime).Seconds())
+				s.mut.Unlock()
+			}
+
+			prevStat = currStat
+			prevTime = currTime
+		case <-s.stopCh:
+			return
+		}
+	}
 }
 
 func (s *Service) getSystemInfo(w http.ResponseWriter, req *http.Request) {
@@ -22,16 +56,11 @@ func (s *Service) getSystemInfo(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var info SystemInfo
-	avg, err := s.proc.LoadAvg()
-	if err == nil {
-		info.Load = *avg
-	} else {
-		s.log.Error("failed to get load average", mlog.Err(err))
-	}
+	s.mut.RLock()
+	defer s.mut.RUnlock()
 
 	w.Header().Add("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(&info); err != nil {
+	if err := json.NewEncoder(w).Encode(&s.systemInfo); err != nil {
 		s.log.Error("failed to encode data", mlog.Err(err))
 	}
 }
