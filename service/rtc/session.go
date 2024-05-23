@@ -51,7 +51,7 @@ type session struct {
 
 	closeCh chan struct{}
 	closeCb func() error
-	doneWg  sync.WaitGroup
+	doneCh  chan struct{}
 
 	vadMonitor *vad.Monitor
 

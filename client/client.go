@@ -6,7 +6,7 @@ package client
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -79,6 +79,7 @@ var (
 // Client is a Golang implementation of a client for Mattermost Calls.
 type Client struct {
 	cfg Config
+	log *slog.Logger
 
 	handlers map[EventType]EventHandler
 
@@ -110,6 +111,13 @@ type Client struct {
 
 type Option func(c *Client) error
 
+func WithLogger(log *slog.Logger) Option {
+	return func(c *Client) error {
+		c.log = log
+		return nil
+	}
+}
+
 // New initializes and returns a new Calls client.
 func New(cfg Config, opts ...Option) (*Client, error) {
 	if err := cfg.Parse(); err != nil {
@@ -134,6 +142,10 @@ func New(cfg Config, opts ...Option) (*Client, error) {
 		if err := opt(c); err != nil {
 			return nil, fmt.Errorf("failed to apply option: %w", err)
 		}
+	}
+
+	if c.log == nil {
+		c.log = slog.Default()
 	}
 
 	return c, nil
@@ -203,7 +215,8 @@ func (c *Client) emit(eventType EventType, ctx any) {
 	c.mut.RUnlock()
 	if handler != nil {
 		if err := handler(ctx); err != nil {
-			log.Printf("failed to handle event (%s): %s", eventType, err.Error())
+			c.log.Error("failed to handle event",
+				slog.Any("type", eventType), slog.String("err", err.Error()))
 		}
 	}
 }
@@ -213,9 +226,9 @@ func (c *Client) close() {
 
 	if c.pc != nil {
 		if err := c.pc.Close(); err != nil {
-			log.Printf("failed to close peer connection: %s", err)
+			c.log.Error("failed to close peer connection", slog.String("err", err.Error()))
 		} else {
-			log.Printf("pc closed successfully")
+			c.log.Debug("pc closed successfully")
 		}
 	}
 

@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"sync/atomic"
 
 	"github.com/pion/interceptor"
@@ -42,7 +42,7 @@ func (c *Client) handleWSEventSignal(evData map[string]any) error {
 
 	var msg map[string]interface{}
 	if err := json.Unmarshal([]byte(data), &msg); err != nil {
-		log.Fatalf(err.Error())
+		return fmt.Errorf("failed to unmarshal signal data: %w", err)
 	}
 
 	msgType, ok := msg["type"].(string)
@@ -62,17 +62,17 @@ func (c *Client) handleWSEventSignal(evData map[string]any) error {
 			return fmt.Errorf("invalid candidate format found")
 		}
 
-		log.Printf("received remote candidate %v", candidate)
+		c.log.Debug("received remote candidate", slog.Any("candidate", candidate))
 
 		if c.pc.RemoteDescription() != nil {
-			log.Printf("adding remote candidate")
+			c.log.Debug("adding remote candidate")
 			if err := c.pc.AddICECandidate(webrtc.ICECandidateInit{Candidate: candidate}); err != nil {
 				return fmt.Errorf("failed to add remote candidate: %w", err)
 			}
 		} else {
 			// Candidates cannot be added until the remote description is set, so we
 			// queue them until that happens.
-			log.Printf("queuing remote candidate")
+			c.log.Debug("queuing remote candidate")
 			select {
 			case c.iceCh <- webrtc.ICECandidateInit{Candidate: candidate}:
 			default:
@@ -85,7 +85,7 @@ func (c *Client) handleWSEventSignal(evData map[string]any) error {
 			return fmt.Errorf("invalid SDP data received")
 		}
 
-		log.Printf("received sdp offer: %v", sdp)
+		c.log.Debug("received sdp offer", slog.Any("sdp", sdp))
 
 		if err := c.pc.SetRemoteDescription(webrtc.SessionDescription{
 			Type: webrtc.SDPTypeOffer,
@@ -119,7 +119,7 @@ func (c *Client) handleWSEventSignal(evData map[string]any) error {
 			return fmt.Errorf("invalid SDP data received")
 		}
 
-		log.Printf("received sdp answer: %v", sdp)
+		c.log.Debug("received sdp answer", slog.Any("sdp", sdp))
 
 		if err := c.pc.SetRemoteDescription(webrtc.SessionDescription{
 			Type: webrtc.SDPTypeAnswer,
@@ -129,7 +129,7 @@ func (c *Client) handleWSEventSignal(evData map[string]any) error {
 		}
 
 		for i := 0; i < len(c.iceCh); i++ {
-			log.Printf("adding queued remote candidate")
+			c.log.Debug("adding queued remote candidate")
 			if err := c.pc.AddICECandidate(<-c.iceCh); err != nil {
 				return fmt.Errorf("failed to add remote candidate: %w", err)
 			}
@@ -175,66 +175,69 @@ func (c *Client) initRTCSession() error {
 
 	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if candidate == nil {
-			log.Printf("local ICE gathering completed")
+			c.log.Debug("local ICE gathering completed")
 			return
 		}
 
-		log.Printf("local candidate: %v", candidate)
+		c.log.Debug("local candidate", slog.Any("candidate", candidate))
 
 		data, err := json.Marshal(candidate.ToJSON())
 		if err != nil {
-			log.Printf("failed to marshal local candidate: %s", err)
+			c.log.Error("failed to marshal local candidate", slog.String("err", err.Error()))
 			return
 		}
 
 		if err := c.SendWS(wsEventICE, map[string]any{
 			"data": string(data),
 		}, true); err != nil {
-			log.Print(err.Error())
+			c.log.Error("failed to send ws msg", slog.String("err", err.Error()))
 		}
 	})
 
 	pc.OnICEConnectionStateChange(func(st webrtc.ICEConnectionState) {
 		if st == webrtc.ICEConnectionStateConnected {
-			log.Printf("ice connect")
+			c.log.Debug("ice connect")
 			c.emit(RTCConnectEvent, nil)
 		}
 
 		if st == webrtc.ICEConnectionStateDisconnected {
-			log.Printf("ice disconnect")
+			c.log.Debug("ice disconnect")
 		}
 
 		if st == webrtc.ICEConnectionStateClosed || st == webrtc.ICEConnectionStateFailed {
-			log.Printf("ice closed or failed")
+			c.log.Debug("ice closed or failed")
 			c.emit(RTCDisconnectEvent, nil)
 
 			if atomic.LoadInt32(&c.state) != clientStateInit {
 				return
 			}
 
-			log.Printf("rtc disconnected, closing")
+			c.log.Debug("rtc disconnected, closing")
 			if err := c.Close(); err != nil {
-				log.Printf("failed to close: %s", err)
+				c.log.Error("failed to close", slog.String("err", err.Error()))
 			}
 		}
 	})
 
 	pc.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		log.Printf("received remote track: %v %v %v", track.PayloadType(), track.Codec(), track.ID())
+		c.log.Debug("received remote track",
+			slog.Any("payload", track.PayloadType()),
+			slog.Any("codec", track.Codec()),
+			slog.Any("id", track.ID()))
 
 		trackType, sessionID, err := ParseTrackID(track.ID())
 		if err != nil {
-			log.Printf("failed to parse track ID: %s", err)
+			c.log.Error("failed to parse track ID", slog.String("err", err.Error()))
 			if err := receiver.Stop(); err != nil {
-				log.Printf("failed to stop receiver: %s", err)
+				c.log.Error("failed to stop receiver", slog.String("err", err.Error()))
 			}
 			return
 		}
 
 		if trackType != TrackTypeVoice && trackType != TrackTypeScreen {
-			log.Printf("ignoring unsupported track type: %q", trackType)
+			c.log.Debug("ignoring unsupported track type", slog.Any("trackType", trackType))
 			if err := receiver.Stop(); err != nil {
-				log.Printf("failed to stop receiver: %s", err)
+				c.log.Error("failed to stop receiver", slog.String("err", err.Error()))
 			}
 			return
 		}
@@ -254,7 +257,7 @@ func (c *Client) initRTCSession() error {
 				}
 				if err != nil {
 					if !errors.Is(err, io.EOF) {
-						log.Printf("failed to read RTCP packet: %s", err)
+						c.log.Error("failed to read RTCP packet", slog.String("err", err.Error()))
 					}
 					return
 				}
@@ -268,16 +271,17 @@ func (c *Client) initRTCSession() error {
 	})
 
 	pc.OnNegotiationNeeded(func() {
-		log.Printf("negotiation needed")
+		c.log.Debug("negotiation needed")
 
 		offer, err := pc.CreateOffer(nil)
 		if err != nil {
-			log.Printf("failed to create offer: %s", err)
+			c.log.Error("failed to create offer", slog.String("err", err.Error()))
 			return
 		}
 
 		if err := pc.SetLocalDescription(offer); err != nil {
-			log.Printf("failed to set local description: %s", err)
+			c.log.Error("failed to set local description", slog.String("err", err.Error()))
+			c.emit(ErrorEvent, err)
 			return
 		}
 
@@ -285,7 +289,7 @@ func (c *Client) initRTCSession() error {
 		w := zlib.NewWriter(&sdpData)
 		if err := json.NewEncoder(w).Encode(offer); err != nil {
 			w.Close()
-			fmt.Printf("failed to encode offer: %s", err)
+			c.log.Error("failed to encode offer", slog.String("err", err.Error()))
 			return
 		}
 		w.Close()
@@ -293,7 +297,7 @@ func (c *Client) initRTCSession() error {
 			"data": sdpData.Bytes(),
 		}, true)
 		if err != nil {
-			log.Print(err.Error())
+			c.log.Error("failed to send ws msg", slog.String("err", err.Error()))
 			return
 		}
 	})
