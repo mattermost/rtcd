@@ -253,8 +253,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		}
 
 		if port := s.cfg.ICEHostPortOverride.SinglePort(); port != 0 && candidate.Typ == webrtc.ICECandidateTypeHost {
-			m := getExternalAddrMapFromHostOverride(s.cfg.ICEHostOverride)
-			if m[candidate.Address] {
+			if m := getExternalAddrMapFromHostOverride(s.cfg.ICEHostOverride, s.publicAddrsMap); m[candidate.Address] {
 				s.log.Debug("overriding host candidate port",
 					mlog.String("sessionID", cfg.SessionID),
 					mlog.Uint("port", candidate.Port),
@@ -612,9 +611,8 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		}
 	})
 
-	us.doneWg.Add(1)
 	go func() {
-		defer us.doneWg.Done()
+		defer close(us.doneCh)
 		select {
 		case offer, ok := <-us.sdpOfferInCh:
 			if !ok {
@@ -637,13 +635,15 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			return
 		}
 
-		us.doneWg.Add(1)
+		iceDoneCh := make(chan struct{})
 		go func() {
-			defer us.doneWg.Done()
+			defer close(iceDoneCh)
 			us.handleICE(s.metrics)
 		}()
 
 		s.handleTracks(call, us)
+
+		<-iceDoneCh
 	}()
 
 	return nil
@@ -703,7 +703,7 @@ func (s *Server) CloseSession(sessionID string) error {
 	us.rtcConn.Close()
 
 	// Wait for the signaling goroutines to be done.
-	us.doneWg.Wait()
+	<-us.doneCh
 
 	if us.closeCb != nil {
 		return us.closeCb()

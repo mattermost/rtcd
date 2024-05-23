@@ -155,10 +155,10 @@ func TestClientJoinCall(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		errorCh := make(chan struct{})
+		errorCh := make(chan error, 1)
 		err = th.userClient.On(ErrorEvent, func(err any) error {
 			require.EqualError(t, err.(error), "ws error: forbidden")
-			close(errorCh)
+			errorCh <- err.(error)
 			return nil
 		})
 		require.NoError(t, err)

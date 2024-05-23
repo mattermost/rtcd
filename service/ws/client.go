@@ -5,7 +5,7 @@ package ws
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -34,6 +34,7 @@ type Client struct {
 	connState     int32
 	dialFn        DialContextFn
 	pingHandlerFn func(msg string) error
+	log           *slog.Logger
 }
 
 // NewClient initializes and returns a new WebSocket client.
@@ -55,6 +56,10 @@ func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
 		if err := opt(c); err != nil {
 			return nil, fmt.Errorf("failed to apply option: %w", err)
 		}
+	}
+
+	if c.log == nil {
+		c.log = slog.Default()
 	}
 
 	header := http.Header{}
@@ -152,7 +157,7 @@ func (c *Client) connWriter() {
 		case msg := <-c.sendCh:
 			sendMsg(msg)
 		case <-c.flushCh:
-			log.Printf("flushing %d queued messages", len(c.sendCh))
+			c.log.Debug("flushing queued messages", slog.Int("len", len(c.sendCh)))
 			for i := 0; i < len(c.sendCh); i++ {
 				sendMsg(<-c.sendCh)
 			}
@@ -170,7 +175,7 @@ func (c *Client) sendError(err error) {
 	select {
 	case c.errorCh <- err:
 	default:
-		log.Printf("failed to send error: channel is full: %s", err.Error())
+		c.log.Error("failed to send error: channel is full")
 	}
 }
 

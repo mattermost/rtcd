@@ -42,6 +42,7 @@ func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection, clo
 		sdpAnswerInCh:      make(chan webrtc.SessionDescription, signalChSize),
 		closeCh:            make(chan struct{}),
 		closeCb:            closeCb,
+		doneCh:             make(chan struct{}),
 		tracksCh:           make(chan trackActionContext, tracksChSize),
 		outScreenTracks:    make(map[string][]*webrtc.TrackLocalStaticRTP),
 		remoteScreenTracks: make(map[string]*webrtc.TrackRemote),
