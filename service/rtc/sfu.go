@@ -652,6 +652,13 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		<-iceDoneCh
 	}()
 
+	s.log.Debug("session has joined call",
+		mlog.String("userID", cfg.UserID),
+		mlog.String("sessionID", cfg.SessionID),
+		mlog.String("channelID", cfg.GetStringProp("channelID")),
+		mlog.String("callID", cfg.CallID),
+	)
+
 	return nil
 }
 
