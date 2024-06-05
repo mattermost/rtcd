@@ -296,6 +296,7 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 		if sessionID == "" {
 			return fmt.Errorf("missing sessionID in client message")
 		}
+		channelID := data["channelID"]
 
 		closeCb := func() error {
 			s.mut.Lock()
@@ -321,8 +322,13 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 			CallID:    callID,
 			UserID:    userID,
 			SessionID: sessionID,
+			Props: map[string]any{
+				"channelID": channelID,
+			},
 		}
+
 		s.log.Debug("join message", mlog.Any("sessionCfg", cfg))
+
 		if err := s.rtcServer.InitSession(cfg, closeCb); err != nil {
 			return fmt.Errorf("failed to initialize rtc session: %w", err)
 		}

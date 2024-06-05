@@ -74,6 +74,15 @@ type SessionConfig struct {
 	UserID string
 	// SessionID specifies the unique identifier for the session.
 	SessionID string
+	Props     map[string]any
+}
+
+func (c *SessionConfig) GetStringProp(key string) string {
+	if c == nil || c.Props == nil {
+		return ""
+	}
+	val, _ := c.Props[key].(string)
+	return val
 }
 
 func (c SessionConfig) IsValid() error {
