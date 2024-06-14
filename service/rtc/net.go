@@ -108,12 +108,15 @@ func createUDPConnsForAddr(log mlog.LoggerIFace, network, listenAddress string) 
 			log.Info(fmt.Sprintf("rtc: server is listening on udp %s", listenAddress))
 		}
 
-		if err := udpConn.(*net.UDPConn).SetWriteBuffer(udpSocketBufferSize); err != nil {
-			log.Warn("rtc: failed to set udp send buffer", mlog.Err(err))
-		}
+		// Mac by default cannot set socket buffers > 8mb
+		if runtime.GOOS != "darwin" {
+			if err := udpConn.(*net.UDPConn).SetWriteBuffer(udpSocketBufferSize); err != nil {
+				log.Warn("rtc: failed to set udp send buffer", mlog.Err(err))
+			}
 
-		if err := udpConn.(*net.UDPConn).SetReadBuffer(udpSocketBufferSize); err != nil {
-			log.Warn("rtc: failed to set udp receive buffer", mlog.Err(err))
+			if err := udpConn.(*net.UDPConn).SetReadBuffer(udpSocketBufferSize); err != nil {
+				log.Warn("rtc: failed to set udp receive buffer", mlog.Err(err))
+			}
 		}
 
 		connFile, err := udpConn.(*net.UDPConn).File()

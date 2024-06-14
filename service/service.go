@@ -66,13 +66,16 @@ func New(cfg Config) (*Service, error) {
 
 	s.log.Info("rtcd: starting up", getVersionInfo().logFields()...)
 
-	proc, err := procfs.NewDefaultFS()
-	if err != nil {
-		s.log.Error("failed to create proc file-system", mlog.Err(err))
-	}
-	s.proc = proc
+	// Mac does not have /proc/stat
+	if runtime.GOOS != "darwin" {
+		proc, err := procfs.NewDefaultFS()
+		if err != nil {
+			s.log.Error("failed to create proc file-system", mlog.Err(err))
+		}
+		s.proc = proc
 
-	go s.collectSystemInfo()
+		go s.collectSystemInfo()
+	}
 
 	s.store, err = store.New(cfg.Store.DataSource)
 	if err != nil {
@@ -116,7 +119,10 @@ func New(cfg Config) (*Service, error) {
 	s.apiServer.RegisterHandleFunc("/register", s.registerClient)
 	s.apiServer.RegisterHandleFunc("/unregister", s.unregisterClient)
 	s.apiServer.RegisterHandler("/ws", s.wsServer)
-	s.apiServer.RegisterHandleFunc("/system", s.getSystemInfo)
+
+	if runtime.GOOS != "darwin" {
+		s.apiServer.RegisterHandleFunc("/system", s.getSystemInfo)
+	}
 
 	if val := os.Getenv("PERF_PROFILES"); val == "true" {
 		runtime.SetMutexProfileFraction(5)
