@@ -156,7 +156,7 @@ build: go-build-docker ## to build
 release: build github-release ## to build and release artifacts
 
 .PHONY: package
-package: docker-login docker-build docker-push ## to build, package and push the artifact to a container registry
+package: docker-login docker-build ## to build, package and push the artifact to a container registry
 
 .PHONY: sign
 sign: docker-sign docker-verify ## to sign the artifact and perform verification
@@ -193,20 +193,6 @@ ifeq ($(shell git tag -l --sort=v:refname | tail -n1),$(APP_VERSION))
 	-t ${DOCKER_REGISTRY}/${DOCKER_REGISTRY_REPO}:latest || ${FAIL}
 endif
 endif
-
-.PHONY: docker-push
-docker-push: ## to push the docker image
-	@$(INFO) Pushing to registry...
-	$(AT)$(DOCKER) tag ${APP_NAME}:${APP_VERSION} $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}:${APP_VERSION} || ${FAIL}
-	$(AT)$(DOCKER) push $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}:${APP_VERSION} || ${FAIL}
-# if we are on a latest semver APP_VERSION tag, also push latest
-ifneq ($(shell echo $(APP_VERSION) | egrep '^v([0-9]+\.){0,2}(\*|[0-9]+)'),)
-  ifeq ($(shell git tag -l --sort=v:refname | tail -n1),$(APP_VERSION))
-	$(AT)$(DOCKER) tag ${APP_NAME}:${APP_VERSION} $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}:latest || ${FAIL}
-	$(AT)$(DOCKER) push $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}:latest || ${FAIL}
-  endif
-endif
-	@$(OK) Pushing to registry $(DOCKER_REGISTRY)/${DOCKER_REGISTRY_REPO}:${APP_VERSION}
 
 .PHONY: docker-sign
 docker-sign: ## to sign the docker image
