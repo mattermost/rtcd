@@ -31,6 +31,15 @@ MAKEFLAGS     += --warn-undefined-variables
 # App Code location
 CONFIG_APP_CODE         += ./cmd/rtcd
 
+# Operating system arch
+ifneq (, $(shell which go))
+ARCH                    ?= $(shell go version | awk '{print substr($$4,index($$4,"/")+1)}')
+endif
+# Target OS will always be linux.
+OS                      := linux
+# Fallback to amd64 if ARCH is still unset.
+ARCH                    ?= amd64
+
 ## Docker Variables
 # Docker executable
 DOCKER                  := $(shell which docker)
@@ -41,15 +50,30 @@ DOCKER_OPTS             += --rm -u $$(id -u):$$(id -g) --platform "linux/amd64"
 # Registry to upload images
 DOCKER_REGISTRY         ?= docker.io
 DOCKER_REGISTRY_REPO    ?= mattermost/${APP_NAME}-daily
+DOCKER_TAG              ?= ${APP_NAME}:${APP_VERSION}
+
 # Registry credentials
 DOCKER_USER             ?= user
 DOCKER_PASSWORD         ?= password
 ## Docker Images
 DOCKER_IMAGE_GO         ?= "golang:${GO_VERSION}@sha256:81811f8a883e238666dbadee6928ae2902243a3cd3f3e860f21c102543c6b5a7"
 DOCKER_IMAGE_GOLINT     += "golangci/golangci-lint:v1.57.2@sha256:8f3a60a00a83bb7d599d2e028ac0c3573dc2b9ec0842590f1c2e59781c821da7"
-DOCKER_IMAGE_DOCKERLINT ?= "hadolint/hadolint:v2.9.2@sha256:d355bd7df747a0f124f3b5e7b21e9dafd0cb19732a276f901f0fdee243ec1f3b"
+DOCKER_IMAGE_DOCKERLINT += "hadolint/hadolint:v2.12.0@sha256:9259e253a4e299b50c92006149dd3a171c7ea3c5bd36f060022b5d2c1ff0fbbe"
 DOCKER_IMAGE_COSIGN     ?= "bitnami/cosign:1.8.0@sha256:8c2c61c546258fffff18b47bb82a65af6142007306b737129a7bd5429d53629a"
 DOCKER_IMAGE_GH_CLI     ?= "ghcr.io/supportpal/github-gh-cli:2.31.0@sha256:71371e36e62bd24ddd42d9e4c720a7e9954cb599475e24d1407af7190e2a5685"
+
+# When running locally we default to the current architecture.
+DOCKER_BUILD_PLATFORMS   := "${OS}/${ARCH}"
+DOCKER_BUILD_OUTPUT_TYPE := "docker"
+DOCKER_BUILDER           := "multiarch"
+DOCKER_BUILDER_MISSING   := $(shell docker buildx inspect ${DOCKER_BUILDER} > /dev/null 2>&1; echo $$?)
+
+# When running on CI we want to use our official release targets.
+ifeq ($(CI),true)
+DOCKER_BUILD_PLATFORMS   := "linux/amd64,linux/arm64"
+DOCKER_BUILD_OUTPUT_TYPE := "registry"
+DOCKER_TAG               := ${DOCKER_REGISTRY}/${DOCKER_REGISTRY_REPO}:${APP_VERSION}
+endif
 
 ## Cosign Variables
 # The public key
@@ -70,7 +94,7 @@ GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.bu
 GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.buildDate=$(BUILD_DATE)"
 GO_LDFLAGS                   += -X "github.com/mattermost/${APP_NAME}/service.goVersion=$(GO_VERSION)"
 # Architectures to build for
-GO_BUILD_PLATFORMS           ?= linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 freebsd-amd64
+GO_BUILD_PLATFORMS           ?= linux-amd64 linux-arm64
 GO_BUILD_PLATFORMS_ARTIFACTS = $(foreach cmd,$(addprefix go-build/,${APP_NAME}),$(addprefix $(cmd)-,$(GO_BUILD_PLATFORMS)))
 # Build options
 GO_BUILD_OPTS                += -mod=readonly -trimpath
@@ -145,12 +169,30 @@ test: go-test ## to test
 
 .PHONY: docker-build
 docker-build: ## to build the docker image
-	@$(INFO) Performing Docker build ${APP_NAME}:${APP_VERSION}
-	$(AT)$(DOCKER) build \
-	--build-arg GO_IMAGE=${DOCKER_IMAGE_GO} \
+	@$(INFO) Performing Docker build ${APP_NAME}:${APP_VERSION} for ${DOCKER_BUILD_PLATFORMS}
+ifeq ($(DOCKER_BUILDER_MISSING),1)
+ifeq ($(CI),true)
+	@$(INFO) Creating ${DOCKER_BUILDER} builder
+	$(AT)$(DOCKER) buildx create --name ${DOCKER_BUILDER} --use
+endif
+endif
+	$(AT)$(DOCKER) buildx build \
+	--platform ${DOCKER_BUILD_PLATFORMS} \
+	--output=type=${DOCKER_BUILD_OUTPUT_TYPE} \
+	--build-arg GO_VERSION=${GO_VERSION} \
 	-f ${DOCKER_FILE} . \
-	-t ${APP_NAME}:${APP_VERSION} || ${FAIL}
-	@$(OK) Performing Docker build ${APP_NAME}:${APP_VERSION}
+	-t ${DOCKER_TAG} || ${FAIL}
+	@$(OK) Performing Docker build ${APP_NAME}:${APP_VERSION} for ${DOCKER_BUILD_PLATFORMS}
+ifneq ($(shell echo $(APP_VERSION) | egrep '^v([0-9]+\.){0,2}(\*|[0-9]+)'),)
+ifeq ($(shell git tag -l --sort=v:refname | tail -n1),$(APP_VERSION))
+	$(AT)$(DOCKER) buildx build \
+	--platform ${DOCKER_BUILD_PLATFORMS} \
+	--output=type=${DOCKER_BUILD_OUTPUT_TYPE} \
+	--build-arg GO_VERSION=${GO_VERSION} \
+	-f ${DOCKER_FILE} . \
+	-t ${DOCKER_REGISTRY}/${DOCKER_REGISTRY_REPO}:latest || ${FAIL}
+endif
+endif
 
 .PHONY: docker-push
 docker-push: ## to push the docker image
