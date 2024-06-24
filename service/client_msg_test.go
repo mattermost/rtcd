@@ -23,7 +23,7 @@ func TestClientMessage(t *testing.T) {
 	})
 
 	t.Run("with join type", func(t *testing.T) {
-		msgData := map[string]string{
+		msgData := map[string]any{
 			"connID": "conn_id",
 		}
 		msg := NewClientMessage(ClientMessageJoin, msgData)

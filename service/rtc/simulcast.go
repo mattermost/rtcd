@@ -11,6 +11,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/pion/interceptor/pkg/cc"
+	"github.com/pion/webrtc/v3"
 
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
 )
@@ -178,7 +179,14 @@ func (s *session) handleSenderBitrateChange(downRate int, lossRate int) (bool, i
 		return false, 0, ""
 	}
 
-	currSourceRate := screenSession.getSourceRate(currLevel)
+	localTrack, ok := currTrack.(*webrtc.TrackLocalStaticRTP)
+	if !ok {
+		s.log.Error("track conversion failed", mlog.String("sessionID", s.cfg.SessionID))
+		return false, 0, ""
+	}
+	mimeType := localTrack.Codec().MimeType
+
+	currSourceRate := screenSession.getSourceRate(mimeType, currLevel)
 	if currSourceRate <= 0 {
 		s.log.Warn("current source rate not available yet", mlog.String("sessionID", s.cfg.SessionID))
 		return false, 0, ""
@@ -197,13 +205,13 @@ func (s *session) handleSenderBitrateChange(downRate int, lossRate int) (bool, i
 		return false, 0, ""
 	}
 
-	newTrack := screenSession.getOutScreenTrack(newLevel)
+	newTrack := screenSession.getOutScreenTrack(mimeType, newLevel)
 	if newTrack == nil {
 		// if the desired track is not available we keep the current one
 		return false, 0, ""
 	}
 
-	sourceRate := screenSession.getSourceRate(newLevel)
+	sourceRate := screenSession.getSourceRate(mimeType, newLevel)
 	if sourceRate <= 0 {
 		s.log.Warn("source rate not available", mlog.String("sessionID", s.cfg.SessionID))
 		return false, 0, ""
