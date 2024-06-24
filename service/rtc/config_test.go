@@ -315,3 +315,83 @@ func TestICEHostPortOverrideParseMap(t *testing.T) {
 		}, m)
 	})
 }
+
+func TestSessionConfigFromMap(t *testing.T) {
+	t.Run("nil config", func(t *testing.T) {
+		var cfg *SessionConfig
+		err := cfg.FromMap(map[string]any{})
+		require.EqualError(t, err, "invalid nil config")
+	})
+
+	t.Run("nil map", func(t *testing.T) {
+		var cfg SessionConfig
+		err := cfg.FromMap(nil)
+		require.EqualError(t, err, "invalid nil map")
+	})
+
+	t.Run("missing props", func(t *testing.T) {
+		var cfg SessionConfig
+		err := cfg.FromMap(map[string]any{
+			"callID":    "callID",
+			"sessionID": "sessionID",
+			"groupID":   "groupID",
+			"userID":    "userID",
+		})
+		require.NoError(t, err)
+		require.Equal(t, SessionConfig{
+			GroupID:   "groupID",
+			SessionID: "sessionID",
+			UserID:    "userID",
+			CallID:    "callID",
+			Props: SessionProps{
+				"channelID":  nil,
+				"av1Support": nil,
+			},
+		}, cfg)
+	})
+
+	t.Run("complete", func(t *testing.T) {
+		var cfg SessionConfig
+		err := cfg.FromMap(map[string]any{
+			"callID":     "callID",
+			"sessionID":  "sessionID",
+			"groupID":    "groupID",
+			"userID":     "userID",
+			"channelID":  "channelID",
+			"av1Support": true,
+		})
+		require.NoError(t, err)
+		require.NoError(t, cfg.IsValid())
+		require.Equal(t, SessionConfig{
+			GroupID:   "groupID",
+			SessionID: "sessionID",
+			UserID:    "userID",
+			CallID:    "callID",
+			Props: SessionProps{
+				"channelID":  "channelID",
+				"av1Support": true,
+			},
+		}, cfg)
+	})
+}
+
+func TestSessionProps(t *testing.T) {
+	t.Run("empty props", func(t *testing.T) {
+		cfg := SessionConfig{
+			Props: SessionProps{},
+		}
+		require.Empty(t, cfg.Props.ChannelID())
+		require.False(t, cfg.Props.AV1Support())
+	})
+
+	t.Run("complete props", func(t *testing.T) {
+		cfg := SessionConfig{
+			Props: SessionProps{
+				"channelID":  "channelID",
+				"av1Support": true,
+			},
+		}
+		require.Equal(t, "channelID", cfg.Props.ChannelID())
+		require.True(t, cfg.Props.AV1Support())
+	})
+}

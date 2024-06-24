@@ -12,8 +12,8 @@ import (
 )
 
 type ClientMessage struct {
-	Type string      `msgpack:"type"`
-	Data interface{} `msgpack:"data,omitempty"`
+	Type string `msgpack:"type"`
+	Data any    `msgpack:"data,omitempty"`
 }
 
 const (
@@ -42,7 +42,13 @@ func (cm *ClientMessage) DecodeMsgpack(dec *msgpack.Decoder) error {
 	cm.Type = msgType
 
 	switch cm.Type {
-	case ClientMessageJoin, ClientMessageLeave, ClientMessageHello, ClientMessageReconnect, ClientMessageClose:
+	case ClientMessageJoin:
+		data, err := dec.DecodeMap()
+		if err != nil {
+			return fmt.Errorf("failed to decode msg.Data: %w", err)
+		}
+		cm.Data = data
+	case ClientMessageLeave, ClientMessageHello, ClientMessageReconnect, ClientMessageClose:
 		data, err := dec.DecodeTypedMap()
 		if err != nil {
 			return fmt.Errorf("failed to decode msg.Data: %w", err)

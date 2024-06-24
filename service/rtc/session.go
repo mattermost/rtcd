@@ -114,7 +114,7 @@ func (s *session) getScreenStreamID() string {
 	return s.screenStreamID
 }
 
-func (s *session) getRemoteScreenTrack(rid string) *webrtc.TrackRemote {
+func (s *session) getRemoteScreenTrack(mimeType, rid string) *webrtc.TrackRemote {
 	s.mut.RLock()
 	defer s.mut.RUnlock()
 
@@ -122,10 +122,10 @@ func (s *session) getRemoteScreenTrack(rid string) *webrtc.TrackRemote {
 		rid = SimulcastLevelDefault
 	}
 
-	return s.remoteScreenTracks[rid]
+	return s.remoteScreenTracks[getTrackIndex(mimeType, rid)]
 }
 
-func (s *session) getSourceRate(rid string) int {
+func (s *session) getSourceRate(mimeType, rid string) int {
 	s.mut.RLock()
 	defer s.mut.RUnlock()
 
@@ -133,7 +133,7 @@ func (s *session) getSourceRate(rid string) int {
 		rid = SimulcastLevelDefault
 	}
 
-	rm := s.screenRateMonitors[rid]
+	rm := s.screenRateMonitors[getTrackIndex(mimeType, rid)]
 
 	if rm == nil {
 		s.log.Warn("rate monitor should not be nil", mlog.String("sessionID", s.cfg.SessionID))
@@ -145,11 +145,11 @@ func (s *session) getSourceRate(rid string) int {
 	return rate
 }
 
-func (s *session) getOutScreenTrack(rid string) *webrtc.TrackLocalStaticRTP {
+func (s *session) getOutScreenTrack(mimeType, rid string) *webrtc.TrackLocalStaticRTP {
 	s.mut.RLock()
 	defer s.mut.RUnlock()
 
-	return pickRandom(s.outScreenTracks[rid])
+	return pickRandom(s.outScreenTracks[getTrackIndex(mimeType, rid)])
 }
 
 func (s *session) getExpectedSimulcastLevel() string {
@@ -235,7 +235,18 @@ func (s *session) handleSenderRTCP(sender *webrtc.RTPSender) {
 					return
 				}
 
-				screenTrack := screenSession.getRemoteScreenTrack(sender.Track().RID())
+				senderTrack, ok := sender.Track().(*webrtc.TrackLocalStaticRTP)
+				if !ok {
+					s.log.Error("track conversion failed", mlog.String("sessionID", s.cfg.SessionID))
+					return
+				}
+
+				if senderTrack == nil {
+					s.log.Error("senderTrack should not be nil", mlog.String("sessionID", s.cfg.SessionID))
+					return
+				}
+
+				screenTrack := screenSession.getRemoteScreenTrack(senderTrack.Codec().MimeType, sender.Track().RID())
 				if screenTrack == nil {
 					s.log.Error("screenTrack should not be nil", mlog.String("sessionID", s.cfg.SessionID))
 					return
@@ -491,4 +502,12 @@ func (s *session) clearScreenState() {
 	s.outScreenAudioTrack = nil
 	s.remoteScreenTracks = make(map[string]*webrtc.TrackRemote)
 	s.screenRateMonitors = make(map[string]*RateMonitor)
+}
+
+func (s *session) supportsAV1() bool {
+	if s.cfg.Props == nil {
+		return false
+	}
+
+	return s.cfg.Props.AV1Support()
 }

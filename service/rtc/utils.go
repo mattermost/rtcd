@@ -33,6 +33,10 @@ func genTrackID(tt trackType, baseID string) string {
 	return string(tt) + "_" + baseID + "_" + random.NewID()[0:8]
 }
 
+func getTrackIndex(mimeType, rid string) string {
+	return mimeType + "_" + rid
+}
+
 func isValidTrackID(trackID string) bool {
 	fields := strings.Split(trackID, "_")
 	if len(fields) != 3 {

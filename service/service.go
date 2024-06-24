@@ -286,31 +286,24 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 	var rtcMsg rtc.Message
 	switch cm.Type {
 	case ClientMessageJoin:
-		data, ok := cm.Data.(map[string]string)
+		data, ok := cm.Data.(map[string]any)
 		if !ok {
 			return fmt.Errorf("unexpected data type: %T", cm.Data)
 		}
-		callID := data["callID"]
-		if callID == "" {
-			return fmt.Errorf("missing callID in client message")
+
+		var cfg rtc.SessionConfig
+		if err := cfg.FromMap(data); err != nil {
+			return fmt.Errorf("failed to read session config from map: %w", err)
 		}
-		userID := data["userID"]
-		if userID == "" {
-			return fmt.Errorf("missing userID in client message")
-		}
-		sessionID := data["sessionID"]
-		if sessionID == "" {
-			return fmt.Errorf("missing sessionID in client message")
-		}
-		channelID := data["channelID"]
+		cfg.GroupID = msg.ClientID
 
 		closeCb := func() error {
 			s.mut.Lock()
 			defer s.mut.Unlock()
-			delete(s.connMap, sessionID)
+			delete(s.connMap, cfg.SessionID)
 
 			data, err := NewPackedClientMessage(ClientMessageClose, map[string]string{
-				"sessionID": sessionID,
+				"sessionID": cfg.SessionID,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to pack close message: %w", err)
@@ -323,16 +316,6 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 			return nil
 		}
 
-		cfg := rtc.SessionConfig{
-			GroupID:   msg.ClientID,
-			CallID:    callID,
-			UserID:    userID,
-			SessionID: sessionID,
-			Props: map[string]any{
-				"channelID": channelID,
-			},
-		}
-
 		s.log.Debug("join message", mlog.Any("sessionCfg", cfg))
 
 		if err := s.rtcServer.InitSession(cfg, closeCb); err != nil {
@@ -340,7 +323,7 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 		}
 
 		s.mut.Lock()
-		s.connMap[sessionID] = msg.ConnID
+		s.connMap[cfg.SessionID] = msg.ConnID
 		s.mut.Unlock()
 
 		return nil
