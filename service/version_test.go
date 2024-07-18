@@ -44,6 +44,8 @@ func TestGetVersion(t *testing.T) {
 			BuildDate:    buildDate,
 			BuildVersion: buildVersion,
 			GoVersion:    goVersion,
+			GoOS:         runtime.GOOS,
+			GoArch:       runtime.GOARCH,
 		}, info)
 	})
 
@@ -58,6 +60,8 @@ func TestGetVersion(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, VersionInfo{
 			GoVersion: goVersion,
+			GoOS:      runtime.GOOS,
+			GoArch:    runtime.GOARCH,
 		}, info)
 	})
 }
