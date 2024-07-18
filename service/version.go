@@ -22,6 +22,8 @@ type VersionInfo struct {
 	BuildVersion string `json:"buildVersion"`
 	BuildHash    string `json:"buildHash"`
 	GoVersion    string `json:"goVersion"`
+	GoOS         string `json:"goOS"`
+	GoArch       string `json:"goArch"`
 }
 
 func getVersionInfo() VersionInfo {
@@ -30,6 +32,8 @@ func getVersionInfo() VersionInfo {
 		BuildVersion: buildVersion,
 		BuildHash:    buildHash,
 		GoVersion:    runtime.Version(),
+		GoOS:         runtime.GOOS,
+		GoArch:       runtime.GOARCH,
 	}
 }
 
@@ -39,6 +43,8 @@ func (v VersionInfo) logFields() []mlog.Field {
 		mlog.String("buildVersion", v.BuildVersion),
 		mlog.String("buildHash", v.BuildHash),
 		mlog.String("goVersion", v.GoVersion),
+		mlog.String("goOS", v.GoOS),
+		mlog.String("goArch", v.GoArch),
 	}
 }
 

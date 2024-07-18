@@ -717,3 +717,162 @@ func TestAPIConcurrency(t *testing.T) {
 		}
 	})
 }
+
+func TestAPIScreenShareAndVoice(t *testing.T) {
+	th := setupTestHelper(t, "calls0")
+
+	// Setup
+	userConnectCh := make(chan struct{})
+	err := th.userClient.On(RTCConnectEvent, func(_ any) error {
+		close(userConnectCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	go func() {
+		err := th.userClient.Connect()
+		require.NoError(t, err)
+	}()
+
+	select {
+	case <-userConnectCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for user connect event")
+	}
+
+	userCloseCh := make(chan struct{})
+	adminCloseCh := make(chan struct{})
+
+	// Test logic
+
+	// User screen shares, admin should receive the track
+	userScreenTrack := th.newScreenTrack()
+	_, err = th.userClient.StartScreenShare([]webrtc.TrackLocal{userScreenTrack})
+	require.NoError(t, err)
+	go th.screenTrackWriter(userScreenTrack, userCloseCh)
+
+	// User unmutes, admin should receive the track
+	userVoiceTrack := th.newVoiceTrack()
+	err = th.userClient.Unmute(userVoiceTrack)
+	require.NoError(t, err)
+	go th.voiceTrackWriter(userVoiceTrack, userCloseCh)
+
+	screenTrackCh := make(chan struct{})
+	userVoiceTrackCh := make(chan struct{})
+	err = th.adminClient.On(RTCTrackEvent, func(ctx any) error {
+		m := ctx.(map[string]any)
+		track := m["track"].(*webrtc.TrackRemote)
+		if track.Kind() == webrtc.RTPCodecTypeAudio {
+			close(userVoiceTrackCh)
+		}
+		if track.Kind() == webrtc.RTPCodecTypeVideo {
+			close(screenTrackCh)
+		}
+		return nil
+	})
+	require.NoError(t, err)
+
+	var packets int
+	adminVoiceTrackCh := make(chan struct{})
+	err = th.userClient.On(RTCTrackEvent, func(ctx any) error {
+		m := ctx.(map[string]any)
+		track := m["track"].(*webrtc.TrackRemote)
+		if track.Kind() == webrtc.RTPCodecTypeAudio {
+			go func() {
+				for {
+					_, _, readErr := track.ReadRTP()
+					if readErr != nil {
+						return
+					}
+					packets++
+				}
+			}()
+			close(adminVoiceTrackCh)
+		}
+		return nil
+	})
+	require.NoError(t, err)
+
+	adminConnectCh := make(chan struct{})
+	err = th.adminClient.On(RTCConnectEvent, func(_ any) error {
+		close(adminConnectCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	go func() {
+		err := th.adminClient.Connect()
+		require.NoError(t, err)
+	}()
+
+	select {
+	case <-adminConnectCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for admin connect event")
+	}
+
+	select {
+	case <-screenTrackCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for screen track")
+	}
+
+	select {
+	case <-userVoiceTrackCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for voice track")
+	}
+
+	// Admin unmutes, user should receive the track
+	adminVoiceTrack := th.newVoiceTrack()
+	err = th.adminClient.Unmute(adminVoiceTrack)
+	require.NoError(t, err)
+	go th.voiceTrackWriter(adminVoiceTrack, adminCloseCh)
+
+	select {
+	case <-adminVoiceTrackCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for admin voice track")
+	}
+
+	// Give it time to send/receive some packets.
+	time.Sleep(time.Second)
+
+	// Teardown
+
+	err = th.userClient.On(CloseEvent, func(_ any) error {
+		close(userCloseCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	err = th.adminClient.On(CloseEvent, func(_ any) error {
+		close(adminCloseCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	go func() {
+		err := th.userClient.Close()
+		require.NoError(t, err)
+	}()
+
+	go func() {
+		err := th.adminClient.Close()
+		require.NoError(t, err)
+	}()
+
+	select {
+	case <-userCloseCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for close event")
+	}
+
+	select {
+	case <-adminCloseCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for close event")
+	}
+
+	require.Greater(t, packets, 10)
+}
