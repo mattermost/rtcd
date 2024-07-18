@@ -632,6 +632,8 @@ func TestClientGetVersionInfo(t *testing.T) {
 			BuildDate:    buildDate,
 			BuildVersion: buildVersion,
 			GoVersion:    runtime.Version(),
+			GoOS:         runtime.GOOS,
+			GoArch:       runtime.GOARCH,
 		}, info)
 	})
 }
