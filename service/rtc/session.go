@@ -108,6 +108,62 @@ func (s *Server) addSession(cfg SessionConfig, peerConn *webrtc.PeerConnection, 
 	return us, nil
 }
 
+func (s *Server) handleNegotiations(us *session, call *call) {
+	defer func() {
+		// Only close channel if not already closed. This can happen in case of a failure
+		// during the initial negotiation (e.g. timeout).
+		select {
+		case <-us.doneCh:
+			return
+		default:
+			close(us.doneCh)
+		}
+	}()
+
+	select {
+	case offer, ok := <-us.sdpOfferInCh:
+		if !ok {
+			return
+		}
+		if err := us.signaling(offer, s.receiveCh); err != nil {
+			s.metrics.IncRTCErrors(us.cfg.GroupID, "signaling")
+			s.log.Error("failed to signal", mlog.Err(err), mlog.Any("sessionCfg", us.cfg))
+
+			// We need to preemptively close doneCh to avoid CloseSession from blocking indefinitely on it.
+			close(us.doneCh)
+			if err := s.CloseSession(us.cfg.SessionID); err != nil {
+				s.log.Error("failed to close session", mlog.Any("sessionCfg", us.cfg))
+			}
+
+			return
+		}
+	case <-time.After(signalingTimeout):
+		s.log.Error("timed out signaling", mlog.Any("sessionCfg", us.cfg))
+		s.metrics.IncRTCErrors(us.cfg.GroupID, "signaling")
+
+		// We need to preemptively close doneCh to avoid CloseSession from blocking indefinitely on it.
+		close(us.doneCh)
+		if err := s.CloseSession(us.cfg.SessionID); err != nil {
+			s.log.Error("failed to close session", mlog.Any("sessionCfg", us.cfg))
+		}
+
+		return
+	case <-us.closeCh:
+		s.log.Debug("closeCh closed during signaling", mlog.Any("sessionCfg", us.cfg))
+		return
+	}
+
+	iceDoneCh := make(chan struct{})
+	go func() {
+		defer close(iceDoneCh)
+		us.handleICE(s.metrics)
+	}()
+
+	s.handleTracks(call, us)
+
+	<-iceDoneCh
+}
+
 func (s *session) getScreenStreamID() string {
 	s.mut.RLock()
 	defer s.mut.RUnlock()

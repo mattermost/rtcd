@@ -617,40 +617,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		}
 	})
 
-	go func() {
-		defer close(us.doneCh)
-		select {
-		case offer, ok := <-us.sdpOfferInCh:
-			if !ok {
-				return
-			}
-			if err := us.signaling(offer, s.receiveCh); err != nil {
-				s.metrics.IncRTCErrors(cfg.GroupID, "signaling")
-				s.log.Error("failed to signal", mlog.Err(err), mlog.Any("sessionCfg", us.cfg))
-				return
-			}
-		case <-time.After(signalingTimeout):
-			s.log.Error("timed out signaling", mlog.Any("sessionCfg", us.cfg))
-			s.metrics.IncRTCErrors(cfg.GroupID, "signaling")
-			if err := s.CloseSession(cfg.SessionID); err != nil {
-				s.log.Error("failed to close session", mlog.Any("sessionCfg", us.cfg))
-			}
-			return
-		case <-us.closeCh:
-			s.log.Debug("closeCh closed during signaling", mlog.Any("sessionCfg", us.cfg))
-			return
-		}
-
-		iceDoneCh := make(chan struct{})
-		go func() {
-			defer close(iceDoneCh)
-			us.handleICE(s.metrics)
-		}()
-
-		s.handleTracks(call, us)
-
-		<-iceDoneCh
-	}()
+	go s.handleNegotiations(us, call)
 
 	s.log.Debug("session has joined call",
 		mlog.String("userID", cfg.UserID),
