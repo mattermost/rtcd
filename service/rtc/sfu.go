@@ -41,14 +41,23 @@ var (
 		RTCPFeedback: nil,
 	}
 	rtpVideoCodecs = map[string]webrtc.RTPCodecParameters{
-		"video/VP8": {
+		webrtc.MimeTypeVP8: {
 			RTPCodecCapability: webrtc.RTPCodecCapability{
-				MimeType:     "video/VP8",
+				MimeType:     webrtc.MimeTypeVP8,
 				ClockRate:    90000,
 				SDPFmtpLine:  "",
 				RTCPFeedback: videoRTCPFeedback,
 			},
 			PayloadType: 96,
+		},
+		webrtc.MimeTypeAV1: {
+			RTPCodecCapability: webrtc.RTPCodecCapability{
+				MimeType:     webrtc.MimeTypeAV1,
+				ClockRate:    90000,
+				SDPFmtpLine:  "",
+				RTCPFeedback: videoRTCPFeedback,
+			},
+			PayloadType: 45,
 		},
 	}
 	rtpVideoExtensions = []string{
@@ -59,9 +68,10 @@ var (
 )
 
 const (
-	nackResponderBufferSize = 256
-	audioLevelExtensionURI  = "urn:ietf:params:rtp-hdrext:ssrc-audio-level"
-	writerQueueSize         = 200 // Enough to hold up to one second of video packets.
+	nackResponderBufferSize    = 256
+	audioLevelExtensionURI     = "urn:ietf:params:rtp-hdrext:ssrc-audio-level"
+	writerQueueSize            = 200 // Enough to hold up to one second of video packets.
+	ScreenTrackMimeTypeDefault = webrtc.MimeTypeVP8
 )
 
 func (s *Server) initSettingEngine() (webrtc.SettingEngine, error) {
@@ -180,6 +190,10 @@ func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, <-chan cc.B
 }
 
 func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
+	if err := cfg.IsValid(); err != nil {
+		return fmt.Errorf("invalid session config: %w", err)
+	}
+
 	s.metrics.IncRTCSessions(cfg.GroupID)
 
 	iceServers := make([]webrtc.ICEServer, 0, len(s.cfg.ICEServers))
@@ -519,10 +533,11 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				return
 			}
 
+			trackIdx := getTrackIndex(trackMimeType, rid)
 			us.mut.Lock()
-			us.outScreenTracks[rid] = outScreenTracks
-			us.remoteScreenTracks[rid] = remoteTrack
-			us.screenRateMonitors[rid] = rm
+			us.outScreenTracks[trackIdx] = outScreenTracks
+			us.remoteScreenTracks[trackIdx] = remoteTrack
+			us.screenRateMonitors[trackIdx] = rm
 			us.mut.Unlock()
 
 			call.iterSessions(func(ss *session) {
@@ -539,9 +554,22 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					return
 				}
 
+				if trackMimeType == ScreenTrackMimeTypeDefault && us.supportsAV1() && ss.supportsAV1() {
+					s.log.Debug("skipping VP8 track for AV1 supported receiver",
+						mlog.String("sessionID", ss.cfg.SessionID),
+					)
+					return
+				} else if trackMimeType == webrtc.MimeTypeAV1 && !ss.supportsAV1() {
+					s.log.Debug("skipping AV1 track for unsupported receiver",
+						mlog.String("sessionID", ss.cfg.SessionID),
+					)
+					return
+				}
+
 				s.log.Debug("received track matches expected level, sending",
 					mlog.String("lvl", expectedLevel),
 					mlog.String("sessionID", ss.cfg.SessionID),
+					mlog.String("trackMimeType", trackMimeType),
 				)
 
 				select {
@@ -622,7 +650,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 	s.log.Debug("session has joined call",
 		mlog.String("userID", cfg.UserID),
 		mlog.String("sessionID", cfg.SessionID),
-		mlog.String("channelID", cfg.GetStringProp("channelID")),
+		mlog.String("channelID", cfg.Props.ChannelID()),
 		mlog.String("callID", cfg.CallID),
 	)
 
@@ -701,7 +729,16 @@ func (s *Server) handleTracks(call *call, us *session) {
 
 		ss.mut.RLock()
 		outVoiceTrack := ss.outVoiceTrack
-		outScreenTracks := ss.outScreenTracks[SimulcastLevelDefault]
+
+		// Screen track selection. Both sender and receiver support it
+		// in order to send out the AV1 track.
+		screenTrackMimeType := ScreenTrackMimeTypeDefault
+		if ss.supportsAV1() && us.supportsAV1() {
+			s.log.Debug("both sender and receiver support AV1", mlog.String("sessionID", us.cfg.SessionID))
+			screenTrackMimeType = webrtc.MimeTypeAV1
+		}
+		outScreenTracks := ss.outScreenTracks[getTrackIndex(screenTrackMimeType, SimulcastLevelDefault)]
+
 		outScreenAudioTrack := ss.outScreenAudioTrack
 		ss.mut.RUnlock()
 

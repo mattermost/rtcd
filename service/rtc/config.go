@@ -74,14 +74,19 @@ type SessionConfig struct {
 	UserID string
 	// SessionID specifies the unique identifier for the session.
 	SessionID string
-	Props     map[string]any
+	// Props specifies some properties for the session.
+	Props SessionProps
 }
 
-func (c *SessionConfig) GetStringProp(key string) string {
-	if c == nil || c.Props == nil {
-		return ""
-	}
-	val, _ := c.Props[key].(string)
+type SessionProps map[string]any
+
+func (p SessionProps) ChannelID() string {
+	val, _ := p["channelID"].(string)
+	return val
+}
+
+func (p SessionProps) AV1Support() bool {
+	val, _ := p["av1Support"].(bool)
 	return val
 }
 
@@ -100,6 +105,26 @@ func (c SessionConfig) IsValid() error {
 
 	if c.SessionID == "" {
 		return fmt.Errorf("invalid SessionID value: should not be empty")
+	}
+
+	return nil
+}
+
+func (c *SessionConfig) FromMap(m map[string]any) error {
+	if c == nil {
+		return fmt.Errorf("invalid nil config")
+	}
+	if m == nil {
+		return fmt.Errorf("invalid nil map")
+	}
+
+	c.GroupID, _ = m["groupID"].(string)
+	c.CallID, _ = m["callID"].(string)
+	c.UserID, _ = m["userID"].(string)
+	c.SessionID, _ = m["sessionID"].(string)
+	c.Props = SessionProps{
+		"channelID":  m["channelID"],
+		"av1Support": m["av1Support"],
 	}
 
 	return nil
