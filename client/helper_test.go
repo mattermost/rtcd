@@ -48,11 +48,11 @@ const (
 	waitTimeout = 5 * time.Second
 )
 
-func (th *TestHelper) newScreenTrack() *webrtc.TrackLocalStaticRTP {
+func (th *TestHelper) newScreenTrack(mimeType string) *webrtc.TrackLocalStaticRTP {
 	th.tb.Helper()
 
 	track, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{
-		MimeType:    "video/VP8",
+		MimeType:    mimeType,
 		ClockRate:   90000,
 		SDPFmtpLine: "",
 		RTCPFeedback: []webrtc.RTCPFeedback{
@@ -68,19 +68,27 @@ func (th *TestHelper) newScreenTrack() *webrtc.TrackLocalStaticRTP {
 }
 
 func (th *TestHelper) screenTrackWriter(track *webrtc.TrackLocalStaticRTP, closeCh <-chan struct{}) {
+	var payloader rtp.Payloader
+	payloader = &codecs.VP8Payloader{
+		EnablePictureID: true,
+	}
+	filename := "../testfiles/video.ivf"
+	if track.Codec().MimeType == webrtc.MimeTypeAV1 {
+		payloader = &codecs.AV1Payloader{}
+		filename = "../testfiles/video_av1.ivf"
+	}
+
 	packetizer := rtp.NewPacketizer(
 		1200,
 		0,
 		0,
-		&codecs.VP8Payloader{
-			EnablePictureID: true,
-		},
+		payloader,
 		rtp.NewRandomSequencer(),
 		90000,
 	)
 
 	// Open a IVF file and start reading using our IVFReader
-	file, ivfErr := os.Open("../testfiles/video.ivf")
+	file, ivfErr := os.Open(filename)
 	if ivfErr != nil {
 		log.Fatalf(ivfErr.Error())
 	}
@@ -139,7 +147,7 @@ func (th *TestHelper) screenTrackWriter(track *webrtc.TrackLocalStaticRTP, close
 func (th *TestHelper) transmitScreenTrack(c *Client) {
 	th.tb.Helper()
 
-	track := th.newScreenTrack()
+	track := th.newScreenTrack(webrtc.MimeTypeVP8)
 
 	sender, err := c.pc.AddTrack(track)
 	require.NoError(th.tb, err)

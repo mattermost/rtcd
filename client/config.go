@@ -22,6 +22,9 @@ type Config struct {
 	// JobID is an id used to identify bot initiated sessions (e.g.
 	// recording/transcription)
 	JobID string
+	// EnableAV1 controls whether the client should advertise support
+	// for receiving the AV1 codec.
+	EnableAV1 bool
 
 	wsURL string
 }
