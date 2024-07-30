@@ -109,7 +109,7 @@ func (c *Client) StartScreenShare(tracks []webrtc.TrackLocal) (*webrtc.RTPTransc
 		}
 	}
 
-	c.screenTransceiver = trx
+	c.screenTransceivers = append(c.screenTransceivers, trx)
 
 	sender := trx.Sender()
 
@@ -131,12 +131,13 @@ func (c *Client) StopScreenShare() error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	if c.screenTransceiver != nil {
-		if err := c.pc.RemoveTrack(c.screenTransceiver.Sender()); err != nil {
+	for _, trx := range c.screenTransceivers {
+		if err := c.pc.RemoveTrack(trx.Sender()); err != nil {
 			return fmt.Errorf("failed to remove track: %w", err)
 		}
-		c.screenTransceiver = nil
 	}
+
+	c.screenTransceivers = nil
 
 	return c.sendWS(wsEventScreenOff, nil, false)
 }

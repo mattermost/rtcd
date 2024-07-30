@@ -97,12 +97,12 @@ type Client struct {
 	currentConnID       string
 
 	// WebRTC
-	pc                *webrtc.PeerConnection
-	dc                *webrtc.DataChannel
-	iceCh             chan webrtc.ICECandidateInit
-	receivers         map[string][]*webrtc.RTPReceiver
-	voiceSender       *webrtc.RTPSender
-	screenTransceiver *webrtc.RTPTransceiver
+	pc                 *webrtc.PeerConnection
+	dc                 *webrtc.DataChannel
+	iceCh              chan webrtc.ICECandidateInit
+	receivers          map[string][]*webrtc.RTPReceiver
+	voiceSender        *webrtc.RTPSender
+	screenTransceivers []*webrtc.RTPTransceiver
 
 	state int32
 
