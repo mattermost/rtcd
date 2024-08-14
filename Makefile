@@ -329,7 +329,7 @@ endif
 start-mm: ## start MM server
 ifeq (${CI}, true)
 	@$(INFO) starting up MM server...
-	docker-compose -p mmserver -f ./build/test/docker-compose.yaml up -d
+	docker compose -p mmserver -f ./build/test/docker-compose.yaml up -d
 else
 	@$(INFO) skipping start-mm target, not on CI
 endif
@@ -338,7 +338,7 @@ endif
 stop-mm: ## stop MM server
 ifeq (${CI}, true)
 	@$(INFO) stopping up MM server...
-	docker-compose -p mmserver -f ./build/test/docker-compose.yaml down
+	docker compose -p mmserver -f ./build/test/docker-compose.yaml down
 else
 	@$(INFO) skipping stop-mm target, not on CI
 endif
