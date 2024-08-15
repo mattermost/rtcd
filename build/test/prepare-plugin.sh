@@ -20,7 +20,8 @@ git fetch --tags && \
 cd standalone && npm ci && cd .. && \
 cd webapp && npm ci && cd .. && \
 ls -lsa && \
-echo 'replace github.com/mattermost/rtcd => ../rtcd' >> go.mod && \ # We need to make sure we compile the plugin with the rtcd changes.
+echo "replace github.com/mattermost/rtcd => ../rtcd" >> go.mod && \
+cat go.mod && \
 go mod tidy && \
 make dist MM_SERVICESETTINGS_ENABLEDEVELOPER=true
 
