@@ -14,9 +14,10 @@ else
 fi
 
 # Build
-cd .. && git clone -b ${GIT_BRANCH} https://github.com/mattermost/mattermost-plugin-calls --depth 1 && \
+cd .. && git clone -b ${GIT_BRANCH} https://github.com/mattermost/mattermost-plugin-calls && \
 cd mattermost-plugin-calls && \
 git fetch --tags && \
+git describe --tags --match 'v*' --abbrev=0 && \
 cd standalone && npm ci && cd .. && \
 cd webapp && npm ci && cd .. && \
 ls -lsa && \
