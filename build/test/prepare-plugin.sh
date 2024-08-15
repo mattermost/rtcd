@@ -1,5 +1,5 @@
 #/bin/bash
-set -x
+set -xe
 
 GIT_DEFAULT_BRANCH="main"
 GIT_REPO="https://github.com/mattermost/mattermost-plugin-calls"
@@ -14,11 +14,12 @@ else
 fi
 
 # Build
-cd .. && git clone -b ${GIT_BRANCH} https://github.com/mattermost/mattermost-plugin-calls --depth 1 && \
-cd mattermost-plugin-calls &&
+cd .. && git clone -b ${GIT_BRANCH} https://github.com/mattermost/mattermost-plugin-calls && \
+cd mattermost-plugin-calls && \
+git fetch --tags && \
 cd standalone && npm ci && cd .. && \
 cd webapp && npm ci && cd .. && \
-echo 'replace github.com/mattermost/rtcd => ../rtcd' >> go.mod && \ # We need to make sure we compile the plugin with the rtcd changes.
+echo "replace github.com/mattermost/rtcd => ../rtcd" >> go.mod && \
 go mod tidy && \
 make dist MM_SERVICESETTINGS_ENABLEDEVELOPER=true
 
@@ -26,15 +27,16 @@ make dist MM_SERVICESETTINGS_ENABLEDEVELOPER=true
 PLUGIN_BUILD_PATH=$(realpath dist/*.tar.gz)
 PLUGIN_FILE_NAME=$(basename ${PLUGIN_BUILD_PATH})
 
-docker cp ../rtcd/build/test/config_patch.json mmserver_server_1:/mattermost && \
-docker exec mmserver_server_1 bin/mmctl --local config patch config_patch.json && \
-docker cp ${PLUGIN_BUILD_PATH} mmserver_server_1:/mattermost && \
-docker exec mmserver_server_1 bin/mmctl --local plugin delete ${PLUGIN_ID} && \
-docker exec mmserver_server_1 bin/mmctl --local plugin add ${PLUGIN_FILE_NAME} && \
-docker exec mmserver_server_1 bin/mmctl --local plugin enable ${PLUGIN_ID} && \
+docker ps -a && \
+docker cp ../rtcd/build/test/config_patch.json mmserver-server-1:/mattermost && \
+docker exec mmserver-server-1 bin/mmctl --local config patch config_patch.json && \
+docker cp ${PLUGIN_BUILD_PATH} mmserver-server-1:/mattermost && \
+docker exec mmserver-server-1 bin/mmctl --local plugin delete ${PLUGIN_ID} && \
+docker exec mmserver-server-1 bin/mmctl --local plugin add ${PLUGIN_FILE_NAME} && \
+docker exec mmserver-server-1 bin/mmctl --local plugin enable ${PLUGIN_ID} && \
 sleep 5s
 
 STATUS_CODE=$(curl --write-out '%{http_code}' --silent --output /dev/null http://localhost:8065/plugins/com.mattermost.calls/version)
 if [ "$STATUS_CODE" != "200" ]; then
-  echo "Status code check for plugin failed" && docker logs mmserver_server_1 && exit 1
+  echo "Status code check for plugin failed" && docker logs mmserver-server-1 && exit 1
 fi

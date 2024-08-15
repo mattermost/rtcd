@@ -39,6 +39,7 @@ services:
       MM_SERVICESETTINGS_ENABLEONBOARDINGFLOW: "false"
       MM_FEATUREFLAGS_ONBOARDINGTOURTIPS: "false"
       MM_SERVICEENVIRONMENT: "test"
+      MM_CALLS_GROUP_CALLS_ALLOWED: "true"
     volumes:
     - "server-config:/mattermost/config"
     depends_on:
