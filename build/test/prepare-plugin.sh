@@ -17,12 +17,9 @@ fi
 cd .. && git clone -b ${GIT_BRANCH} https://github.com/mattermost/mattermost-plugin-calls && \
 cd mattermost-plugin-calls && \
 git fetch --tags && \
-git describe --tags --match 'v*' --abbrev=0 && \
 cd standalone && npm ci && cd .. && \
 cd webapp && npm ci && cd .. && \
-ls -lsa && \
 echo "replace github.com/mattermost/rtcd => ../rtcd" >> go.mod && \
-cat go.mod && \
 go mod tidy && \
 make dist MM_SERVICESETTINGS_ENABLEDEVELOPER=true
 
@@ -30,6 +27,7 @@ make dist MM_SERVICESETTINGS_ENABLEDEVELOPER=true
 PLUGIN_BUILD_PATH=$(realpath dist/*.tar.gz)
 PLUGIN_FILE_NAME=$(basename ${PLUGIN_BUILD_PATH})
 
+docker ps -a && \
 docker cp ../rtcd/build/test/config_patch.json mmserver_server_1:/mattermost && \
 docker exec mmserver_server_1 bin/mmctl --local config patch config_patch.json && \
 docker cp ${PLUGIN_BUILD_PATH} mmserver_server_1:/mattermost && \
