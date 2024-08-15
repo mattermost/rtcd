@@ -1,5 +1,5 @@
 #/bin/bash
-set -x
+set -xe
 
 GIT_DEFAULT_BRANCH="main"
 GIT_REPO="https://github.com/mattermost/mattermost-plugin-calls"
@@ -15,9 +15,11 @@ fi
 
 # Build
 cd .. && git clone -b ${GIT_BRANCH} https://github.com/mattermost/mattermost-plugin-calls --depth 1 && \
-cd mattermost-plugin-calls &&
+cd mattermost-plugin-calls && \
+git fetch --tags && \
 cd standalone && npm ci && cd .. && \
 cd webapp && npm ci && cd .. && \
+ls -lsa && \
 echo 'replace github.com/mattermost/rtcd => ../rtcd' >> go.mod && \ # We need to make sure we compile the plugin with the rtcd changes.
 go mod tidy && \
 make dist MM_SERVICESETTINGS_ENABLEDEVELOPER=true
