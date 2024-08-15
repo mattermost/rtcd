@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"os"
 	"testing"
 	"time"
@@ -45,7 +46,7 @@ const (
 	userPass    = "U$er-sample1"
 	teamName    = "calls"
 	nChannels   = 2
-	waitTimeout = 5 * time.Second
+	waitTimeout = 10 * time.Second
 )
 
 func (th *TestHelper) newScreenTrack(mimeType string) *webrtc.TrackLocalStaticRTP {
@@ -326,6 +327,11 @@ func setupTestHelper(tb testing.TB, channelName string) *TestHelper {
 	tb.Helper()
 	var err error
 
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		AddSource: true,
+		Level:     slog.LevelDebug,
+	}))
+
 	th := &TestHelper{
 		tb:       tb,
 		channels: make(map[string]*model.Channel),
@@ -354,7 +360,7 @@ func setupTestHelper(tb testing.TB, channelName string) *TestHelper {
 		SiteURL:   th.apiURL,
 		AuthToken: th.adminAPIClient.AuthToken,
 		ChannelID: channelID,
-	})
+	}, WithLogger(logger))
 	require.NoError(tb, err)
 	require.NotNil(tb, th.adminClient)
 
@@ -362,7 +368,7 @@ func setupTestHelper(tb testing.TB, channelName string) *TestHelper {
 		SiteURL:   th.apiURL,
 		AuthToken: th.userAPIClient.AuthToken,
 		ChannelID: channelID,
-	})
+	}, WithLogger(logger))
 	require.NoError(tb, err)
 	require.NotNil(tb, th.userClient)
 

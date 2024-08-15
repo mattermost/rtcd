@@ -256,8 +256,9 @@ func (c *Client) initRTCSession() error {
 
 		// RTCP handler
 		go func(rid string) {
+			var err error
+			rtcpBuf := make([]byte, receiveMTU)
 			for {
-				rtcpBuf := make([]byte, receiveMTU)
 				if rid != "" {
 					_, _, err = receiver.ReadSimulcast(rtcpBuf, rid)
 				} else {
