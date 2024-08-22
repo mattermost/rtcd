@@ -95,7 +95,8 @@ func (s *Server) initSettingEngine() (webrtc.SettingEngine, error) {
 		sEngine.SetDTLSInsecureSkipHelloVerify(true)
 	}
 
-	pairs, err := generateAddrsPairs(s.localIPs, s.publicAddrsMap, s.cfg.ICEHostOverride, s.cfg.EnableIPv6)
+	pairs, err := generateAddrsPairs(s.localIPs, s.publicAddrsMap, s.cfg.ICEHostOverride,
+		s.cfg.EnableIPv6, s.cfg.ICEHostOverrideResolution)
 	if err != nil {
 		return webrtc.SettingEngine{}, fmt.Errorf("failed to generate addresses pairs: %w", err)
 	} else if len(pairs) > 0 {
@@ -268,6 +269,26 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 		if port := s.cfg.ICEHostPortOverride.SinglePort(); port != 0 && candidate.Typ == webrtc.ICECandidateTypeHost {
 			if m := getExternalAddrMapFromHostOverride(s.cfg.ICEHostOverride, s.publicAddrsMap); m[candidate.Address] {
+				s.log.Debug("overriding host candidate port",
+					mlog.String("sessionID", cfg.SessionID),
+					mlog.Uint("port", candidate.Port),
+					mlog.Int("override", port),
+					mlog.String("addr", candidate.Address),
+					mlog.Int("protocol", candidate.Protocol))
+				candidate.Port = uint16(port)
+			}
+		}
+
+		// If the ICE host override is a FQDN and resolution is off, we pass it through to the client unchanged.
+		if candidate.Typ == webrtc.ICECandidateTypeHost && s.cfg.ICEHostOverride != "" && !isIPAddress(s.cfg.ICEHostOverride) && !s.cfg.ICEHostOverrideResolution {
+			s.log.Debug("overriding host address with fqdn",
+				mlog.String("sessionID", cfg.SessionID),
+				mlog.Uint("port", candidate.Port),
+				mlog.String("addr", candidate.Address),
+				mlog.Int("protocol", candidate.Protocol),
+				mlog.String("override", s.cfg.ICEHostOverride))
+			candidate.Address = s.cfg.ICEHostOverride
+			if port := s.cfg.ICEHostPortOverride.SinglePort(); port != 0 {
 				s.log.Debug("overriding host candidate port",
 					mlog.String("sessionID", cfg.SessionID),
 					mlog.Uint("port", candidate.Port),
