@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 
 	"github.com/pion/interceptor"
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -242,14 +243,22 @@ func (c *Client) initRTCSession() error {
 			return
 		}
 
+		if trackType == TrackTypeScreen {
+			c.log.Debug("sending PLI request for received screen track", slog.String("trackID", track.ID()), slog.Any("SSRC", track.SSRC()))
+			if err := pc.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(track.SSRC())}}); err != nil {
+				c.log.Error("failed to write RTCP packet", slog.String("err", err.Error()))
+			}
+		}
+
 		c.mut.Lock()
 		c.receivers[sessionID] = append(c.receivers[sessionID], receiver)
 		c.mut.Unlock()
 
 		// RTCP handler
 		go func(rid string) {
+			var err error
+			rtcpBuf := make([]byte, receiveMTU)
 			for {
-				rtcpBuf := make([]byte, receiveMTU)
 				if rid != "" {
 					_, _, err = receiver.ReadSimulcast(rtcpBuf, rid)
 				} else {

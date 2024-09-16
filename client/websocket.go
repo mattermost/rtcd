@@ -111,14 +111,14 @@ func (c *Client) handleWSEventHello(ev *model.WebSocketEvent) (isReconnect bool,
 	}
 
 	if connID != c.currentConnID {
-		c.log.Debug("new connection id from server")
+		c.log.Debug("new connection id from server", slog.String("connID", connID))
 	}
 
 	if c.originalConnID == "" {
-		c.log.Debug("initial ws connection")
+		c.log.Debug("initial ws connection", slog.String("originalConnID", connID))
 		c.originalConnID = connID
 	} else {
-		c.log.Debug("ws reconnected successfully")
+		c.log.Debug("ws reconnected successfully", slog.String("originalConnID", c.originalConnID))
 		c.wsLastDisconnect = time.Time{}
 		c.wsReconnectInterval = 0
 		isReconnect = true

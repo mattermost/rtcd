@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/pion/webrtc/v3"
+	"golang.org/x/time/rate"
 
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
 )
@@ -16,6 +17,7 @@ type call struct {
 	id            string
 	sessions      map[string]*session
 	screenSession *session
+	pliLimiters   map[webrtc.SSRC]*rate.Limiter
 	metrics       Metrics
 
 	mut sync.RWMutex

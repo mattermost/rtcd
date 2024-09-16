@@ -6,12 +6,14 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -52,7 +54,9 @@ func (c *Client) Unmute(track webrtc.TrackLocal) error {
 		rtcpBuf := make([]byte, receiveMTU)
 		for {
 			if _, _, rtcpErr := sender.Read(rtcpBuf); rtcpErr != nil {
-				c.log.Error("failed to read rtcp", slog.String("err", rtcpErr.Error()))
+				if !errors.Is(rtcpErr, io.EOF) {
+					c.log.Error("failed to read rtcp", slog.String("err", rtcpErr.Error()))
+				}
 				return
 			}
 		}
@@ -113,16 +117,38 @@ func (c *Client) StartScreenShare(tracks []webrtc.TrackLocal) (*webrtc.RTPTransc
 
 	sender := trx.Sender()
 
-	go func() {
+	rtcpHandler := func(rid string) {
 		defer c.log.Debug("exiting RTCP handler")
+		var n int
+		var err error
 		rtcpBuf := make([]byte, receiveMTU)
 		for {
-			if _, _, rtcpErr := sender.Read(rtcpBuf); rtcpErr != nil {
-				c.log.Error("failed to read rtcp", slog.String("err", rtcpErr.Error()))
+			if rid != "" {
+				n, _, err = sender.ReadSimulcast(rtcpBuf, rid)
+			} else {
+				n, _, err = sender.Read(rtcpBuf)
+			}
+			if err != nil {
+				if !errors.Is(err, io.EOF) {
+					c.log.Error("failed to read RTCP packet", slog.String("err", err.Error()))
+				}
 				return
 			}
+			if pkts, err := rtcp.Unmarshal(rtcpBuf[:n]); err != nil {
+				c.log.Error("failed to unmarshal RTCP packet", slog.String("err", err.Error()))
+			} else {
+				c.emit(RTCSenderRTCPPacketEvent, map[string]any{
+					"pkts":   pkts,
+					"rid":    rid,
+					"sender": sender,
+				})
+			}
 		}
-	}()
+	}
+
+	for _, track := range tracks {
+		go rtcpHandler(track.RID())
+	}
 
 	return trx, nil
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 
 	"github.com/stretchr/testify/require"
@@ -1023,4 +1024,143 @@ func TestAPIScreenShareAndVoice(t *testing.T) {
 	}
 
 	require.Greater(t, packets, 10)
+}
+
+func TestAPIScreenSharePLI(t *testing.T) {
+	th := setupTestHelper(t, "calls0")
+
+	nReceivers := 10
+
+	// Setup
+	userClients := make([]*Client, nReceivers)
+	userConnectChs := make([]chan struct{}, nReceivers)
+	userCloseChs := make([]chan struct{}, nReceivers)
+
+	for i := 0; i < len(userClients); i++ {
+		userConnectChs[i] = make(chan struct{})
+		userCloseChs[i] = make(chan struct{})
+
+		var err error
+		userClients[i], err = New(Config{
+			SiteURL:   th.apiURL,
+			AuthToken: th.userAPIClient.AuthToken,
+			ChannelID: th.channels["calls0"].Id,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, userClients[i])
+
+		client := userClients[i]
+		connectedCh := userConnectChs[i]
+		err = client.On(RTCConnectEvent, func(_ any) error {
+			close(connectedCh)
+			return nil
+		})
+		require.NoError(t, err)
+	}
+
+	adminConnectCh := make(chan struct{})
+	err := th.adminClient.On(RTCConnectEvent, func(_ any) error {
+		close(adminConnectCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	for i := 0; i < len(userClients); i++ {
+		go func(i int) {
+			err := userClients[i].Connect()
+			require.NoError(t, err)
+		}(i)
+	}
+
+	go func() {
+		err := th.adminClient.Connect()
+		require.NoError(t, err)
+	}()
+
+	for i := 0; i < len(userClients); i++ {
+		select {
+		case <-userConnectChs[i]:
+		case <-time.After(waitTimeout):
+			require.Fail(t, "timed out waiting for user connect event")
+		}
+	}
+
+	select {
+	case <-adminConnectCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for admin connect event")
+	}
+
+	adminCloseCh := make(chan struct{})
+
+	// Test logic
+
+	// admin screen shares, users should receive the track
+	adminScreenTrack := th.newScreenTrack(webrtc.MimeTypeVP8)
+	_, err = th.adminClient.StartScreenShare([]webrtc.TrackLocal{adminScreenTrack})
+	require.NoError(t, err)
+	go th.screenTrackWriter(adminScreenTrack, adminCloseCh)
+
+	var pliCount int
+	err = th.adminClient.On(RTCSenderRTCPPacketEvent, func(ctx any) error {
+		m := ctx.(map[string]any)
+		for _, pkt := range m["pkts"].([]rtcp.Packet) {
+			if _, ok := pkt.(*rtcp.PictureLossIndication); ok {
+				pliCount++
+			}
+		}
+		return nil
+	})
+	require.NoError(t, err)
+
+	time.Sleep(2 * time.Second)
+
+	err = th.adminClient.StopScreenShare()
+	require.NoError(t, err)
+
+	// Teardown
+
+	for i := 0; i < len(userClients); i++ {
+		client := userClients[i]
+		closeCh := userCloseChs[i]
+		err = client.On(CloseEvent, func(_ any) error {
+			close(closeCh)
+			return nil
+		})
+		require.NoError(t, err)
+	}
+
+	err = th.adminClient.On(CloseEvent, func(_ any) error {
+		close(adminCloseCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	for i := 0; i < len(userClients); i++ {
+		go func(i int) {
+			err := userClients[i].Close()
+			require.NoError(t, err)
+		}(i)
+	}
+
+	go func() {
+		err := th.adminClient.Close()
+		require.NoError(t, err)
+	}()
+
+	for i := 0; i < len(userClients); i++ {
+		select {
+		case <-userCloseChs[i]:
+		case <-time.After(waitTimeout):
+			require.Fail(t, "timed out waiting for close event")
+		}
+	}
+
+	select {
+	case <-adminCloseCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for close event")
+	}
+
+	require.Equal(t, 1, pliCount)
 }

@@ -23,9 +23,10 @@ type EventHandler func(ctx any) error
 type EventType string
 
 const (
-	RTCConnectEvent    EventType = "RTCConnect"
-	RTCDisconnectEvent EventType = "RTCDisconnect"
-	RTCTrackEvent      EventType = "RTCTrack"
+	RTCConnectEvent          EventType = "RTCConnect"
+	RTCDisconnectEvent       EventType = "RTCDisconnect"
+	RTCTrackEvent            EventType = "RTCTrack"
+	RTCSenderRTCPPacketEvent EventType = "RTCSenderRTCPPacket"
 
 	CloseEvent EventType = "Close"
 	ErrorEvent EventType = "Error"
@@ -47,7 +48,7 @@ const (
 
 func (e EventType) IsValid() bool {
 	switch e {
-	case RTCConnectEvent, RTCDisconnectEvent, RTCTrackEvent,
+	case RTCConnectEvent, RTCDisconnectEvent, RTCTrackEvent, RTCSenderRTCPPacketEvent,
 		CloseEvent,
 		ErrorEvent,
 		WSConnectEvent, WSDisconnectEvent,
