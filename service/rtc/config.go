@@ -90,6 +90,11 @@ func (p SessionProps) AV1Support() bool {
 	return val
 }
 
+func (p SessionProps) DCSignaling() bool {
+	val, _ := p["dcSignaling"].(bool)
+	return val
+}
+
 func (c SessionConfig) IsValid() error {
 	if c.GroupID == "" {
 		return fmt.Errorf("invalid GroupID value: should not be empty")
@@ -123,8 +128,9 @@ func (c *SessionConfig) FromMap(m map[string]any) error {
 	c.UserID, _ = m["userID"].(string)
 	c.SessionID, _ = m["sessionID"].(string)
 	c.Props = SessionProps{
-		"channelID":  m["channelID"],
-		"av1Support": m["av1Support"],
+		"channelID":   m["channelID"],
+		"av1Support":  m["av1Support"],
+		"dcSignaling": m["dcSignaling"],
 	}
 
 	return nil

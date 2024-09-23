@@ -344,8 +344,9 @@ func TestSessionConfigFromMap(t *testing.T) {
 			UserID:    "userID",
 			CallID:    "callID",
 			Props: SessionProps{
-				"channelID":  nil,
-				"av1Support": nil,
+				"channelID":   nil,
+				"av1Support":  nil,
+				"dcSignaling": nil,
 			},
 		}, cfg)
 	})
@@ -353,12 +354,13 @@ func TestSessionConfigFromMap(t *testing.T) {
 	t.Run("complete", func(t *testing.T) {
 		var cfg SessionConfig
 		err := cfg.FromMap(map[string]any{
-			"callID":     "callID",
-			"sessionID":  "sessionID",
-			"groupID":    "groupID",
-			"userID":     "userID",
-			"channelID":  "channelID",
-			"av1Support": true,
+			"callID":      "callID",
+			"sessionID":   "sessionID",
+			"groupID":     "groupID",
+			"userID":      "userID",
+			"channelID":   "channelID",
+			"av1Support":  true,
+			"dcSignaling": true,
 		})
 		require.NoError(t, err)
 		require.NoError(t, cfg.IsValid())
@@ -368,8 +370,9 @@ func TestSessionConfigFromMap(t *testing.T) {
 			UserID:    "userID",
 			CallID:    "callID",
 			Props: SessionProps{
-				"channelID":  "channelID",
-				"av1Support": true,
+				"channelID":   "channelID",
+				"av1Support":  true,
+				"dcSignaling": true,
 			},
 		}, cfg)
 	})

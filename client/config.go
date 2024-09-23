@@ -25,6 +25,9 @@ type Config struct {
 	// EnableAV1 controls whether the client should advertise support
 	// for receiving the AV1 codec.
 	EnableAV1 bool
+	// EnableDCSignaling controls whether the client should use data channels
+	// for signaling of media tracks.
+	EnableDCSignaling bool
 
 	wsURL string
 }

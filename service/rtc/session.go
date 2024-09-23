@@ -27,6 +27,13 @@ const (
 	tracksChSize = 100
 )
 
+// offerMessage is a wrapper struct to tie offers to a given answerCh
+// This channel could be backed by either WebSocket or DataChannel
+type offerMessage struct {
+	sdp      webrtc.SessionDescription
+	answerCh chan<- Message
+}
+
 // session contains all the state necessary to connect a user to a call.
 type session struct {
 	cfg SessionConfig
@@ -35,8 +42,9 @@ type session struct {
 	rtcConn       *webrtc.PeerConnection
 	tracksCh      chan trackActionContext
 	iceInCh       chan []byte
-	sdpOfferInCh  chan webrtc.SessionDescription
+	sdpOfferInCh  chan offerMessage
 	sdpAnswerInCh chan webrtc.SessionDescription
+	dcSDPCh       chan Message
 
 	// Sender (publishing side)
 	outVoiceTrack        *webrtc.TrackLocalStaticRTP
@@ -124,11 +132,11 @@ func (s *Server) handleNegotiations(us *session, call *call) {
 	}()
 
 	select {
-	case offer, ok := <-us.sdpOfferInCh:
+	case offerMsg, ok := <-us.sdpOfferInCh:
 		if !ok {
 			return
 		}
-		if err := us.signaling(offer, s.receiveCh); err != nil {
+		if err := us.signaling(offerMsg.sdp, offerMsg.answerCh); err != nil {
 			s.metrics.IncRTCErrors(us.cfg.GroupID, "signaling")
 			s.log.Error("failed to signal", mlog.Err(err), mlog.Any("sessionCfg", us.cfg))
 
@@ -509,7 +517,12 @@ func (s *session) removeTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) 
 }
 
 // signaling handles incoming SDP offers.
-func (s *session) signaling(offer webrtc.SessionDescription, sdpOutCh chan<- Message) error {
+func (s *session) signaling(offer webrtc.SessionDescription, answerCh chan<- Message) error {
+	if s.hasSignalingConflict() {
+		s.log.Debug("signaling conflict detected, ignoring offer", mlog.Any("session", s.cfg))
+		return nil
+	}
+
 	if err := s.rtcConn.SetRemoteDescription(offer); err != nil {
 		return err
 	}
@@ -529,7 +542,7 @@ func (s *session) signaling(offer webrtc.SessionDescription, sdpOutCh chan<- Mes
 	}
 
 	select {
-	case sdpOutCh <- newMessage(s, SDPMessage, sdp):
+	case answerCh <- newMessage(s, SDPMessage, sdp):
 	default:
 		return fmt.Errorf("failed to send SDP message: channel is full")
 	}
@@ -589,4 +602,12 @@ func (s *session) supportsAV1() bool {
 	}
 
 	return s.cfg.Props.AV1Support()
+}
+
+func (s *session) dcSignaling() bool {
+	if s.cfg.Props == nil {
+		return false
+	}
+
+	return s.cfg.Props.DCSignaling()
 }

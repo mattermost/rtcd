@@ -235,32 +235,8 @@ func (s *Server) msgReader() {
 				s.log.Error("failed to send sdp message: channel is full", mlog.Any("session", session.cfg))
 			}
 		case SDPMessage:
-			var sdp webrtc.SessionDescription
-			if err := json.Unmarshal(msg.Data, &sdp); err != nil {
-				s.log.Error("failed to unmarshal sdp", mlog.Err(err), mlog.Any("session", session.cfg))
-				continue
-			}
-
-			s.log.Debug("signaling", mlog.Int("sdpType", int(sdp.Type)), mlog.Any("session", session.cfg))
-
-			if sdp.Type == webrtc.SDPTypeOffer && session.hasSignalingConflict() {
-				s.log.Debug("signaling conflict detected, ignoring offer", mlog.Any("session", session.cfg))
-				continue
-			}
-
-			var sdpCh chan webrtc.SessionDescription
-			if sdp.Type == webrtc.SDPTypeOffer {
-				sdpCh = session.sdpOfferInCh
-			} else if sdp.Type == webrtc.SDPTypeAnswer {
-				sdpCh = session.sdpAnswerInCh
-			} else {
-				s.log.Error("unexpected sdp type", mlog.Int("type", int(sdp.Type)), mlog.Any("session", session.cfg))
-				return
-			}
-			select {
-			case sdpCh <- sdp:
-			default:
-				s.log.Error("failed to send sdp message: channel is full", mlog.Any("session", session.cfg))
+			if err := s.handleIncomingSDP(session, s.receiveCh, msg.Data); err != nil {
+				s.log.Error("failed to handle incoming sdp", mlog.Err(err), mlog.Any("session", session.cfg))
 			}
 		case ScreenOnMessage:
 			data := map[string]string{}
@@ -371,6 +347,33 @@ func (s *Server) initTCP(network string) error {
 		ReadBufferSize:  tcpConnReadBufferLength,
 		WriteBufferSize: tcpSocketWriteBufferSize,
 	})
+
+	return nil
+}
+
+func (s *Server) handleIncomingSDP(us *session, answerCh chan<- Message, data []byte) error {
+	var sdp webrtc.SessionDescription
+	if err := json.Unmarshal(data, &sdp); err != nil {
+		return fmt.Errorf("failed to unmarshal sdp: %w", err)
+	}
+
+	s.log.Debug("signaling", mlog.Int("sdpType", int(sdp.Type)), mlog.Any("session", us.cfg))
+
+	if sdp.Type == webrtc.SDPTypeOffer {
+		select {
+		case us.sdpOfferInCh <- offerMessage{sdp: sdp, answerCh: answerCh}:
+		default:
+			return fmt.Errorf("failed to send sdp offer: channel is full")
+		}
+	} else if sdp.Type == webrtc.SDPTypeAnswer {
+		select {
+		case us.sdpAnswerInCh <- sdp:
+		default:
+			return fmt.Errorf("failed to send sdp answer: channel is full")
+		}
+	} else {
+		return fmt.Errorf("unexpected sdp type: %d", sdp.Type)
+	}
 
 	return nil
 }

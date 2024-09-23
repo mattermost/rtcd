@@ -339,12 +339,29 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 	peerConn.OnDataChannel(func(dc *webrtc.DataChannel) {
 		s.log.Debug("data channel open", mlog.String("sessionID", cfg.SessionID))
 
+		go func() {
+			for {
+				select {
+				case msg := <-us.dcSDPCh:
+					if err := dc.SendText(string(msg.Data)); err != nil {
+						s.log.Error("failed to send message", mlog.Err(err), mlog.String("sessionID", cfg.SessionID))
+					}
+				case <-us.closeCh:
+					return
+				}
+			}
+		}()
+
 		dc.OnMessage(func(msg webrtc.DataChannelMessage) {
 			if string(msg.Data) == "ping" {
 				if err := dc.SendText("pong"); err != nil {
-					s.log.Error("failed to send message", mlog.Err(err))
-					return
+					s.log.Error("failed to send message", mlog.Err(err), mlog.String("sessionID", cfg.SessionID))
 				}
+				return
+			}
+
+			if err := s.handleIncomingSDP(us, us.dcSDPCh, msg.Data); err != nil {
+				s.log.Error("failed to handle incoming SDP", mlog.Err(err), mlog.String("sessionID", cfg.SessionID))
 			}
 		})
 	})
@@ -770,14 +787,19 @@ func (s *Server) handleTracks(call *call, us *session) {
 				return
 			}
 
+			sdpCh := s.receiveCh
+			if us.dcSignaling() {
+				sdpCh = us.dcSDPCh
+			}
+
 			if ctx.action == trackActionAdd {
-				if err := us.addTrack(s.receiveCh, ctx.track); err != nil {
+				if err := us.addTrack(sdpCh, ctx.track); err != nil {
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 					s.log.Error("failed to add track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID), mlog.String("trackID", ctx.track.ID()))
 					continue
 				}
 			} else if ctx.action == trackActionRemove {
-				if err := us.removeTrack(s.receiveCh, ctx.track); err != nil {
+				if err := us.removeTrack(sdpCh, ctx.track); err != nil {
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 					var trackID string
 					if ctx.track != nil {
@@ -790,12 +812,12 @@ func (s *Server) handleTracks(call *call, us *session) {
 				s.log.Error("invalid track action", mlog.Int("action", int(ctx.action)), mlog.String("sessionID", us.cfg.SessionID))
 				continue
 			}
-		case offer, ok := <-us.sdpOfferInCh:
+		case offerMsg, ok := <-us.sdpOfferInCh:
 			if !ok {
 				return
 			}
 
-			if err := us.signaling(offer, s.receiveCh); err != nil {
+			if err := us.signaling(offerMsg.sdp, offerMsg.answerCh); err != nil {
 				s.metrics.IncRTCErrors(us.cfg.GroupID, "signaling")
 				s.log.Error("failed to signal", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 				continue
