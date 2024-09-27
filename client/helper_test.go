@@ -91,13 +91,13 @@ func (th *TestHelper) screenTrackWriter(track *webrtc.TrackLocalStaticRTP, close
 	// Open a IVF file and start reading using our IVFReader
 	file, ivfErr := os.Open(filename)
 	if ivfErr != nil {
-		log.Fatalf(ivfErr.Error())
+		log.Fatal(ivfErr.Error())
 	}
 	defer file.Close()
 
 	ivf, header, ivfErr := ivfreader.NewWith(file)
 	if ivfErr != nil {
-		log.Fatalf(ivfErr.Error())
+		log.Fatal(ivfErr.Error())
 	}
 
 	// Send our video file frame at a time. Pace our sending so we send it at the same speed it should be played back as.
@@ -125,14 +125,14 @@ func (th *TestHelper) screenTrackWriter(track *webrtc.TrackLocalStaticRTP, close
 				_, _ = file.Seek(0, 0)
 				ivf, header, ivfErr = ivfreader.NewWith(file)
 				if ivfErr != nil {
-					log.Fatalf(ivfErr.Error())
+					log.Fatal(ivfErr.Error())
 				}
 				return file
 			})
 			frame, _, ivfErr = ivf.ParseNextFrame()
 		}
 		if ivfErr != nil {
-			log.Fatalf(ivfErr.Error())
+			log.Fatal(ivfErr.Error())
 		}
 
 		packets := packetizer.Packetize(frame, 90000/header.TimebaseDenominator)
