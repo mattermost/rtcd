@@ -1,7 +1,7 @@
 // Copyright (c) 2022-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
-package rtc
+package dc
 
 import (
 	"bytes"
@@ -9,24 +9,23 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/pion/webrtc/v3"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
 // Message structure is flat.
-// The byte in front of the buffer identifies the type of message (DCMessageType).
-// The remaining data (if present) constitutes the payload (e.g. DCMessageSDP).
+// The byte in front of the buffer identifies the type of message (MessageType).
+// The remaining data (if present) constitutes the payload (e.g. MessageSDP).
 
-type DCMessageType uint8
+type MessageType uint8
 
 const (
-	DCMessageTypePing DCMessageType = iota + 1 // no payload
-	DCMessageTypePong                          // no payload
-	DCMessageTypeSDP                           // DCMessageSDP
+	MessageTypePing MessageType = iota + 1 // no payload
+	MessageTypePong                        // no payload
+	MessageTypeSDP                         // MessageSDP
 )
 
 // Supported payloads
-type DCMessageSDP []byte // payload is zlib compressed data of a JSON serialized webrtc.SessionDescription
+type MessageSDP []byte // payload is zlib compressed data of a JSON serialized webrtc.SessionDescription
 
 func unpackData(data []byte) ([]byte, error) {
 	rd, err := zlib.NewReader(bytes.NewBuffer(data))
@@ -53,7 +52,7 @@ func packData(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func encodeDCMessage(mt DCMessageType, payload any) ([]byte, error) {
+func EncodeMessage(mt MessageType, payload any) ([]byte, error) {
 	enc := msgpack.GetEncoder()
 	defer msgpack.PutEncoder(enc)
 	var buf bytes.Buffer
@@ -62,7 +61,7 @@ func encodeDCMessage(mt DCMessageType, payload any) ([]byte, error) {
 	var err error
 	// payload is optional
 	if payload != nil {
-		if mt == DCMessageTypeSDP {
+		if mt == MessageTypeSDP {
 			payload, err = packData(payload.([]byte))
 			if err != nil {
 				return nil, fmt.Errorf("failed to pack payload: %w", err)
@@ -77,7 +76,7 @@ func encodeDCMessage(mt DCMessageType, payload any) ([]byte, error) {
 	return buf.Bytes(), err
 }
 
-func decodeDCMessage(msg []byte) (DCMessageType, any, error) {
+func DecodeMessage(msg []byte) (MessageType, any, error) {
 	dec := msgpack.GetDecoder()
 	defer msgpack.PutDecoder(dec)
 	dec.ResetReader(bytes.NewReader(msg))
@@ -89,13 +88,13 @@ func decodeDCMessage(msg []byte) (DCMessageType, any, error) {
 	}
 
 	// Decode payload (if needed)
-	switch DCMessageType(t) {
-	case DCMessageTypePong:
-		return DCMessageTypePong, nil, nil
-	case DCMessageTypePing:
-		return DCMessageTypePing, nil, nil
-	case DCMessageTypeSDP:
-		var payload DCMessageSDP
+	switch MessageType(t) {
+	case MessageTypePong:
+		return MessageTypePong, nil, nil
+	case MessageTypePing:
+		return MessageTypePing, nil, nil
+	case MessageTypeSDP:
+		var payload MessageSDP
 		err := dec.Decode(&payload)
 		if err != nil {
 			return 0, nil, fmt.Errorf("failed to decode sdp message: %w", err)
@@ -104,36 +103,8 @@ func decodeDCMessage(msg []byte) (DCMessageType, any, error) {
 		if err != nil {
 			return 0, nil, fmt.Errorf("failed to unpack sdp data: %w", err)
 		}
-		return DCMessageTypeSDP, unpacked, nil
+		return MessageTypeSDP, unpacked, nil
 	}
 
 	return 0, nil, fmt.Errorf("unexpected dc message type: %d", t)
-}
-
-func (s *Server) handleDCMessage(data []byte, us *session, dc *webrtc.DataChannel) error {
-	mt, payload, err := decodeDCMessage(data)
-	if err != nil {
-		return fmt.Errorf("failed to decode DC message: %w", err)
-	}
-
-	// Identify and handle message
-	switch mt {
-	case DCMessageTypePong:
-		// nothing to do as pong is only received by clients at this point
-	case DCMessageTypePing:
-		data, err := encodeDCMessage(DCMessageTypePong, nil)
-		if err != nil {
-			return fmt.Errorf("failed to encode pong message: %w", err)
-		}
-
-		if err := dc.Send(data); err != nil {
-			return fmt.Errorf("failed to send pong message: %w", err)
-		}
-	case DCMessageTypeSDP:
-		if err := s.handleIncomingSDP(us, us.dcSDPCh, payload.([]byte)); err != nil {
-			return fmt.Errorf("failed to handle incoming sdp message: %w", err)
-		}
-	}
-
-	return nil
 }

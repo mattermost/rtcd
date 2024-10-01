@@ -13,6 +13,8 @@ import (
 	"log/slog"
 	"sync/atomic"
 
+	"github.com/mattermost/rtcd/service/rtc/dc"
+
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
@@ -144,9 +146,15 @@ func (c *Client) handleOffer(sdp string) error {
 		c.log.Debug("sending answer through dc")
 		data, err := json.Marshal(answer)
 		if err != nil {
-			return fmt.Errorf("failed to encode answer: %w", err)
+			return fmt.Errorf("failed to marshal answer: %w", err)
 		}
-		return c.dc.SendText(string(data))
+
+		msg, err := dc.EncodeMessage(dc.MessageTypeSDP, data)
+		if err != nil {
+			return fmt.Errorf("failed to encode dc message: %w", err)
+		}
+
+		return c.dc.Send(msg)
 	}
 
 	if c.cfg.EnableDCSignaling {
@@ -198,11 +206,11 @@ func (c *Client) initRTCSession() error {
 	c.pc = pc
 	c.mut.Unlock()
 
-	dc, err := pc.CreateDataChannel("calls-dc", nil)
+	dataCh, err := pc.CreateDataChannel("calls-dc", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create data channel: %w", err)
 	}
-	c.dc = dc
+	c.dc = dataCh
 
 	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if candidate == nil {
@@ -328,10 +336,17 @@ func (c *Client) initRTCSession() error {
 			c.log.Debug("sending offer through dc")
 			data, err := json.Marshal(offer)
 			if err != nil {
-				c.log.Error("failed to encode offer", slog.String("err", err.Error()))
+				c.log.Error("failed to marshal offer", slog.String("err", err.Error()))
 				return
 			}
-			if err := c.dc.SendText(string(data)); err != nil {
+
+			msg, err := dc.EncodeMessage(dc.MessageTypeSDP, data)
+			if err != nil {
+				c.log.Error("failed to encode dc message", slog.String("err", err.Error()))
+				return
+			}
+
+			if err := c.dc.Send(msg); err != nil {
 				c.log.Error("failed to send on dc", slog.String("err", err.Error()))
 			}
 		} else {
@@ -357,23 +372,33 @@ func (c *Client) initRTCSession() error {
 		}
 	})
 
-	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
-		var sdp webrtc.SessionDescription
-		if err := json.Unmarshal(msg.Data, &sdp); err != nil {
-			c.log.Error("failed to unmarshal sdp", slog.String("err", err.Error()))
+	dataCh.OnMessage(func(msg webrtc.DataChannelMessage) {
+		mt, payload, err := dc.DecodeMessage(msg.Data)
+		if err != nil {
+			c.log.Error("failed to decode dc message", slog.String("err", err.Error()))
 			return
 		}
 
-		c.log.Debug("received sdp through DC", slog.String("sdp", sdp.SDP))
-
-		if sdp.Type == webrtc.SDPTypeOffer {
-			if err := c.handleOffer(sdp.SDP); err != nil {
-				c.log.Error("failed to offer", slog.String("err", err.Error()))
+		switch mt {
+		case dc.MessageTypePong:
+		case dc.MessageTypeSDP:
+			var sdp webrtc.SessionDescription
+			if err := json.Unmarshal(payload.([]byte), &sdp); err != nil {
+				c.log.Error("failed to unmarshal sdp", slog.String("err", err.Error()))
+				return
 			}
-		} else if sdp.Type == webrtc.SDPTypeAnswer {
-			if err := c.handleAnswer(sdp.SDP); err != nil {
-				c.log.Error("failed to answer", slog.String("err", err.Error()))
+			c.log.Debug("received sdp through DC", slog.String("sdp", sdp.SDP))
+			if sdp.Type == webrtc.SDPTypeOffer {
+				if err := c.handleOffer(sdp.SDP); err != nil {
+					c.log.Error("failed to offer", slog.String("err", err.Error()))
+				}
+			} else if sdp.Type == webrtc.SDPTypeAnswer {
+				if err := c.handleAnswer(sdp.SDP); err != nil {
+					c.log.Error("failed to answer", slog.String("err", err.Error()))
+				}
 			}
+		default:
+			c.log.Error("unexpected dc message type", slog.Any("mt", mt))
 		}
 	})
 

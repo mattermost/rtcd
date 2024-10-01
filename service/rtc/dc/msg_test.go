@@ -1,7 +1,7 @@
 // Copyright (c) 2022-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
-package rtc
+package dc
 
 import (
 	"encoding/json"
@@ -12,24 +12,24 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-func TestEncodeDCMessage(t *testing.T) {
+func TestEncodeMessage(t *testing.T) {
 	t.Run("ping", func(t *testing.T) {
-		dcMsg, err := encodeDCMessage(DCMessageTypePing, nil)
+		dcMsg, err := EncodeMessage(MessageTypePing, nil)
 		require.NoError(t, err)
 
-		mt, payload, err := decodeDCMessage(dcMsg)
+		mt, payload, err := DecodeMessage(dcMsg)
 		require.NoError(t, err)
-		require.Equal(t, DCMessageTypePing, mt)
+		require.Equal(t, MessageTypePing, mt)
 		require.Nil(t, payload)
 	})
 
 	t.Run("pong", func(t *testing.T) {
-		dcMsg, err := encodeDCMessage(DCMessageTypePong, nil)
+		dcMsg, err := EncodeMessage(MessageTypePong, nil)
 		require.NoError(t, err)
 
-		mt, payload, err := decodeDCMessage(dcMsg)
+		mt, payload, err := DecodeMessage(dcMsg)
 		require.NoError(t, err)
-		require.Equal(t, DCMessageTypePong, mt)
+		require.Equal(t, MessageTypePong, mt)
 		require.Nil(t, payload)
 	})
 
@@ -41,12 +41,12 @@ func TestEncodeDCMessage(t *testing.T) {
 		sdpData, err := json.Marshal(sdp)
 		require.NoError(t, err)
 
-		dcMsg, err := encodeDCMessage(DCMessageTypeSDP, sdpData)
+		dcMsg, err := EncodeMessage(MessageTypeSDP, sdpData)
 		require.NoError(t, err)
 
-		mt, payload, err := decodeDCMessage(dcMsg)
+		mt, payload, err := DecodeMessage(dcMsg)
 		require.NoError(t, err)
-		require.Equal(t, DCMessageTypeSDP, mt)
+		require.Equal(t, MessageTypeSDP, mt)
 
 		var decodedSDP webrtc.SessionDescription
 		err = json.Unmarshal(payload.([]byte), &decodedSDP)
