@@ -142,7 +142,7 @@ func (c *Client) handleOffer(sdp string) error {
 		return fmt.Errorf("failed to set local description: %w", err)
 	}
 
-	if c.cfg.EnableDCSignaling && c.dc.ReadyState() == webrtc.DataChannelStateOpen {
+	if dataCh := c.dc.Load(); c.cfg.EnableDCSignaling && dataCh != nil && dataCh.ReadyState() == webrtc.DataChannelStateOpen {
 		c.log.Debug("sending answer through dc")
 		data, err := json.Marshal(answer)
 		if err != nil {
@@ -154,7 +154,7 @@ func (c *Client) handleOffer(sdp string) error {
 			return fmt.Errorf("failed to encode dc message: %w", err)
 		}
 
-		return c.dc.Send(msg)
+		return dataCh.Send(msg)
 	}
 
 	if c.cfg.EnableDCSignaling {
@@ -205,12 +205,6 @@ func (c *Client) initRTCSession() error {
 	c.mut.Lock()
 	c.pc = pc
 	c.mut.Unlock()
-
-	dataCh, err := pc.CreateDataChannel("calls-dc", nil)
-	if err != nil {
-		return fmt.Errorf("failed to create data channel: %w", err)
-	}
-	c.dc = dataCh
 
 	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if candidate == nil {
@@ -332,7 +326,7 @@ func (c *Client) initRTCSession() error {
 			return
 		}
 
-		if c.cfg.EnableDCSignaling && c.dc.ReadyState() == webrtc.DataChannelStateOpen {
+		if dataCh := c.dc.Load(); c.cfg.EnableDCSignaling && dataCh != nil && dataCh.ReadyState() == webrtc.DataChannelStateOpen {
 			c.log.Debug("sending offer through dc")
 			data, err := json.Marshal(offer)
 			if err != nil {
@@ -346,7 +340,7 @@ func (c *Client) initRTCSession() error {
 				return
 			}
 
-			if err := c.dc.Send(msg); err != nil {
+			if err := dataCh.Send(msg); err != nil {
 				c.log.Error("failed to send on dc", slog.String("err", err.Error()))
 			}
 		} else {
@@ -371,6 +365,14 @@ func (c *Client) initRTCSession() error {
 			}
 		}
 	})
+
+	// DC creation must happen after OnNegotiationNeeded has been registered
+	// to avoid races between dc initialization and initial offer.
+	dataCh, err := pc.CreateDataChannel("calls-dc", nil)
+	if err != nil {
+		return fmt.Errorf("failed to create data channel: %w", err)
+	}
+	c.dc.Store(dataCh)
 
 	dataCh.OnMessage(func(msg webrtc.DataChannelMessage) {
 		mt, payload, err := dc.DecodeMessage(msg.Data)

@@ -99,7 +99,7 @@ type Client struct {
 
 	// WebRTC
 	pc                 *webrtc.PeerConnection
-	dc                 *webrtc.DataChannel
+	dc                 atomic.Pointer[webrtc.DataChannel]
 	iceCh              chan webrtc.ICECandidateInit
 	receivers          map[string][]*webrtc.RTPReceiver
 	voiceSender        *webrtc.RTPSender
