@@ -11,4 +11,9 @@ type Metrics interface {
 	IncRTPTracks(groupID string, direction, trackType string)
 	DecRTPTracks(groupID string, direction, trackType string)
 	ObserveRTPTracksWrite(groupID, trackType string, dur float64)
+
+	// Client metrics
+	ObserveRTCClientLossRate(groupID string, val float64)
+	ObserveRTCClientRTT(groupID string, val float64)
+	ObserveRTCClientJitter(groupID string, val float64)
 }

@@ -12,8 +12,12 @@ import (
 	"io"
 	"log/slog"
 	"sync/atomic"
+	"time"
+
+	"github.com/mattermost/rtcd/service/rtc/dc"
 
 	"github.com/pion/interceptor"
+	"github.com/pion/interceptor/pkg/stats"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 )
@@ -23,8 +27,10 @@ const (
 	signalMsgOffer     = "offer"
 	signalMsgAnswer    = "answer"
 
-	iceChSize  = 20
-	receiveMTU = 1460
+	iceChSize          = 20
+	receiveMTU         = 1460
+	rtcMonitorInterval = 4 * time.Second
+	pingInterval       = time.Second
 )
 
 var (
@@ -86,60 +92,90 @@ func (c *Client) handleWSEventSignal(evData map[string]any) error {
 			return fmt.Errorf("invalid SDP data received")
 		}
 
-		c.log.Debug("received sdp offer", slog.Any("sdp", sdp))
-
-		if err := c.pc.SetRemoteDescription(webrtc.SessionDescription{
-			Type: webrtc.SDPTypeOffer,
-			SDP:  sdp,
-		}); err != nil {
-			return fmt.Errorf("failed to set remote description: %w", err)
-		}
-
-		answer, err := c.pc.CreateAnswer(nil)
-		if err != nil {
-			return fmt.Errorf("failed to create answer: %w", err)
-		}
-
-		if err := c.pc.SetLocalDescription(answer); err != nil {
-			return fmt.Errorf("failed to set local description: %w", err)
-		}
-
-		var sdpData bytes.Buffer
-		w := zlib.NewWriter(&sdpData)
-		if err := json.NewEncoder(w).Encode(answer); err != nil {
-			w.Close()
-			return fmt.Errorf("failed to encode answer: %w", err)
-		}
-		w.Close()
-		return c.SendWS(wsEventSDP, map[string]any{
-			"data": sdpData.Bytes(),
-		}, true)
+		return c.handleOffer(sdp)
 	case signalMsgAnswer:
 		sdp, ok := msg["sdp"].(string)
 		if !ok {
 			return fmt.Errorf("invalid SDP data received")
 		}
 
-		c.log.Debug("received sdp answer", slog.Any("sdp", sdp))
-
-		if err := c.pc.SetRemoteDescription(webrtc.SessionDescription{
-			Type: webrtc.SDPTypeAnswer,
-			SDP:  sdp,
-		}); err != nil {
-			return fmt.Errorf("failed to set remote description: %w", err)
-		}
-
-		for i := 0; i < len(c.iceCh); i++ {
-			c.log.Debug("adding queued remote candidate")
-			if err := c.pc.AddICECandidate(<-c.iceCh); err != nil {
-				return fmt.Errorf("failed to add remote candidate: %w", err)
-			}
-		}
+		return c.handleAnswer(sdp)
 	default:
 		return fmt.Errorf("invalid signaling msg type %s", msgType)
 	}
 
 	return nil
+}
+
+func (c *Client) handleAnswer(sdp string) error {
+	c.log.Debug("received sdp answer", slog.Any("sdp", sdp))
+
+	if err := c.pc.SetRemoteDescription(webrtc.SessionDescription{
+		Type: webrtc.SDPTypeAnswer,
+		SDP:  sdp,
+	}); err != nil {
+		return fmt.Errorf("failed to set remote description: %w", err)
+	}
+
+	for i := 0; i < len(c.iceCh); i++ {
+		c.log.Debug("adding queued remote candidate")
+		if err := c.pc.AddICECandidate(<-c.iceCh); err != nil {
+			return fmt.Errorf("failed to add remote candidate: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (c *Client) handleOffer(sdp string) error {
+	c.log.Debug("received sdp offer", slog.Any("sdp", sdp))
+
+	if err := c.pc.SetRemoteDescription(webrtc.SessionDescription{
+		Type: webrtc.SDPTypeOffer,
+		SDP:  sdp,
+	}); err != nil {
+		return fmt.Errorf("failed to set remote description: %w", err)
+	}
+
+	answer, err := c.pc.CreateAnswer(nil)
+	if err != nil {
+		return fmt.Errorf("failed to create answer: %w", err)
+	}
+
+	if err := c.pc.SetLocalDescription(answer); err != nil {
+		return fmt.Errorf("failed to set local description: %w", err)
+	}
+
+	if dataCh := c.dc.Load(); c.cfg.EnableDCSignaling && dataCh != nil && dataCh.ReadyState() == webrtc.DataChannelStateOpen {
+		c.log.Debug("sending answer through dc")
+		data, err := json.Marshal(answer)
+		if err != nil {
+			return fmt.Errorf("failed to marshal answer: %w", err)
+		}
+
+		msg, err := dc.EncodeMessage(dc.MessageTypeSDP, data)
+		if err != nil {
+			return fmt.Errorf("failed to encode dc message: %w", err)
+		}
+
+		return dataCh.Send(msg)
+	}
+
+	if c.cfg.EnableDCSignaling {
+		c.log.Debug("dc not connected, sending answer through ws")
+	}
+
+	var sdpData bytes.Buffer
+	w := zlib.NewWriter(&sdpData)
+	if err := json.NewEncoder(w).Encode(answer); err != nil {
+		w.Close()
+		return fmt.Errorf("failed to encode answer: %w", err)
+	}
+	w.Close()
+
+	return c.SendWS(wsEventSDP, map[string]any{
+		"data": sdpData.Bytes(),
+	}, true)
 }
 
 func (c *Client) initRTCSession() error {
@@ -154,6 +190,17 @@ func (c *Client) initRTCSession() error {
 	}
 
 	i := interceptor.Registry{}
+
+	statsInterceptorFactory, err := stats.NewInterceptor()
+	if err != nil {
+		return fmt.Errorf("failed to create stats interceptor: %w", err)
+	}
+	var statsGetter stats.Getter
+	statsInterceptorFactory.OnNewPeerConnection(func(_ string, g stats.Getter) {
+		statsGetter = g
+	})
+	i.Add(statsInterceptorFactory)
+
 	if err := webrtc.RegisterDefaultInterceptors(&m, &i); err != nil {
 		return fmt.Errorf("failed to register default interceptors: %w", err)
 	}
@@ -173,6 +220,14 @@ func (c *Client) initRTCSession() error {
 	c.mut.Lock()
 	c.pc = pc
 	c.mut.Unlock()
+
+	rtcMon := newRTCMonitor(c.log, pc, statsGetter, rtcMonitorInterval)
+	if c.cfg.EnableRTCMonitor {
+		c.mut.Lock()
+		c.rtcMon = rtcMon
+		c.mut.Unlock()
+		rtcMon.Start()
+	}
 
 	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if candidate == nil {
@@ -294,28 +349,149 @@ func (c *Client) initRTCSession() error {
 			return
 		}
 
-		var sdpData bytes.Buffer
-		w := zlib.NewWriter(&sdpData)
-		if err := json.NewEncoder(w).Encode(offer); err != nil {
+		if dataCh := c.dc.Load(); c.cfg.EnableDCSignaling && dataCh != nil && dataCh.ReadyState() == webrtc.DataChannelStateOpen {
+			c.log.Debug("sending offer through dc")
+			data, err := json.Marshal(offer)
+			if err != nil {
+				c.log.Error("failed to marshal offer", slog.String("err", err.Error()))
+				return
+			}
+
+			msg, err := dc.EncodeMessage(dc.MessageTypeSDP, data)
+			if err != nil {
+				c.log.Error("failed to encode dc message", slog.String("err", err.Error()))
+				return
+			}
+
+			if err := dataCh.Send(msg); err != nil {
+				c.log.Error("failed to send on dc", slog.String("err", err.Error()))
+			}
+		} else {
+			if c.cfg.EnableDCSignaling {
+				c.log.Debug("dc not connected, sending offer through ws")
+			}
+
+			var sdpData bytes.Buffer
+			w := zlib.NewWriter(&sdpData)
+			if err := json.NewEncoder(w).Encode(offer); err != nil {
+				w.Close()
+				c.log.Error("failed to encode offer", slog.String("err", err.Error()))
+				return
+			}
 			w.Close()
-			c.log.Error("failed to encode offer", slog.String("err", err.Error()))
-			return
-		}
-		w.Close()
-		err = c.SendWS(wsEventSDP, map[string]any{
-			"data": sdpData.Bytes(),
-		}, true)
-		if err != nil {
-			c.log.Error("failed to send ws msg", slog.String("err", err.Error()))
-			return
+			err = c.SendWS(wsEventSDP, map[string]any{
+				"data": sdpData.Bytes(),
+			}, true)
+			if err != nil {
+				c.log.Error("failed to send ws msg", slog.String("err", err.Error()))
+				return
+			}
 		}
 	})
 
-	dc, err := pc.CreateDataChannel("calls-dc", nil)
+	// DC creation must happen after OnNegotiationNeeded has been registered
+	// to avoid races between dc initialization and initial offer.
+	dataCh, err := pc.CreateDataChannel("calls-dc", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create data channel: %w", err)
 	}
-	c.dc = dc
+	c.dc.Store(dataCh)
+
+	lastPingTS := new(int64)
+	lastRTT := new(int64)
+	go func() {
+		pingTicker := time.NewTicker(pingInterval)
+		for {
+			select {
+			case <-pingTicker.C:
+				msg, err := dc.EncodeMessage(dc.MessageTypePing, nil)
+				if err != nil {
+					c.log.Error("failed to encode ping msg", slog.String("err", err.Error()))
+					continue
+				}
+
+				if err := dataCh.Send(msg); err != nil {
+					c.log.Error("failed to send ping msg", slog.String("err", err.Error()))
+					continue
+				}
+
+				atomic.StoreInt64(lastPingTS, time.Now().UnixMilli())
+			case stats := <-rtcMon.StatsCh():
+				c.log.Debug("rtc stats",
+					slog.Float64("lossRate", stats.lossRate),
+					slog.Int64("rtt", atomic.LoadInt64(lastRTT)),
+					slog.Float64("jitter", stats.jitter))
+
+				if stats.lossRate >= 0 {
+					msg, err := dc.EncodeMessage(dc.MessageTypeLossRate, stats.lossRate)
+					if err != nil {
+						c.log.Error("failed to encode loss rate msg", slog.String("err", err.Error()))
+					} else {
+						if err := dataCh.Send(msg); err != nil {
+							c.log.Error("failed to send loss rate msg", slog.String("err", err.Error()))
+						}
+					}
+				}
+
+				if rtt := atomic.LoadInt64(lastRTT); rtt > 0 {
+					msg, err := dc.EncodeMessage(dc.MessageTypeRoundTripTime, float64(rtt/1000))
+					if err != nil {
+						c.log.Error("failed to encode rtt msg", slog.String("err", err.Error()))
+					} else {
+						if err := dataCh.Send(msg); err != nil {
+							c.log.Error("failed to send rtt msg", slog.String("err", err.Error()))
+						}
+					}
+				}
+
+				if stats.jitter > 0 {
+					msg, err := dc.EncodeMessage(dc.MessageTypeJitter, stats.jitter)
+					if err != nil {
+						c.log.Error("failed to encode jitter msg", slog.String("err", err.Error()))
+					} else {
+						if err := dataCh.Send(msg); err != nil {
+							c.log.Error("failed to send jitter msg", slog.String("err", err.Error()))
+						}
+					}
+				}
+			case <-c.wsCloseCh:
+				return
+			}
+		}
+	}()
+
+	dataCh.OnMessage(func(msg webrtc.DataChannelMessage) {
+		mt, payload, err := dc.DecodeMessage(msg.Data)
+		if err != nil {
+			c.log.Error("failed to decode dc message", slog.String("err", err.Error()))
+			return
+		}
+
+		switch mt {
+		case dc.MessageTypePong:
+			if ts := atomic.LoadInt64(lastPingTS); ts > 0 {
+				atomic.StoreInt64(lastRTT, time.Now().UnixMilli()-ts)
+			}
+		case dc.MessageTypeSDP:
+			var sdp webrtc.SessionDescription
+			if err := json.Unmarshal(payload.([]byte), &sdp); err != nil {
+				c.log.Error("failed to unmarshal sdp", slog.String("err", err.Error()))
+				return
+			}
+			c.log.Debug("received sdp through DC", slog.String("sdp", sdp.SDP))
+			if sdp.Type == webrtc.SDPTypeOffer {
+				if err := c.handleOffer(sdp.SDP); err != nil {
+					c.log.Error("failed to offer", slog.String("err", err.Error()))
+				}
+			} else if sdp.Type == webrtc.SDPTypeAnswer {
+				if err := c.handleAnswer(sdp.SDP); err != nil {
+					c.log.Error("failed to answer", slog.String("err", err.Error()))
+				}
+			}
+		default:
+			c.log.Error("unexpected dc message type", slog.Any("mt", mt))
+		}
+	})
 
 	return nil
 }

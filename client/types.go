@@ -6,9 +6,10 @@ package client
 const pluginID = "com.mattermost.calls"
 
 type CallJoinMessage struct {
-	ChannelID  string `json:"channelID"`
-	JobID      string `json:"jobID"`
-	AV1Support bool   `json:"av1Support"`
+	ChannelID   string `json:"channelID"`
+	JobID       string `json:"jobID"`
+	AV1Support  bool   `json:"av1Support"`
+	DCSignaling bool   `json:"dcSignaling"`
 }
 
 type CallReconnectMessage struct {

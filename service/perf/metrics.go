@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	metricsSubSystemRTC = "rtc"
-	metricsSubSystemWS  = "ws"
+	metricsSubSystemRTC       = "rtc"
+	metricsSubSystemRTCClient = "rtc_client"
+	metricsSubSystemWS        = "ws"
 )
 
 type Metrics struct {
@@ -24,6 +25,10 @@ type Metrics struct {
 	RTCSessions          *prometheus.GaugeVec
 	RTCConnStateCounters *prometheus.CounterVec
 	RTCErrors            *prometheus.CounterVec
+
+	RTCClientLoss   *prometheus.HistogramVec
+	RTCClientRTT    *prometheus.HistogramVec
+	RTCClientJitter *prometheus.HistogramVec
 
 	WSConnections     *prometheus.GaugeVec
 	WSMessageCounters *prometheus.CounterVec
@@ -119,6 +124,41 @@ func NewMetrics(namespace string, registry *prometheus.Registry) *Metrics {
 	)
 	m.registry.MustRegister(m.WSMessageCounters)
 
+	// Client metrics
+
+	m.RTCClientLoss = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: metricsSubSystemRTCClient,
+			Name:      "loss_rate",
+			Help:      "Client loss rate",
+		},
+		[]string{"groupID"},
+	)
+	m.registry.MustRegister(m.RTCClientLoss)
+
+	m.RTCClientRTT = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: metricsSubSystemRTCClient,
+			Name:      "rtt",
+			Help:      "Client round trip time",
+		},
+		[]string{"groupID"},
+	)
+	m.registry.MustRegister(m.RTCClientRTT)
+
+	m.RTCClientJitter = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: metricsSubSystemRTCClient,
+			Name:      "jitter",
+			Help:      "Client latency jitter",
+		},
+		[]string{"groupID"},
+	)
+	m.registry.MustRegister(m.RTCClientJitter)
+
 	return &m
 }
 
@@ -164,4 +204,16 @@ func (m *Metrics) Handler() http.Handler {
 
 func (m *Metrics) ObserveRTPTracksWrite(groupID, trackType string, dur float64) {
 	m.RTPTrackWrites.With(prometheus.Labels{"groupID": groupID, "type": trackType}).Observe(dur)
+}
+
+func (m *Metrics) ObserveRTCClientLossRate(groupID string, val float64) {
+	m.RTCClientLoss.With(prometheus.Labels{"groupID": groupID}).Observe(val)
+}
+
+func (m *Metrics) ObserveRTCClientRTT(groupID string, val float64) {
+	m.RTCClientRTT.With(prometheus.Labels{"groupID": groupID}).Observe(val)
+}
+
+func (m *Metrics) ObserveRTCClientJitter(groupID string, val float64) {
+	m.RTCClientJitter.With(prometheus.Labels{"groupID": groupID}).Observe(val)
 }
