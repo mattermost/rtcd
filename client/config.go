@@ -28,6 +28,8 @@ type Config struct {
 	// EnableDCSignaling controls whether the client should use data channels
 	// for signaling of media tracks.
 	EnableDCSignaling bool
+	// EnableRTCMonitor controls whether the RTC monitor component should be enabled.
+	EnableRTCMonitor bool
 
 	wsURL string
 }

@@ -357,17 +357,19 @@ func setupTestHelper(tb testing.TB, channelName string) *TestHelper {
 	}
 
 	th.adminClient, err = New(Config{
-		SiteURL:   th.apiURL,
-		AuthToken: th.adminAPIClient.AuthToken,
-		ChannelID: channelID,
+		SiteURL:          th.apiURL,
+		AuthToken:        th.adminAPIClient.AuthToken,
+		ChannelID:        channelID,
+		EnableRTCMonitor: true,
 	}, WithLogger(logger))
 	require.NoError(tb, err)
 	require.NotNil(tb, th.adminClient)
 
 	th.userClient, err = New(Config{
-		SiteURL:   th.apiURL,
-		AuthToken: th.userAPIClient.AuthToken,
-		ChannelID: channelID,
+		SiteURL:          th.apiURL,
+		AuthToken:        th.userAPIClient.AuthToken,
+		ChannelID:        channelID,
+		EnableRTCMonitor: true,
 	}, WithLogger(logger))
 	require.NoError(tb, err)
 	require.NotNil(tb, th.userClient)

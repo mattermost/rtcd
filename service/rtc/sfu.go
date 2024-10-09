@@ -14,6 +14,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/mattermost/rtcd/service/random"
+	"github.com/mattermost/rtcd/service/rtc/dc"
 
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
 
@@ -336,15 +337,22 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		}
 	})
 
-	peerConn.OnDataChannel(func(dc *webrtc.DataChannel) {
+	peerConn.OnDataChannel(func(dataCh *webrtc.DataChannel) {
 		s.log.Debug("data channel open", mlog.String("sessionID", cfg.SessionID))
 
 		go func() {
 			for {
 				select {
 				case msg := <-us.dcSDPCh:
-					if err := dc.SendText(string(msg.Data)); err != nil {
+					dcMsg, err := dc.EncodeMessage(dc.MessageTypeSDP, msg.Data)
+					if err != nil {
+						s.log.Error("failed to encode sdp message", mlog.Err(err), mlog.String("sessionID", cfg.SessionID))
+						continue
+					}
+
+					if err := dataCh.Send(dcMsg); err != nil {
 						s.log.Error("failed to send message", mlog.Err(err), mlog.String("sessionID", cfg.SessionID))
+						continue
 					}
 				case <-us.closeCh:
 					return
@@ -352,16 +360,18 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			}
 		}()
 
-		dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+		dataCh.OnMessage(func(msg webrtc.DataChannelMessage) {
+			// DEPRECATED
+			// keeping this for compatibility with older clients (i.e. mobile)
 			if string(msg.Data) == "ping" {
-				if err := dc.SendText("pong"); err != nil {
+				if err := dataCh.SendText("pong"); err != nil {
 					s.log.Error("failed to send message", mlog.Err(err), mlog.String("sessionID", cfg.SessionID))
 				}
 				return
 			}
 
-			if err := s.handleIncomingSDP(us, us.dcSDPCh, msg.Data); err != nil {
-				s.log.Error("failed to handle incoming SDP", mlog.Err(err), mlog.String("sessionID", cfg.SessionID))
+			if err := s.handleDCMessage(msg.Data, us, dataCh); err != nil {
+				s.log.Error("failed to handle dc message", mlog.Err(err), mlog.String("sessionID", cfg.SessionID))
 			}
 		})
 	})
