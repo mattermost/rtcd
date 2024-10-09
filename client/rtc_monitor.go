@@ -105,7 +105,7 @@ func (m *rtcMonitor) getAvgSenderStats(stats map[webrtc.SSRC]*stats.Stats) (avgL
 	}
 
 	if statsCount > 0 {
-		avgJitter = (totalJitter / statsCount)
+		avgJitter = totalJitter / statsCount
 		avgLossRate = totalLossRate / statsCount
 	}
 
@@ -136,7 +136,7 @@ func (m *rtcMonitor) getAvgReceiverStats(stats map[webrtc.SSRC]*stats.Stats) (av
 	}
 
 	if statsCount > 0 {
-		avgJitter = (totalJitter / statsCount)
+		avgJitter = totalJitter / statsCount
 		avgLossRate = totalLost / totalReceived
 	}
 
