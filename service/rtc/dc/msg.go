@@ -19,9 +19,12 @@ import (
 type MessageType uint8
 
 const (
-	MessageTypePing MessageType = iota + 1 // no payload
-	MessageTypePong                        // no payload
-	MessageTypeSDP                         // MessageSDP
+	MessageTypePing          MessageType = iota + 1 // no payload
+	MessageTypePong                                 // no payload
+	MessageTypeSDP                                  // MessageSDP
+	MessageTypeLossRate                             // float64
+	MessageTypeRoundTripTime                        // float64
+	MessageTypeJitter                               // float64
 )
 
 // Supported payloads
@@ -104,6 +107,17 @@ func DecodeMessage(msg []byte) (MessageType, any, error) {
 			return 0, nil, fmt.Errorf("failed to unpack sdp data: %w", err)
 		}
 		return MessageTypeSDP, unpacked, nil
+	case MessageTypeLossRate:
+		fallthrough
+	case MessageTypeRoundTripTime:
+		fallthrough
+	case MessageTypeJitter:
+		var payload float64
+		err := dec.Decode(&payload)
+		if err != nil {
+			return 0, nil, fmt.Errorf("failed to decode message type %d: %w", t, err)
+		}
+		return MessageType(t), payload, nil
 	}
 
 	return 0, nil, fmt.Errorf("unexpected dc message type: %d", t)

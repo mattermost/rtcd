@@ -12,10 +12,12 @@ import (
 	"io"
 	"log/slog"
 	"sync/atomic"
+	"time"
 
 	"github.com/mattermost/rtcd/service/rtc/dc"
 
 	"github.com/pion/interceptor"
+	"github.com/pion/interceptor/pkg/stats"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 )
@@ -25,8 +27,10 @@ const (
 	signalMsgOffer     = "offer"
 	signalMsgAnswer    = "answer"
 
-	iceChSize  = 20
-	receiveMTU = 1460
+	iceChSize          = 20
+	receiveMTU         = 1460
+	rtcMonitorInterval = 4 * time.Second
+	pingInterval       = time.Second
 )
 
 var (
@@ -186,6 +190,17 @@ func (c *Client) initRTCSession() error {
 	}
 
 	i := interceptor.Registry{}
+
+	statsInterceptorFactory, err := stats.NewInterceptor()
+	if err != nil {
+		return fmt.Errorf("failed to create stats interceptor: %w", err)
+	}
+	var statsGetter stats.Getter
+	statsInterceptorFactory.OnNewPeerConnection(func(_ string, g stats.Getter) {
+		statsGetter = g
+	})
+	i.Add(statsInterceptorFactory)
+
 	if err := webrtc.RegisterDefaultInterceptors(&m, &i); err != nil {
 		return fmt.Errorf("failed to register default interceptors: %w", err)
 	}
@@ -205,6 +220,14 @@ func (c *Client) initRTCSession() error {
 	c.mut.Lock()
 	c.pc = pc
 	c.mut.Unlock()
+
+	rtcMon := newRTCMonitor(c.log, pc, statsGetter, rtcMonitorInterval)
+	if c.cfg.EnableRTCMonitor {
+		c.mut.Lock()
+		c.rtcMon = rtcMon
+		c.mut.Unlock()
+		rtcMon.Start()
+	}
 
 	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if candidate == nil {
@@ -374,6 +397,69 @@ func (c *Client) initRTCSession() error {
 	}
 	c.dc.Store(dataCh)
 
+	lastPingTS := new(int64)
+	lastRTT := new(int64)
+	go func() {
+		pingTicker := time.NewTicker(pingInterval)
+		for {
+			select {
+			case <-pingTicker.C:
+				msg, err := dc.EncodeMessage(dc.MessageTypePing, nil)
+				if err != nil {
+					c.log.Error("failed to encode ping msg", slog.String("err", err.Error()))
+					continue
+				}
+
+				if err := dataCh.Send(msg); err != nil {
+					c.log.Error("failed to send ping msg", slog.String("err", err.Error()))
+					continue
+				}
+
+				atomic.StoreInt64(lastPingTS, time.Now().UnixMilli())
+			case stats := <-rtcMon.StatsCh():
+				c.log.Debug("rtc stats",
+					slog.Float64("lossRate", stats.lossRate),
+					slog.Int64("rtt", atomic.LoadInt64(lastRTT)),
+					slog.Float64("jitter", stats.jitter))
+
+				if stats.lossRate >= 0 {
+					msg, err := dc.EncodeMessage(dc.MessageTypeLossRate, stats.lossRate)
+					if err != nil {
+						c.log.Error("failed to encode loss rate msg", slog.String("err", err.Error()))
+					} else {
+						if err := dataCh.Send(msg); err != nil {
+							c.log.Error("failed to send loss rate msg", slog.String("err", err.Error()))
+						}
+					}
+				}
+
+				if rtt := atomic.LoadInt64(lastRTT); rtt > 0 {
+					msg, err := dc.EncodeMessage(dc.MessageTypeRoundTripTime, float64(rtt/1000))
+					if err != nil {
+						c.log.Error("failed to encode rtt msg", slog.String("err", err.Error()))
+					} else {
+						if err := dataCh.Send(msg); err != nil {
+							c.log.Error("failed to send rtt msg", slog.String("err", err.Error()))
+						}
+					}
+				}
+
+				if stats.jitter > 0 {
+					msg, err := dc.EncodeMessage(dc.MessageTypeJitter, stats.jitter)
+					if err != nil {
+						c.log.Error("failed to encode jitter msg", slog.String("err", err.Error()))
+					} else {
+						if err := dataCh.Send(msg); err != nil {
+							c.log.Error("failed to send jitter msg", slog.String("err", err.Error()))
+						}
+					}
+				}
+			case <-c.wsCloseCh:
+				return
+			}
+		}
+	}()
+
 	dataCh.OnMessage(func(msg webrtc.DataChannelMessage) {
 		mt, payload, err := dc.DecodeMessage(msg.Data)
 		if err != nil {
@@ -383,6 +469,9 @@ func (c *Client) initRTCSession() error {
 
 		switch mt {
 		case dc.MessageTypePong:
+			if ts := atomic.LoadInt64(lastPingTS); ts > 0 {
+				atomic.StoreInt64(lastRTT, time.Now().UnixMilli()-ts)
+			}
 		case dc.MessageTypeSDP:
 			var sdp webrtc.SessionDescription
 			if err := json.Unmarshal(payload.([]byte), &sdp); err != nil {

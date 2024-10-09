@@ -403,6 +403,12 @@ func (s *Server) handleDCMessage(data []byte, us *session, dataCh *webrtc.DataCh
 		if err := s.handleIncomingSDP(us, us.dcSDPCh, payload.([]byte)); err != nil {
 			return fmt.Errorf("failed to handle incoming sdp message: %w", err)
 		}
+	case dc.MessageTypeLossRate:
+		s.metrics.ObserveRTCClientLossRate(us.cfg.GroupID, payload.(float64))
+	case dc.MessageTypeRoundTripTime:
+		s.metrics.ObserveRTCClientRTT(us.cfg.GroupID, payload.(float64))
+	case dc.MessageTypeJitter:
+		s.metrics.ObserveRTCClientJitter(us.cfg.GroupID, payload.(float64))
 	}
 
 	return nil
