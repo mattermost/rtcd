@@ -31,6 +31,9 @@ type ServerConfig struct {
 	TURNConfig TURNConfig `toml:"turn"`
 	// EnableIPv6 specifies whether or not IPv6 should be used.
 	EnableIPv6 bool `toml:"enable_ipv6"`
+	// ICEHostOverrideResolution controls whether or not the ICEHostOverride should
+	// be resolved by the server before forwarding it to the client.
+	ICEHostOverrideResolution bool `toml:"ice_host_override_resolution"`
 }
 
 func (c ServerConfig) IsValid() error {

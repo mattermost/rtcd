@@ -58,7 +58,7 @@ func getTrackType(kind webrtc.RTPCodecType) string {
 	return "unknown"
 }
 
-func generateAddrsPairs(localIPs []netip.Addr, publicAddrsMap map[netip.Addr]string, hostOverride string, dualStack bool) ([]string, error) {
+func generateAddrsPairs(localIPs []netip.Addr, publicAddrsMap map[netip.Addr]string, hostOverride string, dualStack bool, resolveOverride bool) ([]string, error) {
 	var err error
 	var pairs []string
 	var hostOverrideIP string
@@ -74,12 +74,14 @@ func generateAddrsPairs(localIPs []netip.Addr, publicAddrsMap map[netip.Addr]str
 		ipNetwork = "ip"
 	}
 
-	// If the override is set we resolve it in case it's a hostname.
-	if hostOverride != "" {
+	// If the override is a hostname and server-side resolving is on, we try to resolve it.
+	if hostOverride != "" && !isIPAddress(hostOverride) && resolveOverride {
 		hostOverrideIP, err = resolveHost(hostOverride, ipNetwork, time.Second)
 		if err != nil {
 			return pairs, fmt.Errorf("failed to resolve host: %w", err)
 		}
+	} else if isIPAddress(hostOverride) {
+		hostOverrideIP = hostOverride
 	}
 
 	// Nothing to do at this point if no local IP was found.
@@ -171,4 +173,11 @@ func pickRandom[S ~[]*E, E any](s S) *E {
 		return nil
 	}
 	return s[rand.Intn(len(s))]
+}
+
+func isIPAddress(addr string) bool {
+	if _, err := netip.ParseAddr(addr); err == nil {
+		return true
+	}
+	return false
 }

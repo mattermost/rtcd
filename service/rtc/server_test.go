@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -733,5 +734,114 @@ func TestICEHostPortOverride(t *testing.T) {
 				require.Equal(t, serverCfg.ICEPortUDP, candidate.Port())
 			}
 		}
+	})
+}
+
+func TestICEHostOverrideFQDN(t *testing.T) {
+	log, err := logger.New(logger.Config{
+		EnableConsole: true,
+		ConsoleLevel:  "DEBUG",
+	})
+	require.NoError(t, err)
+	defer func() {
+		err := log.Shutdown()
+		require.NoError(t, err)
+	}()
+
+	metrics := perf.NewMetrics("rtcd", nil)
+	require.NotNil(t, metrics)
+
+	gatherCandidates := func(serverCfg ServerConfig, publicAddrsMap map[netip.Addr]string) <-chan string {
+		s, err := NewServer(serverCfg, log, metrics)
+		require.NoError(t, err)
+		require.NotNil(t, s)
+
+		if publicAddrsMap != nil {
+			s.publicAddrsMap = publicAddrsMap
+		}
+
+		err = s.Start()
+		require.NoError(t, err)
+		defer func() {
+			err := s.Stop()
+			require.NoError(t, err)
+		}()
+
+		cfg := SessionConfig{
+			GroupID:   random.NewID(),
+			CallID:    random.NewID(),
+			UserID:    random.NewID(),
+			SessionID: random.NewID(),
+		}
+		err = s.InitSession(cfg, nil)
+		require.NoError(t, err)
+
+		pc, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+		require.NoError(t, err)
+		defer pc.Close()
+
+		dc, err := pc.CreateDataChannel("calls-dc", nil)
+		require.NoError(t, err)
+		require.NotNil(t, dc)
+
+		offer, err := pc.CreateOffer(nil)
+		require.NoError(t, err)
+
+		err = pc.SetLocalDescription(offer)
+		require.NoError(t, err)
+
+		offerData, err := json.Marshal(&offer)
+		require.NoError(t, err)
+
+		err = s.Send(Message{
+			GroupID:   cfg.GroupID,
+			CallID:    cfg.CallID,
+			UserID:    cfg.UserID,
+			SessionID: cfg.SessionID,
+			Type:      SDPMessage,
+			Data:      offerData,
+		})
+		require.NoError(t, err)
+
+		candidatesCh := make(chan string, 10)
+		go func() {
+			for msg := range s.ReceiveCh() {
+				if msg.Type == ICEMessage {
+					data := make(map[string]any)
+					err := json.Unmarshal(msg.Data, &data)
+					require.NoError(t, err)
+					iceString := data["candidate"].(map[string]interface{})["candidate"].(string)
+					candidatesCh <- iceString
+				}
+			}
+		}()
+
+		time.Sleep(time.Second)
+
+		err = s.CloseSession(cfg.SessionID)
+		require.NoError(t, err)
+
+		return candidatesCh
+	}
+
+	t.Run("FQDN host override with no resolution", func(t *testing.T) {
+		serverCfg := ServerConfig{
+			ICEPortUDP:                30433,
+			ICEPortTCP:                30433,
+			ICEHostPortOverride:       "8443",
+			ICEHostOverride:           "example.tld",
+			ICEHostOverrideResolution: false,
+		}
+		candidatesCh := gatherCandidates(serverCfg, nil)
+		require.NotEmpty(t, candidatesCh)
+		var found bool
+		for i := 0; i < len(candidatesCh); i++ {
+			candidateStr := <-candidatesCh
+			if strings.Contains(candidateStr, "typ host") {
+				require.Contains(t, candidateStr, "example.tld 8443")
+				found = true
+			}
+		}
+		require.True(t, found)
 	})
 }
