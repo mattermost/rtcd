@@ -17,6 +17,11 @@ const (
 	metricsSubSystemWS        = "ws"
 )
 
+var (
+	latencyBuckets = []float64{.001, .005, .0075, .01, .025, .05, .075, .1, .25, .3, .4, .5, .75, 1}
+	lossBuckets    = []float64{.001, .005, .0075, .01, .025, .05, .075, .1, .25, .5, .75, 1}
+)
+
 type Metrics struct {
 	registry *prometheus.Registry
 
@@ -64,6 +69,7 @@ func NewMetrics(namespace string, registry *prometheus.Registry) *Metrics {
 			Subsystem: metricsSubSystemRTC,
 			Name:      "rtp_tracks_writes_time",
 			Help:      "Time taken to write to RTP tracks",
+			Buckets:   latencyBuckets,
 		},
 		[]string{"groupID", "type"},
 	)
@@ -132,6 +138,7 @@ func NewMetrics(namespace string, registry *prometheus.Registry) *Metrics {
 			Subsystem: metricsSubSystemRTCClient,
 			Name:      "loss_rate",
 			Help:      "Client loss rate",
+			Buckets:   lossBuckets,
 		},
 		[]string{"groupID"},
 	)
@@ -143,6 +150,7 @@ func NewMetrics(namespace string, registry *prometheus.Registry) *Metrics {
 			Subsystem: metricsSubSystemRTCClient,
 			Name:      "rtt",
 			Help:      "Client round trip time",
+			Buckets:   latencyBuckets,
 		},
 		[]string{"groupID"},
 	)
@@ -154,6 +162,7 @@ func NewMetrics(namespace string, registry *prometheus.Registry) *Metrics {
 			Subsystem: metricsSubSystemRTCClient,
 			Name:      "jitter",
 			Help:      "Client latency jitter",
+			Buckets:   latencyBuckets,
 		},
 		[]string{"groupID"},
 	)
