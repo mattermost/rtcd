@@ -83,6 +83,7 @@ func (c *Config) SetDefaults() {
 	c.RTC.ICEPortUDP = 8443
 	c.RTC.ICEPortTCP = 8443
 	c.RTC.TURNConfig.CredentialsExpirationMinutes = 1440
+	c.RTC.ICEHostOverrideResolution = true
 	c.Store.DataSource = "/tmp/rtcd_db"
 	c.Logger.EnableConsole = true
 	c.Logger.ConsoleJSON = false

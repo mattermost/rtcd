@@ -12,11 +12,11 @@ import (
 
 func TestGenerateAddrsPairs(t *testing.T) {
 	t.Run("nil/empty inputs", func(t *testing.T) {
-		pairs, err := generateAddrsPairs(nil, nil, "", false)
+		pairs, err := generateAddrsPairs(nil, nil, "", false, false)
 		require.NoError(t, err)
 		require.Empty(t, pairs)
 
-		pairs, err = generateAddrsPairs([]netip.Addr{}, map[netip.Addr]string{}, "", false)
+		pairs, err = generateAddrsPairs([]netip.Addr{}, map[netip.Addr]string{}, "", false, false)
 		require.NoError(t, err)
 		require.Empty(t, pairs)
 	})
@@ -28,7 +28,7 @@ func TestGenerateAddrsPairs(t *testing.T) {
 		}, map[netip.Addr]string{
 			netip.MustParseAddr("127.0.0.1"): "",
 			netip.MustParseAddr("10.1.1.1"):  "",
-		}, "", false)
+		}, "", false, false)
 		require.NoError(t, err)
 		require.Equal(t, []string{"127.0.0.1/127.0.0.1", "10.1.1.1/10.1.1.1"}, pairs)
 	})
@@ -37,7 +37,7 @@ func TestGenerateAddrsPairs(t *testing.T) {
 		pairs, err := generateAddrsPairs([]netip.Addr{
 			netip.MustParseAddr("127.0.0.1"),
 			netip.MustParseAddr("10.1.1.1"),
-		}, map[netip.Addr]string{}, "1.1.1.1/127.0.0.1,1.1.1.1/10.1.1.1", false)
+		}, map[netip.Addr]string{}, "1.1.1.1/127.0.0.1,1.1.1.1/10.1.1.1", false, false)
 		require.NoError(t, err)
 		require.Equal(t, []string{"1.1.1.1/127.0.0.1", "1.1.1.1/10.1.1.1"}, pairs)
 	})
@@ -49,7 +49,7 @@ func TestGenerateAddrsPairs(t *testing.T) {
 		}, map[netip.Addr]string{
 			netip.MustParseAddr("127.0.0.1"): "",
 			netip.MustParseAddr("10.1.1.1"):  "",
-		}, "1.1.1.1", false)
+		}, "1.1.1.1", false, false)
 		require.NoError(t, err)
 		require.Equal(t, []string{"127.0.0.1/127.0.0.1", "1.1.1.1/10.1.1.1"}, pairs)
 	})
@@ -61,7 +61,7 @@ func TestGenerateAddrsPairs(t *testing.T) {
 		}, map[netip.Addr]string{
 			netip.MustParseAddr("127.0.0.1"): "",
 			netip.MustParseAddr("10.1.1.1"):  "1.1.1.1",
-		}, "", false)
+		}, "", false, false)
 		require.NoError(t, err)
 		require.Equal(t, []string{"127.0.0.1/127.0.0.1", "1.1.1.1/10.1.1.1"}, pairs)
 	})
@@ -73,7 +73,7 @@ func TestGenerateAddrsPairs(t *testing.T) {
 		}, map[netip.Addr]string{
 			netip.MustParseAddr("127.0.0.1"): "",
 			netip.MustParseAddr("10.1.1.1"):  "1.1.1.1",
-		}, "", false)
+		}, "", false, false)
 		require.NoError(t, err)
 		require.Equal(t, []string{"127.0.0.1/127.0.0.1", "1.1.1.1/10.1.1.1"}, pairs)
 	})
@@ -85,7 +85,7 @@ func TestGenerateAddrsPairs(t *testing.T) {
 		}, map[netip.Addr]string{
 			netip.MustParseAddr("127.0.0.1"): "1.1.1.1",
 			netip.MustParseAddr("10.1.1.1"):  "1.1.1.2",
-		}, "", false)
+		}, "", false, false)
 		require.NoError(t, err)
 		require.Equal(t, []string{"1.1.1.1/127.0.0.1", "1.1.1.2/10.1.1.1"}, pairs)
 	})
@@ -99,9 +99,33 @@ func TestGenerateAddrsPairs(t *testing.T) {
 		}, map[netip.Addr]string{
 			netip.MustParseAddr("127.0.0.1"): "1.1.1.1",
 			netip.MustParseAddr("10.1.1.1"):  "1.1.1.2",
-		}, "8.8.8.8", false)
+		}, "8.8.8.8", false, false)
 		require.NoError(t, err)
 		require.Equal(t, []string{"127.0.0.1/127.0.0.1", "8.8.8.8/10.1.1.1"}, pairs)
+	})
+
+	t.Run("ice host override is a FQDN, resolve on", func(t *testing.T) {
+		pairs, err := generateAddrsPairs([]netip.Addr{
+			netip.MustParseAddr("127.0.0.1"),
+			netip.MustParseAddr("10.1.1.1"),
+		}, map[netip.Addr]string{
+			netip.MustParseAddr("127.0.0.1"): "",
+			netip.MustParseAddr("10.1.1.1"):  "",
+		}, "localhost", false, true)
+		require.NoError(t, err)
+		require.Equal(t, []string{"127.0.0.1/127.0.0.1", "127.0.0.1/10.1.1.1"}, pairs)
+	})
+
+	t.Run("ice host override is a FQDN, resolve off", func(t *testing.T) {
+		pairs, err := generateAddrsPairs([]netip.Addr{
+			netip.MustParseAddr("127.0.0.1"),
+			netip.MustParseAddr("10.1.1.1"),
+		}, map[netip.Addr]string{
+			netip.MustParseAddr("127.0.0.1"): "",
+			netip.MustParseAddr("10.1.1.1"):  "",
+		}, "localhost", false, false)
+		require.NoError(t, err)
+		require.Equal(t, []string{"127.0.0.1/127.0.0.1", "10.1.1.1/10.1.1.1"}, pairs)
 	})
 }
 
