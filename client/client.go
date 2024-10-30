@@ -15,7 +15,7 @@ import (
 
 	"github.com/mattermost/mattermost/server/public/model"
 
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 )
 
 type EventHandler func(ctx any) error

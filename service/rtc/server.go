@@ -13,8 +13,8 @@ import (
 
 	"github.com/mattermost/rtcd/service/rtc/dc"
 
-	"github.com/pion/ice/v2"
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/ice/v4"
+	"github.com/pion/webrtc/v4"
 
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
 )

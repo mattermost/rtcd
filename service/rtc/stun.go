@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pion/stun"
+	"github.com/pion/stun/v3"
 )
 
 func getPublicIP(addr *net.UDPAddr, network, stunURL string) (string, error) {

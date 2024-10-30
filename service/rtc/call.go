@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 	"golang.org/x/time/rate"
 
 	"github.com/mattermost/mattermost/server/public/shared/mlog"

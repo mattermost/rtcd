@@ -19,7 +19,7 @@ import (
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/stats"
 	"github.com/pion/rtcp"
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 )
 
 const (
