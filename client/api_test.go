@@ -938,11 +938,13 @@ func TestAPIScreenShareAndVoice(t *testing.T) {
 
 	var packets int
 	adminVoiceTrackCh := make(chan struct{})
+	readerDoneCh := make(chan struct{})
 	err = th.userClient.On(RTCTrackEvent, func(ctx any) error {
 		m := ctx.(map[string]any)
 		track := m["track"].(*webrtc.TrackRemote)
 		if track.Kind() == webrtc.RTPCodecTypeAudio {
 			go func() {
+				defer close(readerDoneCh)
 				for {
 					_, _, readErr := track.ReadRTP()
 					if readErr != nil {
@@ -1036,6 +1038,12 @@ func TestAPIScreenShareAndVoice(t *testing.T) {
 	case <-adminCloseCh:
 	case <-time.After(waitTimeout):
 		require.Fail(t, "timed out waiting for close event")
+	}
+
+	select {
+	case <-readerDoneCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for reader to be done")
 	}
 
 	require.Greater(t, packets, 10)
