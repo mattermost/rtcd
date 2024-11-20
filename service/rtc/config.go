@@ -31,6 +31,13 @@ type ServerConfig struct {
 	TURNConfig TURNConfig `toml:"turn"`
 	// EnableIPv6 specifies whether or not IPv6 should be used.
 	EnableIPv6 bool `toml:"enable_ipv6"`
+	// UDPSocketsCount controls the number of listening UDP sockets used for each local
+	// network address. A larger number can improve performance by reducing contention
+	// over a few file descriptors. At the same time, it will cause more file descriptors
+	// to be open. The default is a dynamic value that scales with the number of available CPUs with
+	// a constant multiplier of 100. E.g. On a 4 CPUs node, 400 sockets per local
+	// network address will be open.
+	UDPSocketsCount int `toml:"udp_sockets_count"`
 }
 
 func (c ServerConfig) IsValid() error {
@@ -60,6 +67,10 @@ func (c ServerConfig) IsValid() error {
 
 	if err := c.ICEHostPortOverride.IsValid(); err != nil {
 		return fmt.Errorf("invalid ICEHostPortOverride value: %w", err)
+	}
+
+	if c.UDPSocketsCount <= 0 {
+		return fmt.Errorf("invalid UDPSocketsCount value: should be greater than 0")
 	}
 
 	return nil

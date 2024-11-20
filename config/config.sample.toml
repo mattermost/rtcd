@@ -88,6 +88,14 @@ turn.static_auth_secret = ""
 # The expiration, in minutes, of the short-lived credentials generated for TURN servers.
 turn.credentials_expiration_minutes = 1440
 
+# udp_sockets_count controls the number of listening UDP sockets used for each local
+# network address. A larger number can improve performance by reducing contention
+# over a few file descriptors. At the same time, it will cause more file descriptors
+# to be open. The default is a dynamic value that scales with the number of available CPUs with
+# a constant multiplier of 100. E.g. On a 4 CPUs node, 400 sockets per local
+# network address will be open.
+# udp_sockets_count =
+
 [store]
 # A path to a directory the service will use to store persistent data such as registered client IDs and hashed credentials.
 data_source = "/tmp/rtcd_db"
@@ -109,4 +117,3 @@ file_level = "DEBUG"
 file_location = "rtcd.log"
 # A boolean controlling whether to display colors when logging to the console.
 enable_color = true
-
