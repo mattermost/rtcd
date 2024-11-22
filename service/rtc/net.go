@@ -23,7 +23,7 @@ const (
 	tcpSocketWriteBufferSize = 1024 * 1024 * 4 // 4MB
 )
 
-func getUDPListeningSocketsCount() int {
+func GetDefaultUDPListeningSocketsCount() int {
 	// Originally we used runtime.NumCPU() but increased it as a result of v1 ceiling tests.
 	// The reason is that having just a few sockets caused significant lock contentions on
 	// the underlying file descriptors (at WriteToInet4 in internal/poll/fd_unix.go).
@@ -78,10 +78,10 @@ func getSystemIPs(log mlog.LoggerIFace, dualStack bool) ([]netip.Addr, error) {
 	return ips, nil
 }
 
-func createUDPConnsForAddr(log mlog.LoggerIFace, network, listenAddress string) ([]net.PacketConn, error) {
+func createUDPConnsForAddr(log mlog.LoggerIFace, network, listenAddress string, socketsCount int) ([]net.PacketConn, error) {
 	var conns []net.PacketConn
 
-	for i := 0; i < getUDPListeningSocketsCount(); i++ {
+	for i := 0; i < socketsCount; i++ {
 		listenConfig := net.ListenConfig{
 			Control: func(_, _ string, c syscall.RawConn) error {
 				return c.Control(func(fd uintptr) {

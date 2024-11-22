@@ -95,12 +95,22 @@ func TestServerConfigIsValid(t *testing.T) {
 		})
 	})
 
+	t.Run("invalid UDPSocketsCount", func(t *testing.T) {
+		var cfg ServerConfig
+		cfg.ICEPortUDP = 8443
+		cfg.ICEPortTCP = 8443
+		cfg.UDPSocketsCount = 0
+		err := cfg.IsValid()
+		require.EqualError(t, err, "invalid UDPSocketsCount value: should be greater than 0")
+	})
+
 	t.Run("valid", func(t *testing.T) {
 		var cfg ServerConfig
 		cfg.ICEAddressUDP = "127.0.0.1"
 		cfg.ICEPortUDP = 8443
 		cfg.ICEPortTCP = 8443
 		cfg.TURNConfig.CredentialsExpirationMinutes = 1440
+		cfg.UDPSocketsCount = 1
 		err := cfg.IsValid()
 		require.NoError(t, err)
 	})

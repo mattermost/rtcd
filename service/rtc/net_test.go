@@ -71,9 +71,9 @@ func TestCreateUDPConnsForAddr(t *testing.T) {
 		require.NotEmpty(t, ips)
 
 		for _, ip := range ips {
-			conns, err := createUDPConnsForAddr(log, "udp4", netip.AddrPortFrom(ip, 30443).String())
+			conns, err := createUDPConnsForAddr(log, "udp4", netip.AddrPortFrom(ip, 30443).String(), 45)
 			require.NoError(t, err)
-			require.Len(t, conns, getUDPListeningSocketsCount())
+			require.Len(t, conns, 45)
 			for _, conn := range conns {
 				require.NoError(t, conn.Close())
 			}
@@ -91,9 +91,9 @@ func TestCreateUDPConnsForAddr(t *testing.T) {
 		require.NotEmpty(t, ips)
 
 		for _, ip := range ips {
-			conns, err := createUDPConnsForAddr(log, "udp", netip.AddrPortFrom(ip, 30443).String())
+			conns, err := createUDPConnsForAddr(log, "udp", netip.AddrPortFrom(ip, 30443).String(), 45)
 			require.NoError(t, err)
-			require.Len(t, conns, getUDPListeningSocketsCount())
+			require.Len(t, conns, 45)
 			for _, conn := range conns {
 				require.NoError(t, conn.Close())
 			}

@@ -298,7 +298,7 @@ func (s *Server) initUDP(localIPs []netip.Addr, network string) error {
 	var udpMuxes []ice.UDPMux
 
 	initUDPMux := func(addr string) error {
-		conns, err := createUDPConnsForAddr(s.log, network, addr)
+		conns, err := createUDPConnsForAddr(s.log, network, addr, s.cfg.UDPSocketsCount)
 		if err != nil {
 			return fmt.Errorf("failed to create UDP connections: %w", err)
 		}
