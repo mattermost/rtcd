@@ -32,8 +32,9 @@ func setupServer(t *testing.T) (*Server, func()) {
 	require.NotNil(t, metrics)
 
 	cfg := ServerConfig{
-		ICEPortUDP: 30433,
-		ICEPortTCP: 30433,
+		ICEPortUDP:      30433,
+		ICEPortTCP:      30433,
+		UDPSocketsCount: GetDefaultUDPListeningSocketsCount(),
 	}
 
 	s, err := NewServer(cfg, log, metrics)
@@ -66,8 +67,9 @@ func TestNewServer(t *testing.T) {
 
 	t.Run("missing logger", func(t *testing.T) {
 		cfg := ServerConfig{
-			ICEPortUDP: 30433,
-			ICEPortTCP: 30433,
+			ICEPortUDP:      30433,
+			ICEPortTCP:      30433,
+			UDPSocketsCount: GetDefaultUDPListeningSocketsCount(),
 		}
 		s, err := NewServer(cfg, nil, metrics)
 		require.Error(t, err)
@@ -76,8 +78,9 @@ func TestNewServer(t *testing.T) {
 
 	t.Run("missing metrics", func(t *testing.T) {
 		cfg := ServerConfig{
-			ICEPortUDP: 30433,
-			ICEPortTCP: 30433,
+			ICEPortUDP:      30433,
+			ICEPortTCP:      30433,
+			UDPSocketsCount: GetDefaultUDPListeningSocketsCount(),
 		}
 		s, err := NewServer(cfg, log, nil)
 		require.Error(t, err)
@@ -86,8 +89,9 @@ func TestNewServer(t *testing.T) {
 
 	t.Run("valid", func(t *testing.T) {
 		cfg := ServerConfig{
-			ICEPortUDP: 30433,
-			ICEPortTCP: 30433,
+			ICEPortUDP:      30433,
+			ICEPortTCP:      30433,
+			UDPSocketsCount: GetDefaultUDPListeningSocketsCount(),
 		}
 		s, err := NewServer(cfg, log, metrics)
 		require.NoError(t, err)
@@ -107,8 +111,9 @@ func TestStartServer(t *testing.T) {
 	require.NotNil(t, metrics)
 
 	cfg := ServerConfig{
-		ICEPortUDP: 30433,
-		ICEPortTCP: 30433,
+		ICEPortUDP:      30433,
+		ICEPortTCP:      30433,
+		UDPSocketsCount: GetDefaultUDPListeningSocketsCount(),
 	}
 
 	t.Run("port unavailable", func(t *testing.T) {
@@ -159,8 +164,9 @@ func TestDraining(t *testing.T) {
 	}()
 
 	cfg := ServerConfig{
-		ICEPortUDP: 30433,
-		ICEPortTCP: 30433,
+		ICEPortUDP:      30433,
+		ICEPortTCP:      30433,
+		UDPSocketsCount: GetDefaultUDPListeningSocketsCount(),
 	}
 
 	metrics := perf.NewMetrics("rtcd", nil)
@@ -221,8 +227,9 @@ func TestInitSession(t *testing.T) {
 	require.NotNil(t, metrics)
 
 	cfg := ServerConfig{
-		ICEPortUDP: 30433,
-		ICEPortTCP: 30433,
+		ICEPortUDP:      30433,
+		ICEPortTCP:      30433,
+		UDPSocketsCount: GetDefaultUDPListeningSocketsCount(),
 	}
 
 	s, err := NewServer(cfg, log, metrics)
@@ -386,8 +393,9 @@ func TestCalls(t *testing.T) {
 	require.NotNil(t, metrics)
 
 	cfg := ServerConfig{
-		ICEPortUDP: 30433,
-		ICEPortTCP: 30433,
+		ICEPortUDP:      30433,
+		ICEPortTCP:      30433,
+		UDPSocketsCount: GetDefaultUDPListeningSocketsCount(),
 	}
 
 	s, err := NewServer(cfg, log, metrics)
@@ -479,8 +487,9 @@ func TestTCPCandidates(t *testing.T) {
 	require.NotNil(t, metrics)
 
 	serverCfg := ServerConfig{
-		ICEPortUDP: 30433,
-		ICEPortTCP: 30433,
+		ICEPortUDP:      30433,
+		ICEPortTCP:      30433,
+		UDPSocketsCount: GetDefaultUDPListeningSocketsCount(),
 	}
 
 	s, err := NewServer(serverCfg, log, metrics)
@@ -651,6 +660,7 @@ func TestICEHostPortOverride(t *testing.T) {
 			ICEPortUDP:          30433,
 			ICEPortTCP:          30433,
 			ICEHostPortOverride: "8443",
+			UDPSocketsCount:     GetDefaultUDPListeningSocketsCount(),
 		}
 
 		candidatesCh := gatherCandidates(serverCfg, nil)
@@ -669,6 +679,7 @@ func TestICEHostPortOverride(t *testing.T) {
 			ICEPortTCP:          30433,
 			ICEHostOverride:     "8.8.8.8",
 			ICEHostPortOverride: "8443",
+			UDPSocketsCount:     GetDefaultUDPListeningSocketsCount(),
 		}
 
 		candidatesCh := gatherCandidates(serverCfg, nil)
@@ -692,6 +703,7 @@ func TestICEHostPortOverride(t *testing.T) {
 			ICEPortTCP:          30433,
 			ICEHostOverride:     "8.8.8.8",
 			ICEHostPortOverride: "127.0.0.1/8443",
+			UDPSocketsCount:     GetDefaultUDPListeningSocketsCount(),
 		}
 
 		candidatesCh := gatherCandidates(serverCfg, nil)
@@ -715,6 +727,7 @@ func TestICEHostPortOverride(t *testing.T) {
 			ICEPortTCP:          30433,
 			ICEHostPortOverride: "8443",
 			ICEHostOverride:     "",
+			UDPSocketsCount:     GetDefaultUDPListeningSocketsCount(),
 		}
 
 		publicIP := "8.8.8.8"

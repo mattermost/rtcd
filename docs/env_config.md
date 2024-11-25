@@ -20,6 +20,7 @@ RTCD_RTC_ICESERVERS                                 Comma-separated list of
 RTCD_RTC_TURNCONFIG_STATICAUTHSECRET                String
 RTCD_RTC_TURNCONFIG_CREDENTIALSEXPIRATIONMINUTES    Integer
 RTCD_RTC_ENABLEIPV6                                 True or False
+RTCD_RTC_UDPSOCKETSCOUNT                            Integer
 RTCD_STORE_DATASOURCE                               String
 RTCD_LOGGER_ENABLECONSOLE                           True or False
 RTCD_LOGGER_CONSOLEJSON                             True or False
