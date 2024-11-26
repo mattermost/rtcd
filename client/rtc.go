@@ -19,7 +19,7 @@ import (
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/stats"
 	"github.com/pion/rtcp"
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 )
 
 const (
@@ -191,15 +191,17 @@ func (c *Client) initRTCSession() error {
 
 	i := interceptor.Registry{}
 
-	statsInterceptorFactory, err := stats.NewInterceptor()
-	if err != nil {
-		return fmt.Errorf("failed to create stats interceptor: %w", err)
-	}
 	var statsGetter stats.Getter
-	statsInterceptorFactory.OnNewPeerConnection(func(_ string, g stats.Getter) {
-		statsGetter = g
-	})
-	i.Add(statsInterceptorFactory)
+	if c.cfg.EnableRTCMonitor {
+		statsInterceptorFactory, err := stats.NewInterceptor()
+		if err != nil {
+			return fmt.Errorf("failed to create stats interceptor: %w", err)
+		}
+		statsInterceptorFactory.OnNewPeerConnection(func(_ string, g stats.Getter) {
+			statsGetter = g
+		})
+		i.Add(statsInterceptorFactory)
+	}
 
 	if err := webrtc.RegisterDefaultInterceptors(&m, &i); err != nil {
 		return fmt.Errorf("failed to register default interceptors: %w", err)

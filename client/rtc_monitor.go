@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/pion/interceptor/pkg/stats"
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 )
 
 type rtcMonitor struct {

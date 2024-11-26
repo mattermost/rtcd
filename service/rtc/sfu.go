@@ -18,13 +18,13 @@ import (
 
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
 
-	"github.com/pion/ice/v2"
+	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/cc"
 	"github.com/pion/interceptor/pkg/gcc"
 	"github.com/pion/interceptor/pkg/nack"
 	"github.com/pion/rtp"
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 )
 
 var (
@@ -79,6 +79,7 @@ func (s *Server) initSettingEngine() (webrtc.SettingEngine, error) {
 	sEngine := webrtc.SettingEngine{
 		LoggerFactory: s,
 	}
+	sEngine.EnableSCTPZeroChecksum(true)
 	sEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
 	networkTypes := []webrtc.NetworkType{
 		webrtc.NetworkTypeUDP4,
@@ -299,8 +300,8 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		}
 	})
 
-	peerConn.OnICEGatheringStateChange(func(state webrtc.ICEGathererState) {
-		if state == webrtc.ICEGathererStateComplete {
+	peerConn.OnICEGatheringStateChange(func(state webrtc.ICEGatheringState) {
+		if state == webrtc.ICEGatheringStateComplete {
 			s.log.Debug("ice gathering complete", mlog.String("sessionID", cfg.SessionID))
 		}
 	})
@@ -660,6 +661,8 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					// of simulcast as we are dealing with concurrent writers.
 					pkt := *packet
 					pkt.Header = packet.Header.Clone()
+					pkt.Extension = false
+					pkt.Extensions = nil
 
 					select {
 					case writerCh <- &pkt:

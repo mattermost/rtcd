@@ -11,7 +11,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/pion/interceptor/pkg/cc"
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
 )

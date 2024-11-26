@@ -17,7 +17,7 @@ import (
 
 	"github.com/pion/interceptor/pkg/cc"
 	"github.com/pion/rtcp"
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
 )
@@ -58,6 +58,7 @@ type session struct {
 	// Receiver
 	bwEstimator       cc.BandwidthEstimator
 	screenTrackSender *webrtc.RTPSender
+	rxTracks          map[string]webrtc.TrackLocal
 
 	closeCh chan struct{}
 	closeCb func() error
@@ -426,6 +427,7 @@ func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) (er
 				mlog.String("trackID", track.ID()))
 		} else {
 			s.call.metrics.DecRTPTracks(s.cfg.GroupID, "out", getTrackType(track.Kind()))
+			delete(s.rxTracks, track.ID())
 		}
 		s.mut.Unlock()
 	}()
@@ -444,11 +446,13 @@ func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) (er
 		if err := s.rtcConn.SetRemoteDescription(answer); err != nil {
 			return fmt.Errorf("failed to set remote description for track %s: %w", track.ID(), err)
 		}
+
+		s.mut.Lock()
 		if track.Kind() == webrtc.RTPCodecTypeVideo {
-			s.mut.Lock()
 			s.screenTrackSender = sender
-			s.mut.Unlock()
 		}
+		s.rxTracks[track.ID()] = track
+		s.mut.Unlock()
 	case <-time.After(signalingTimeout):
 		return fmt.Errorf("timed out signaling")
 	case <-s.closeCh:
@@ -488,7 +492,7 @@ func (s *session) removeTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) 
 		return fmt.Errorf("failed to remove track: %w", err)
 	}
 	s.call.metrics.DecRTPTracks(s.cfg.GroupID, "out", getTrackType(track.Kind()))
-
+	delete(s.rxTracks, track.ID())
 	if s.screenTrackSender == sender {
 		s.screenTrackSender = nil
 	}
@@ -576,7 +580,6 @@ func (s *session) InitVAD(log mlog.LoggerIFace, msgCh chan<- Message) error {
 			log.Error("failed to send VAD message: channel is full")
 		}
 	})
-
 	if err != nil {
 		return fmt.Errorf("failed to create vad monitor: %w", err)
 	}
