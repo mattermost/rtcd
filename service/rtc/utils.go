@@ -12,7 +12,7 @@ import (
 
 	"github.com/mattermost/rtcd/service/random"
 
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 )
 
 type trackType string
