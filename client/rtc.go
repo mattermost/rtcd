@@ -33,13 +33,11 @@ const (
 	pingInterval       = time.Second
 )
 
-var (
-	rtpVideoExtensions = []string{
-		"urn:ietf:params:rtp-hdrext:sdes:mid",
-		"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id",
-		"urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id",
-	}
-)
+var rtpVideoExtensions = []string{
+	"urn:ietf:params:rtp-hdrext:sdes:mid",
+	"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id",
+	"urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id",
+}
 
 func (c *Client) handleWSEventSignal(evData map[string]any) error {
 	data, ok := evData["data"].(string)
@@ -213,7 +211,10 @@ func (c *Client) initRTCSession() error {
 		}
 	}
 
-	api := webrtc.NewAPI(webrtc.WithMediaEngine(&m), webrtc.WithInterceptorRegistry(&i))
+	s := webrtc.SettingEngine{}
+	s.EnableSCTPZeroChecksum(true)
+
+	api := webrtc.NewAPI(webrtc.WithMediaEngine(&m), webrtc.WithInterceptorRegistry(&i), webrtc.WithSettingEngine(s))
 
 	pc, err := api.NewPeerConnection(cfg)
 	if err != nil {
