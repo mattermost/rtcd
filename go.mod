@@ -14,19 +14,19 @@ require (
 	github.com/pion/interceptor v0.1.37
 	github.com/pion/logging v0.2.2
 	github.com/pion/rtcp v1.2.15
-	github.com/pion/rtp v1.8.9
+	github.com/pion/rtp v1.8.10
 	github.com/pion/stun/v3 v3.0.0
-	github.com/pion/webrtc/v4 v4.0.6
+	github.com/pion/webrtc/v4 v4.0.7
 	github.com/prometheus/client_golang v1.15.0
 	github.com/prometheus/procfs v0.9.0
 	github.com/stretchr/testify v1.10.0
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	golang.org/x/crypto v0.31.0
-	golang.org/x/sys v0.28.0
+	golang.org/x/sys v0.29.0
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 )
 
-replace github.com/pion/interceptor v0.1.37 => github.com/streamer45/interceptor v0.0.0-20241111153145-d0f18919af8c
+replace github.com/pion/interceptor v0.1.37 => github.com/streamer45/interceptor v0.0.0-20250106110758-7e0fb613abef
 
 require (
 	github.com/abcum/lcp v0.0.0-20201209214815-7a3f3840be81 // indirect
@@ -69,7 +69,7 @@ require (
 	github.com/wiggin77/srslog v1.0.1 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/exp v0.0.0-20200908183739-ae8ad444f925 // indirect
-	golang.org/x/net v0.32.0 // indirect
+	golang.org/x/net v0.33.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
