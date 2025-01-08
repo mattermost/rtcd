@@ -484,3 +484,31 @@ func (c *Client) GetSession(callID, sessionID string) (rtc.SessionConfig, int, e
 
 	return cfg, resp.StatusCode, nil
 }
+
+func (c *Client) GetSessions(callID string) ([]rtc.SessionConfig, int, error) {
+	reqURL := fmt.Sprintf("%s/calls/%s/sessions", c.cfg.httpURL, callID)
+
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to build request: %w", err)
+	}
+	req.SetBasicAuth(c.cfg.ClientID, c.cfg.AuthKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("http request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var cfgs []rtc.SessionConfig
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, resp.StatusCode, fmt.Errorf("request failed with status %s", resp.Status)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&cfgs); err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("decoding http response failed: %w", err)
+	}
+
+	return cfgs, resp.StatusCode, nil
+}

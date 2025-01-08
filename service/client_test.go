@@ -880,3 +880,85 @@ func TestClientGetSession(t *testing.T) {
 		require.Equal(t, http.StatusOK, code)
 	})
 }
+
+func TestClientGetSessions(t *testing.T) {
+	th := SetupTestHelper(t, nil)
+	defer th.Teardown()
+
+	// register client
+	authKey := "Nl9OZthX5cMJz5a_HmU3kQJ4pHIIlohr"
+	err := th.srvc.auth.Register("clientA", authKey)
+	require.NoError(t, err)
+
+	t.Run("unauthorized", func(t *testing.T) {
+		c, err := NewClient(ClientConfig{
+			URL: th.apiURL,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, c)
+		defer c.Close()
+
+		cfgs, code, err := c.GetSessions("callID")
+		require.EqualError(t, err, "request failed with status 401 Unauthorized")
+		require.Empty(t, cfgs)
+		require.Equal(t, http.StatusUnauthorized, code)
+	})
+
+	t.Run("no call ongoing", func(t *testing.T) {
+		c, err := NewClient(ClientConfig{
+			URL:      th.apiURL,
+			ClientID: "clientA",
+			AuthKey:  authKey,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, c)
+		defer c.Close()
+
+		cfgs, code, err := c.GetSessions("callID")
+		require.EqualError(t, err, "request failed with status 404 Not Found")
+		require.Empty(t, cfgs)
+		require.Equal(t, http.StatusNotFound, code)
+	})
+
+	t.Run("call ongoing", func(t *testing.T) {
+		c, err := NewClient(ClientConfig{
+			URL:      th.apiURL,
+			ClientID: "clientA",
+			AuthKey:  authKey,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, c)
+		defer c.Close()
+
+		cfgA := rtc.SessionConfig{
+			GroupID:   "clientA",
+			CallID:    "callIDA",
+			UserID:    "userA",
+			SessionID: "sessionA",
+		}
+		err = th.srvc.rtcServer.InitSession(cfgA, nil)
+		require.NoError(t, err)
+		defer func() {
+			err := th.srvc.rtcServer.CloseSession("sessionA")
+			require.NoError(t, err)
+		}()
+
+		cfgB := rtc.SessionConfig{
+			GroupID:   "clientA",
+			CallID:    "callIDA",
+			UserID:    "userB",
+			SessionID: "sessionB",
+		}
+		err = th.srvc.rtcServer.InitSession(cfgB, nil)
+		require.NoError(t, err)
+		defer func() {
+			err := th.srvc.rtcServer.CloseSession("sessionB")
+			require.NoError(t, err)
+		}()
+
+		sessionCfgs, code, err := c.GetSessions("callIDA")
+		require.NoError(t, err)
+		require.ElementsMatch(t, []rtc.SessionConfig{cfgA, cfgB}, sessionCfgs)
+		require.Equal(t, http.StatusOK, code)
+	})
+}

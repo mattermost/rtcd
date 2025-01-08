@@ -50,3 +50,37 @@ func (s *Service) handleGetSession(w http.ResponseWriter, req *http.Request) {
 		s.log.Error("failed to encode data", mlog.Err(err))
 	}
 }
+
+func (s *Service) handleGetSessions(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		http.NotFound(w, req)
+		return
+	}
+
+	clientID, code, err := s.authHandler(w, req)
+	if err != nil {
+		s.log.Error("failed to authenticate", mlog.Err(err), mlog.Int("code", code))
+	}
+
+	if clientID == "" {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	callID := req.PathValue("callID")
+	if callID == "" {
+		http.Error(w, "callID is required", http.StatusBadRequest)
+		return
+	}
+
+	cfgs, err := s.rtcServer.GetSessionConfigs(clientID, callID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get session configs: %s", err.Error()), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Add("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(cfgs); err != nil {
+		s.log.Error("failed to encode data", mlog.Err(err))
+	}
+}
