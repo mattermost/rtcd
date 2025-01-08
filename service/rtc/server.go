@@ -413,3 +413,22 @@ func (s *Server) handleDCMessage(data []byte, us *session, dataCh *webrtc.DataCh
 
 	return nil
 }
+
+func (s *Server) GetSessionConfig(groupID, callID, sessionID string) (SessionConfig, error) {
+	group := s.getGroup(groupID)
+	if group == nil {
+		return SessionConfig{}, fmt.Errorf("group not found")
+	}
+
+	call := group.getCall(callID)
+	if call == nil {
+		return SessionConfig{}, fmt.Errorf("call not found")
+	}
+
+	session := call.getSession(sessionID)
+	if session == nil {
+		return SessionConfig{}, fmt.Errorf("session not found")
+	}
+
+	return session.cfg, nil
+}
