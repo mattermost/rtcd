@@ -118,6 +118,8 @@ func New(cfg Config) (*Service, error) {
 	s.apiServer.RegisterHandleFunc("/login", s.loginClient)
 	s.apiServer.RegisterHandleFunc("/register", s.registerClient)
 	s.apiServer.RegisterHandleFunc("/unregister", s.unregisterClient)
+	s.apiServer.RegisterHandleFunc("/calls/{callID}/sessions", s.handleGetSessions)
+	s.apiServer.RegisterHandleFunc("/calls/{callID}/sessions/{sessionID}", s.handleGetSession)
 	s.apiServer.RegisterHandler("/ws", s.wsServer)
 
 	if runtime.GOOS != "darwin" {

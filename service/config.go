@@ -5,8 +5,6 @@ package service
 
 import (
 	"fmt"
-	"net/url"
-	"time"
 
 	"github.com/mattermost/rtcd/service/auth"
 
@@ -103,51 +101,5 @@ func (c StoreConfig) IsValid() error {
 	if c.DataSource == "" {
 		return fmt.Errorf("invalid DataSource value: should not be empty")
 	}
-	return nil
-}
-
-type ClientConfig struct {
-	httpURL string
-	wsURL   string
-
-	ClientID          string
-	AuthKey           string
-	URL               string
-	ReconnectInterval time.Duration
-}
-
-func (c *ClientConfig) Parse() error {
-	if c.URL == "" {
-		return fmt.Errorf("invalid URL value: should not be empty")
-	}
-
-	u, err := url.Parse(c.URL)
-	if err != nil {
-		return fmt.Errorf("failed to parse url: %w", err)
-	}
-
-	if u.Host == "" {
-		return fmt.Errorf("invalid url host: should not be empty")
-	}
-
-	switch u.Scheme {
-	case "http":
-		c.httpURL = c.URL
-		u.Scheme = "ws"
-		u.Path = "/ws"
-		c.wsURL = u.String()
-	case "https":
-		c.httpURL = c.URL
-		u.Scheme = "wss"
-		u.Path = "/ws"
-		c.wsURL = u.String()
-	default:
-		return fmt.Errorf("invalid url scheme: %q is not valid", u.Scheme)
-	}
-
-	if c.ReconnectInterval <= 0 {
-		c.ReconnectInterval = defaultReconnectInterval
-	}
-
 	return nil
 }

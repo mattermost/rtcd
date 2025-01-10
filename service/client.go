@@ -11,9 +11,11 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
+	"github.com/mattermost/rtcd/service/rtc"
 	"github.com/mattermost/rtcd/service/ws"
 )
 
@@ -36,6 +38,52 @@ type Client struct {
 
 	mut sync.RWMutex
 	wg  sync.WaitGroup
+}
+
+type ClientConfig struct {
+	httpURL string
+	wsURL   string
+
+	ClientID          string
+	AuthKey           string
+	URL               string
+	ReconnectInterval time.Duration
+}
+
+func (c *ClientConfig) Parse() error {
+	if c.URL == "" {
+		return fmt.Errorf("invalid URL value: should not be empty")
+	}
+
+	u, err := url.Parse(c.URL)
+	if err != nil {
+		return fmt.Errorf("failed to parse url: %w", err)
+	}
+
+	if u.Host == "" {
+		return fmt.Errorf("invalid url host: should not be empty")
+	}
+
+	switch u.Scheme {
+	case "http":
+		c.httpURL = c.URL
+		u.Scheme = "ws"
+		u.Path = "/ws"
+		c.wsURL = u.String()
+	case "https":
+		c.httpURL = c.URL
+		u.Scheme = "wss"
+		u.Path = "/ws"
+		c.wsURL = u.String()
+	default:
+		return fmt.Errorf("invalid url scheme: %q is not valid", u.Scheme)
+	}
+
+	if c.ReconnectInterval <= 0 {
+		c.ReconnectInterval = defaultReconnectInterval
+	}
+
+	return nil
 }
 
 func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
@@ -407,4 +455,60 @@ func (c *Client) GetSystemInfo() (SystemInfo, error) {
 	}
 
 	return info, nil
+}
+
+func (c *Client) GetSession(callID, sessionID string) (rtc.SessionConfig, int, error) {
+	reqURL := fmt.Sprintf("%s/calls/%s/sessions/%s", c.cfg.httpURL, callID, sessionID)
+
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		return rtc.SessionConfig{}, 0, fmt.Errorf("failed to build request: %w", err)
+	}
+	req.SetBasicAuth(c.cfg.ClientID, c.cfg.AuthKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return rtc.SessionConfig{}, 0, fmt.Errorf("http request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var cfg rtc.SessionConfig
+
+	if resp.StatusCode != http.StatusOK {
+		return rtc.SessionConfig{}, resp.StatusCode, fmt.Errorf("request failed with status %s", resp.Status)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
+		return rtc.SessionConfig{}, resp.StatusCode, fmt.Errorf("decoding http response failed: %w", err)
+	}
+
+	return cfg, resp.StatusCode, nil
+}
+
+func (c *Client) GetSessions(callID string) ([]rtc.SessionConfig, int, error) {
+	reqURL := fmt.Sprintf("%s/calls/%s/sessions", c.cfg.httpURL, callID)
+
+	req, err := http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to build request: %w", err)
+	}
+	req.SetBasicAuth(c.cfg.ClientID, c.cfg.AuthKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("http request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var cfgs []rtc.SessionConfig
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, resp.StatusCode, fmt.Errorf("request failed with status %s", resp.Status)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&cfgs); err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("decoding http response failed: %w", err)
+	}
+
+	return cfgs, resp.StatusCode, nil
 }
