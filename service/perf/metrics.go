@@ -25,11 +25,15 @@ var (
 type Metrics struct {
 	registry *prometheus.Registry
 
-	RTPTracks            *prometheus.GaugeVec
-	RTPTrackWrites       *prometheus.HistogramVec
-	RTCSessions          *prometheus.GaugeVec
-	RTCConnStateCounters *prometheus.CounterVec
-	RTCErrors            *prometheus.CounterVec
+	RTPTracks                  *prometheus.GaugeVec
+	RTPTrackWrites             *prometheus.HistogramVec
+	RTCSessions                *prometheus.GaugeVec
+	RTCConnStateCounters       *prometheus.CounterVec
+	RTCErrors                  *prometheus.CounterVec
+	RTCConnectionTime          *prometheus.HistogramVec
+	RTCDCOpenTime              *prometheus.HistogramVec
+	RTCSignalingLockGrabTime   *prometheus.HistogramVec
+	RTCSignalingLockLockedTime *prometheus.HistogramVec
 
 	RTCClientLoss   *prometheus.HistogramVec
 	RTCClientRTT    *prometheus.HistogramVec
@@ -130,6 +134,50 @@ func NewMetrics(namespace string, registry *prometheus.Registry) *Metrics {
 	)
 	m.registry.MustRegister(m.WSMessageCounters)
 
+	m.RTCConnectionTime = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: metricsSubSystemRTC,
+			Name:      "connection_time",
+			Help:      "Time taken to establish the connection",
+		},
+		[]string{"groupID"},
+	)
+	m.registry.MustRegister(m.RTCConnectionTime)
+
+	m.RTCDCOpenTime = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: metricsSubSystemRTC,
+			Name:      "dc_open_time",
+			Help:      "Time taken to open the data channel",
+		},
+		[]string{"groupID"},
+	)
+	m.registry.MustRegister(m.RTCDCOpenTime)
+
+	m.RTCSignalingLockGrabTime = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: metricsSubSystemRTC,
+			Name:      "signaling_lock_grab_time",
+			Help:      "Time taken to acquire the signaling lock",
+		},
+		[]string{"groupID"},
+	)
+	m.registry.MustRegister(m.RTCSignalingLockGrabTime)
+
+	m.RTCSignalingLockLockedTime = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: metricsSubSystemRTC,
+			Name:      "signaling_lock_locked_time",
+			Help:      "Time the signaling lock was held",
+		},
+		[]string{"groupID"},
+	)
+	m.registry.MustRegister(m.RTCSignalingLockLockedTime)
+
 	// Client metrics
 
 	m.RTCClientLoss = prometheus.NewHistogramVec(
@@ -225,4 +273,20 @@ func (m *Metrics) ObserveRTCClientRTT(groupID string, val float64) {
 
 func (m *Metrics) ObserveRTCClientJitter(groupID string, val float64) {
 	m.RTCClientJitter.With(prometheus.Labels{"groupID": groupID}).Observe(val)
+}
+
+func (m *Metrics) ObserveRTCConnectionTime(groupID string, dur float64) {
+	m.RTCConnectionTime.With(prometheus.Labels{"groupID": groupID}).Observe(dur)
+}
+
+func (m *Metrics) ObserveRTCDataChannelOpenTime(groupID string, dur float64) {
+	m.RTCDCOpenTime.With(prometheus.Labels{"groupID": groupID}).Observe(dur)
+}
+
+func (m *Metrics) ObserveRTCSignalingLockGrabTime(groupID string, dur float64) {
+	m.RTCSignalingLockGrabTime.With(prometheus.Labels{"groupID": groupID}).Observe(dur)
+}
+
+func (m *Metrics) ObserveRTCSignalingLockLockedTime(groupID string, dur float64) {
+	m.RTCSignalingLockLockedTime.With(prometheus.Labels{"groupID": groupID}).Observe(dur)
 }
