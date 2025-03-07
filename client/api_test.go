@@ -216,128 +216,248 @@ func TestAPIMuteUnmute(t *testing.T) {
 }
 
 func TestAPIMuteUnmuteNegotiation(t *testing.T) {
-	// Repeat test with EnableDCSignaling on and off
-	for _, v := range []bool{false, true} {
-		t.Run(fmt.Sprintf("EnableDCSignaling=%t", v), func(t *testing.T) {
-			th := setupTestHelper(t, "calls0")
-			th.userClient.cfg.EnableDCSignaling = v
-			th.adminClient.cfg.EnableDCSignaling = v
+	t.Run("single session", func(t *testing.T) {
+		// Repeat test with EnableDCSignaling on and off
+		for _, v := range []bool{false, true} {
+			t.Run(fmt.Sprintf("EnableDCSignaling=%t", v), func(t *testing.T) {
+				th := setupTestHelper(t, "calls0")
+				th.userClient.cfg.EnableDCSignaling = v
+				th.adminClient.cfg.EnableDCSignaling = v
 
-			// Setup
-			userConnectCh := make(chan struct{})
-			err := th.userClient.On(RTCConnectEvent, func(_ any) error {
-				close(userConnectCh)
-				return nil
-			})
-			require.NoError(t, err)
-
-			adminConnectCh := make(chan struct{})
-			err = th.adminClient.On(RTCConnectEvent, func(_ any) error {
-				close(adminConnectCh)
-				return nil
-			})
-			require.NoError(t, err)
-
-			go func() {
-				err := th.userClient.Connect()
+				// Setup
+				userConnectCh := make(chan struct{})
+				err := th.userClient.On(RTCConnectEvent, func(_ any) error {
+					close(userConnectCh)
+					return nil
+				})
 				require.NoError(t, err)
-			}()
 
-			go func() {
-				err := th.adminClient.Connect()
+				adminConnectCh := make(chan struct{})
+				err = th.adminClient.On(RTCConnectEvent, func(_ any) error {
+					close(adminConnectCh)
+					return nil
+				})
 				require.NoError(t, err)
-			}()
 
-			select {
-			case <-userConnectCh:
-			case <-time.After(waitTimeout):
-				require.Fail(t, "timed out waiting for user connect event")
-			}
+				go func() {
+					err := th.userClient.Connect()
+					require.NoError(t, err)
+				}()
 
-			select {
-			case <-adminConnectCh:
-			case <-time.After(waitTimeout):
-				require.Fail(t, "timed out waiting for admin connect event")
-			}
+				go func() {
+					err := th.adminClient.Connect()
+					require.NoError(t, err)
+				}()
 
-			userCloseCh := make(chan struct{})
-			adminCloseCh := make(chan struct{})
+				select {
+				case <-userConnectCh:
+				case <-time.After(waitTimeout):
+					require.Fail(t, "timed out waiting for user connect event")
+				}
 
-			userVoiceTrack := th.newVoiceTrack()
-			err = th.userClient.Unmute(userVoiceTrack)
-			require.NoError(t, err)
-			go th.voiceTrackWriter(userVoiceTrack, userCloseCh)
+				select {
+				case <-adminConnectCh:
+				case <-time.After(waitTimeout):
+					require.Fail(t, "timed out waiting for admin connect event")
+				}
 
-			time.Sleep(time.Second)
+				userCloseCh := make(chan struct{})
+				adminCloseCh := make(chan struct{})
 
-			err = th.userClient.Mute()
-			require.NoError(t, err)
+				userVoiceTrack := th.newVoiceTrack()
+				err = th.userClient.Unmute(userVoiceTrack)
+				require.NoError(t, err)
+				go th.voiceTrackWriter(userVoiceTrack, userCloseCh)
 
-			th.adminClient.pc.OnSignalingStateChange(func(st webrtc.SignalingState) {
-				if st == webrtc.SignalingStateStable {
-					th.adminClient.pc.OnNegotiationNeeded(func() {
-						require.FailNow(t, "negotiation should not be needed")
-					})
+				time.Sleep(time.Second)
+
+				err = th.userClient.Mute()
+				require.NoError(t, err)
+
+				th.adminClient.pc.OnSignalingStateChange(func(st webrtc.SignalingState) {
+					if st == webrtc.SignalingStateStable {
+						th.adminClient.pc.OnNegotiationNeeded(func() {
+							require.FailNow(t, "negotiation should not be needed")
+						})
+					}
+				})
+
+				th.userClient.pc.OnSignalingStateChange(func(st webrtc.SignalingState) {
+					if st == webrtc.SignalingStateStable {
+						th.userClient.pc.OnNegotiationNeeded(func() {
+							require.FailNow(t, "negotiation should not be needed")
+						})
+					}
+				})
+
+				adminVoiceTrack := th.newVoiceTrack()
+				err = th.adminClient.Unmute(adminVoiceTrack)
+				require.NoError(t, err)
+				go th.voiceTrackWriter(adminVoiceTrack, adminCloseCh)
+
+				err = th.userClient.Unmute(userVoiceTrack)
+				require.NoError(t, err)
+
+				time.Sleep(time.Second)
+
+				// Teardown
+
+				err = th.userClient.On(CloseEvent, func(_ any) error {
+					close(userCloseCh)
+					return nil
+				})
+				require.NoError(t, err)
+
+				err = th.adminClient.On(CloseEvent, func(_ any) error {
+					close(adminCloseCh)
+					return nil
+				})
+				require.NoError(t, err)
+
+				go func() {
+					err := th.userClient.Close()
+					require.NoError(t, err)
+				}()
+
+				go func() {
+					err := th.adminClient.Close()
+					require.NoError(t, err)
+				}()
+
+				select {
+				case <-userCloseCh:
+				case <-time.After(waitTimeout):
+					require.Fail(t, "timed out waiting for close event")
+				}
+
+				select {
+				case <-adminCloseCh:
+				case <-time.After(waitTimeout):
+					require.Fail(t, "timed out waiting for close event")
 				}
 			})
+		}
+	})
 
-			th.userClient.pc.OnSignalingStateChange(func(st webrtc.SignalingState) {
-				if st == webrtc.SignalingStateStable {
-					th.userClient.pc.OnNegotiationNeeded(func() {
-						require.FailNow(t, "negotiation should not be needed")
-					})
+	t.Run("concurrent unmutes", func(t *testing.T) {
+		// Repeat test with EnableDCSignaling on and off
+		for _, v := range []bool{false, true} {
+			t.Run(fmt.Sprintf("EnableDCSignaling=%t", v), func(t *testing.T) {
+				th := setupTestHelper(t, "calls0")
+				th.userClient.cfg.EnableDCSignaling = v
+				th.adminClient.cfg.EnableDCSignaling = v
+
+				// Setup
+				userConnectCh := make(chan struct{})
+				err := th.userClient.On(RTCConnectEvent, func(_ any) error {
+					close(userConnectCh)
+					return nil
+				})
+				require.NoError(t, err)
+
+				adminConnectCh := make(chan struct{})
+				err = th.adminClient.On(RTCConnectEvent, func(_ any) error {
+					close(adminConnectCh)
+					return nil
+				})
+				require.NoError(t, err)
+
+				userCloseCh := make(chan struct{})
+				adminCloseCh := make(chan struct{})
+
+				go func() {
+					err := th.userClient.Connect()
+					require.NoError(t, err)
+
+					userVoiceTrack := th.newVoiceTrack()
+
+					select {
+					case <-userConnectCh:
+					case <-time.After(waitTimeout):
+						require.Fail(t, "timed out waiting for user connect event")
+					}
+
+					err = th.userClient.Unmute(userVoiceTrack)
+					require.NoError(t, err)
+					go th.voiceTrackWriter(userVoiceTrack, userCloseCh)
+				}()
+
+				go func() {
+					err := th.adminClient.Connect()
+					require.NoError(t, err)
+
+					adminVoiceTrack := th.newVoiceTrack()
+
+					select {
+					case <-adminConnectCh:
+					case <-time.After(waitTimeout):
+						require.Fail(t, "timed out waiting for admin connect event")
+					}
+
+					err = th.adminClient.Unmute(adminVoiceTrack)
+					require.NoError(t, err)
+
+					go th.voiceTrackWriter(adminVoiceTrack, adminCloseCh)
+				}()
+
+				// Wait for negotiations to complete
+				time.Sleep(2 * time.Second)
+
+				// Verify tracks are received
+				var rxTracks []*webrtc.TrackRemote
+				for _, rx := range th.userClient.pc.GetReceivers() {
+					if rx.Track() != nil {
+						rxTracks = append(rxTracks, rx.Track())
+					}
+				}
+				require.Len(t, rxTracks, 1)
+				require.Equal(t, webrtc.RTPCodecTypeAudio, rxTracks[0].Kind())
+
+				rxTracks = nil
+				for _, rx := range th.adminClient.pc.GetReceivers() {
+					rxTracks = append(rxTracks, rx.Track())
+				}
+				require.Len(t, rxTracks, 1)
+				require.Equal(t, webrtc.RTPCodecTypeAudio, rxTracks[0].Kind())
+
+				// Teardown
+
+				err = th.userClient.On(CloseEvent, func(_ any) error {
+					close(userCloseCh)
+					return nil
+				})
+				require.NoError(t, err)
+
+				err = th.adminClient.On(CloseEvent, func(_ any) error {
+					close(adminCloseCh)
+					return nil
+				})
+				require.NoError(t, err)
+
+				go func() {
+					err := th.userClient.Close()
+					require.NoError(t, err)
+				}()
+
+				go func() {
+					err := th.adminClient.Close()
+					require.NoError(t, err)
+				}()
+
+				select {
+				case <-userCloseCh:
+				case <-time.After(waitTimeout):
+					require.Fail(t, "timed out waiting for close event")
+				}
+
+				select {
+				case <-adminCloseCh:
+				case <-time.After(waitTimeout):
+					require.Fail(t, "timed out waiting for close event")
 				}
 			})
-
-			adminVoiceTrack := th.newVoiceTrack()
-			err = th.adminClient.Unmute(adminVoiceTrack)
-			require.NoError(t, err)
-			go th.voiceTrackWriter(adminVoiceTrack, adminCloseCh)
-
-			time.Sleep(time.Second)
-
-			err = th.userClient.Unmute(userVoiceTrack)
-			require.NoError(t, err)
-
-			time.Sleep(time.Second)
-
-			// Teardown
-
-			err = th.userClient.On(CloseEvent, func(_ any) error {
-				close(userCloseCh)
-				return nil
-			})
-			require.NoError(t, err)
-
-			err = th.adminClient.On(CloseEvent, func(_ any) error {
-				close(adminCloseCh)
-				return nil
-			})
-			require.NoError(t, err)
-
-			go func() {
-				err := th.userClient.Close()
-				require.NoError(t, err)
-			}()
-
-			go func() {
-				err := th.adminClient.Close()
-				require.NoError(t, err)
-			}()
-
-			select {
-			case <-userCloseCh:
-			case <-time.After(waitTimeout):
-				require.Fail(t, "timed out waiting for close event")
-			}
-
-			select {
-			case <-adminCloseCh:
-			case <-time.After(waitTimeout):
-				require.Fail(t, "timed out waiting for close event")
-			}
-		})
-	}
+		}
+	})
 }
 
 func TestAPIRaiseLowerHand(t *testing.T) {

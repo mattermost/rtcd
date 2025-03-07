@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/time/rate"
 
+	"github.com/mattermost/rtcd/service/rtc/dc"
 	"github.com/mattermost/rtcd/service/rtc/vad"
 
 	"github.com/pion/interceptor/pkg/cc"
@@ -23,8 +24,9 @@ import (
 )
 
 const (
-	signalChSize = 20
-	tracksChSize = 100
+	signalChSize         = 20
+	tracksChSize         = 100
+	signalingLockTimeout = 5 * time.Second
 )
 
 // offerMessage is a wrapper struct to tie offers to a given answerCh
@@ -34,17 +36,27 @@ type offerMessage struct {
 	answerCh chan<- Message
 }
 
+type dcMessage struct {
+	msgType dc.MessageType
+	payload any
+}
+
 // session contains all the state necessary to connect a user to a call.
 type session struct {
 	cfg SessionConfig
 
 	// WebRTC
-	rtcConn       *webrtc.PeerConnection
-	tracksCh      chan trackActionContext
-	iceInCh       chan []byte
-	sdpOfferInCh  chan offerMessage
-	sdpAnswerInCh chan webrtc.SessionDescription
-	dcSDPCh       chan Message
+	rtcConn        *webrtc.PeerConnection
+	tracksCh       chan trackActionContext
+	iceInCh        chan []byte
+	sdpOfferInCh   chan offerMessage
+	sdpAnswerInCh  chan webrtc.SessionDescription
+	dcSDPCh        chan Message
+	dcOutCh        chan dcMessage
+	dcOpenCh       chan struct{}
+	signalingLock  *dc.Lock
+	startLockTime  time.Time
+	tracksInitDone bool
 
 	// Sender (publishing side)
 	outVoiceTrack        *webrtc.TrackLocalStaticRTP
@@ -120,7 +132,7 @@ func (s *Server) addSession(cfg SessionConfig, peerConn *webrtc.PeerConnection, 
 	return us, nil
 }
 
-func (s *Server) handleNegotiations(us *session, call *call) {
+func (s *Server) handleDCNegotiation(us *session, call *call) {
 	defer func() {
 		// Only close channel if not already closed. This can happen in case of a failure
 		// during the initial negotiation (e.g. timeout).
@@ -171,7 +183,17 @@ func (s *Server) handleNegotiations(us *session, call *call) {
 		us.handleICE(s.metrics)
 	}()
 
-	s.handleTracks(call, us)
+	start := time.Now()
+
+	// Wait for DC to be open before doing more signaling (e.g. sending out tracks). This ensures
+	// the DC can be used to synchronize any further signaling through dc.Lock
+	select {
+	case <-us.dcOpenCh:
+		s.metrics.ObserveRTCDataChannelOpenTime(us.cfg.GroupID, time.Since(start).Seconds())
+		s.log.Debug("DC is open, starting to handle tracks", mlog.String("sessionID", us.cfg.SessionID))
+		s.handleTracks(call, us)
+	case <-us.closeCh:
+	}
 
 	<-iceDoneCh
 }
@@ -613,4 +635,10 @@ func (s *session) dcSignaling() bool {
 	}
 
 	return s.cfg.Props.DCSignaling()
+}
+
+func (s *session) isTracksInitDone() bool {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+	return s.tracksInitDone
 }
