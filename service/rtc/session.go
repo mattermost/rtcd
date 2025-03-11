@@ -61,11 +61,19 @@ type session struct {
 	// Sender (publishing side)
 	outVoiceTrack        *webrtc.TrackLocalStaticRTP
 	outVoiceTrackEnabled bool
-	screenStreamID       string
-	outScreenTracks      map[string][]*webrtc.TrackLocalStaticRTP
-	outScreenAudioTrack  *webrtc.TrackLocalStaticRTP
-	remoteScreenTracks   map[string]*webrtc.TrackRemote
-	screenRateMonitors   map[string]*RateMonitor
+	remoteVoiceTrack     *webrtc.TrackRemote
+	// Screen sharing
+	screenStreamID         string
+	outScreenTracks        map[string][]*webrtc.TrackLocalStaticRTP
+	outScreenAudioTrack    *webrtc.TrackLocalStaticRTP
+	remoteScreenAudioTrack *webrtc.TrackRemote
+	remoteScreenTracks     map[string]*webrtc.TrackRemote
+	screenRateMonitors     map[string]*RateMonitor
+	// Video
+	videoStreamID     string
+	outVideoTracks    map[string][]*webrtc.TrackLocalStaticRTP
+	remoteVideoTracks map[string]*webrtc.TrackRemote
+	videoRateMonitors map[string]*RateMonitor
 
 	// Receiver
 	bwEstimator       cc.BandwidthEstimator
@@ -204,15 +212,10 @@ func (s *session) getScreenStreamID() string {
 	return s.screenStreamID
 }
 
-func (s *session) getRemoteScreenTrack(mimeType, rid string) *webrtc.TrackRemote {
+func (s *session) getVideoStreamID() string {
 	s.mut.RLock()
 	defer s.mut.RUnlock()
-
-	if rid == "" {
-		rid = SimulcastLevelDefault
-	}
-
-	return s.remoteScreenTracks[getTrackIndex(mimeType, rid)]
+	return s.videoStreamID
 }
 
 func (s *session) getSourceRate(mimeType, rid string) int {
@@ -307,7 +310,7 @@ func (s *session) handleReceiverRTCP(receiver *webrtc.RTPReceiver, rid string) {
 
 // handleSenderRTCP is used to listen for for RTCP packets such as PLI (Picture Loss Indication)
 // from a peer receiving a video track (e.g. screen).
-func (s *session) handleSenderRTCP(sender *webrtc.RTPSender) {
+func (s *session) handleSenderRTCP(sender *webrtc.RTPSender, remoteTrack *webrtc.TrackRemote, senderSession *session) {
 	for {
 		pkts, _, err := sender.ReadRTCP()
 		if err != nil {
@@ -326,44 +329,21 @@ func (s *session) handleSenderRTCP(sender *webrtc.RTPSender) {
 					s.log.Debug("received PLI request for track", mlog.String("sessionID", s.cfg.SessionID), mlog.Uint("SSRC", dstSSRC))
 				}
 
-				screenSession := s.call.getScreenSession()
-				if screenSession == nil {
-					s.log.Error("screenSession should not be nil", mlog.String("sessionID", s.cfg.SessionID))
-					return
-				}
-
-				senderTrack, ok := sender.Track().(*webrtc.TrackLocalStaticRTP)
-				if !ok {
-					s.log.Error("track conversion failed", mlog.String("sessionID", s.cfg.SessionID))
-					return
-				}
-
-				if senderTrack == nil {
-					s.log.Error("senderTrack should not be nil", mlog.String("sessionID", s.cfg.SessionID))
-					return
-				}
-
-				screenTrack := screenSession.getRemoteScreenTrack(senderTrack.Codec().MimeType, sender.Track().RID())
-				if screenTrack == nil {
-					s.log.Error("screenTrack should not be nil", mlog.String("sessionID", s.cfg.SessionID))
-					return
-				}
-
 				s.call.mut.Lock()
 				// We allow at most one PLI request per second for a given SSRC to avoid overloading the sender.
 				// If a receiving client were to miss it due to rate limiting (e.g. joining right in the second of backoff),
 				// it will request it again and eventually get it.
-				limiter, ok := s.call.pliLimiters[screenTrack.SSRC()]
+				limiter, ok := s.call.pliLimiters[remoteTrack.SSRC()]
 				if !ok {
-					s.log.Debug("creating new PLI limiter for track", mlog.Uint("SSRC", screenTrack.SSRC()))
+					s.log.Debug("creating new PLI limiter for track", mlog.Uint("SSRC", remoteTrack.SSRC()))
 					limiter = rate.NewLimiter(1, 1)
-					s.call.pliLimiters[screenTrack.SSRC()] = limiter
+					s.call.pliLimiters[remoteTrack.SSRC()] = limiter
 				}
 				s.call.mut.Unlock()
 
 				if limiter.Allow() {
-					s.log.Debug("forwarding PLI request for track", mlog.String("sessionID", s.cfg.SessionID), mlog.Uint("SSRC", screenTrack.SSRC()))
-					if err := screenSession.rtcConn.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(screenTrack.SSRC())}}); err != nil {
+					s.log.Debug("forwarding PLI request for track", mlog.String("sessionID", s.cfg.SessionID), mlog.Uint("SSRC", remoteTrack.SSRC()))
+					if err := senderSession.rtcConn.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(remoteTrack.SSRC())}}); err != nil {
 						s.log.Error("failed to write RTCP packet", mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
 						return
 					}
@@ -390,6 +370,10 @@ func (s *session) sendOffer(sdpOutCh chan<- Message) error {
 		return fmt.Errorf("failed to marshal sdp: %w", err)
 	}
 
+	if err := s.sendMediaMapping(); err != nil {
+		s.log.Error("failed to send media mapping", mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
+	}
+
 	select {
 	case sdpOutCh <- newMessage(s, SDPMessage, sdp):
 		return nil
@@ -399,13 +383,21 @@ func (s *session) sendOffer(sdpOutCh chan<- Message) error {
 }
 
 // addTrack adds the given track to the peer and starts negotiation.
-func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) (errRet error) {
-	if track == nil {
-		return fmt.Errorf("trying to add a nil track")
+func (s *session) addTrack(sdpOutCh chan<- Message, localTrack webrtc.TrackLocal, remoteTrack *webrtc.TrackRemote, senderSession *session) (errRet error) {
+	if localTrack == nil {
+		return fmt.Errorf("invalid nil localTrack")
+	}
+
+	if remoteTrack == nil {
+		return fmt.Errorf("invalid nil remoteTrack")
+	}
+
+	if senderSession == nil {
+		return fmt.Errorf("invalid nil senderSession")
 	}
 
 	s.log.Debug("addTrack", mlog.String("sessionID", s.cfg.SessionID),
-		mlog.String("trackID", track.ID()))
+		mlog.String("trackID", localTrack.ID()))
 
 	s.mut.Lock()
 	s.makingOffer = true
@@ -418,23 +410,23 @@ func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) (er
 
 	s.mut.Lock()
 	for _, sender := range s.rtcConn.GetSenders() {
-		if sender.Track() == track {
+		if sender.Track() == localTrack {
 			s.mut.Unlock()
 			return fmt.Errorf("sender for track already exists")
 		}
 	}
 
-	if track.Kind() == webrtc.RTPCodecTypeVideo && s.screenTrackSender != nil {
+	if getTrackType(localTrack.ID()) == trackTypeScreen && s.screenTrackSender != nil {
 		s.mut.Unlock()
 		return fmt.Errorf("screen track sender is already set")
 	}
 
-	sender, err := s.rtcConn.AddTrack(track)
+	sender, err := s.rtcConn.AddTrack(localTrack)
 	if err != nil {
 		s.mut.Unlock()
-		return fmt.Errorf("failed to add track %s: %w", track.ID(), err)
+		return fmt.Errorf("failed to add track %s: %w", localTrack.ID(), err)
 	}
-	s.call.metrics.IncRTPTracks(s.cfg.GroupID, "out", getTrackType(track.Kind()))
+	s.call.metrics.IncRTPTracks(s.cfg.GroupID, "out", getTrackKind(localTrack.Kind()))
 	s.mut.Unlock()
 
 	defer func() {
@@ -446,18 +438,18 @@ func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) (er
 		if err := sender.ReplaceTrack(nil); err != nil {
 			s.log.Error("failed to replace track",
 				mlog.String("sessionID", s.cfg.SessionID),
-				mlog.String("trackID", track.ID()))
+				mlog.String("trackID", localTrack.ID()))
 		} else {
-			s.call.metrics.DecRTPTracks(s.cfg.GroupID, "out", getTrackType(track.Kind()))
-			delete(s.rxTracks, track.ID())
+			s.call.metrics.DecRTPTracks(s.cfg.GroupID, "out", getTrackKind(localTrack.Kind()))
+			delete(s.rxTracks, localTrack.ID())
 		}
 		s.mut.Unlock()
 	}()
 
-	go s.handleSenderRTCP(sender)
+	go s.handleSenderRTCP(sender, remoteTrack, senderSession)
 
 	if err := s.sendOffer(sdpOutCh); err != nil {
-		return fmt.Errorf("failed to send offer for track %s: %w", track.ID(), err)
+		return fmt.Errorf("failed to send offer for track %s: %w", localTrack.ID(), err)
 	}
 
 	select {
@@ -466,14 +458,14 @@ func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) (er
 			return nil
 		}
 		if err := s.rtcConn.SetRemoteDescription(answer); err != nil {
-			return fmt.Errorf("failed to set remote description for track %s: %w", track.ID(), err)
+			return fmt.Errorf("failed to set remote description for track %s: %w", localTrack.ID(), err)
 		}
 
 		s.mut.Lock()
-		if track.Kind() == webrtc.RTPCodecTypeVideo {
+		if getTrackType(localTrack.ID()) == trackTypeScreen {
 			s.screenTrackSender = sender
 		}
-		s.rxTracks[track.ID()] = track
+		s.rxTracks[localTrack.ID()] = localTrack
 		s.mut.Unlock()
 	case <-time.After(signalingTimeout):
 		return fmt.Errorf("timed out signaling")
@@ -513,7 +505,7 @@ func (s *session) removeTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) 
 		s.mut.Unlock()
 		return fmt.Errorf("failed to remove track: %w", err)
 	}
-	s.call.metrics.DecRTPTracks(s.cfg.GroupID, "out", getTrackType(track.Kind()))
+	s.call.metrics.DecRTPTracks(s.cfg.GroupID, "out", getTrackKind(track.Kind()))
 	delete(s.rxTracks, track.ID())
 	if s.screenTrackSender == sender {
 		s.screenTrackSender = nil
@@ -641,4 +633,37 @@ func (s *session) isTracksInitDone() bool {
 	s.mut.RLock()
 	defer s.mut.RUnlock()
 	return s.tracksInitDone
+}
+
+func (s *session) sendMediaMapping() error {
+	mediaMap := dc.MediaMap{}
+
+	for _, trx := range s.rtcConn.GetTransceivers() {
+		if trx.Sender() == nil {
+			continue
+		}
+		track := trx.Sender().Track()
+		if track == nil {
+			s.log.Warn("track is nil", mlog.String("sessionID", s.cfg.SessionID))
+			continue
+		}
+		trackID := track.ID()
+		trackType := getTrackType(trackID)
+		if trackType == "" {
+			s.log.Warn("track type is empty", mlog.String("sessionID", s.cfg.SessionID), mlog.String("trackID", trackID))
+			continue
+		}
+		mediaMap[trx.Mid()] = dc.TrackInfo{
+			Type:     string(trackType),
+			SenderID: s.cfg.SessionID,
+		}
+	}
+
+	select {
+	case s.dcOutCh <- dcMessage{msgType: dc.MessageTypeMediaMap, payload: mediaMap}:
+	default:
+		return fmt.Errorf("failed to send MediaMap message: channel is full")
+	}
+
+	return nil
 }

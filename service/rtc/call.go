@@ -54,6 +54,9 @@ func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection, clo
 		outScreenTracks:    make(map[string][]*webrtc.TrackLocalStaticRTP),
 		remoteScreenTracks: make(map[string]*webrtc.TrackRemote),
 		screenRateMonitors: make(map[string]*RateMonitor),
+		outVideoTracks:     make(map[string][]*webrtc.TrackLocalStaticRTP),
+		remoteVideoTracks:  make(map[string]*webrtc.TrackRemote),
+		videoRateMonitors:  make(map[string]*RateMonitor),
 		log:                log,
 		call:               c,
 		rxTracks:           make(map[string]webrtc.TrackLocal),
@@ -109,7 +112,7 @@ func (c *call) clearScreenState(screenSession *session) error {
 			c.screenSession = nil
 		} else if s.screenTrackSender != nil {
 			select {
-			case s.tracksCh <- trackActionContext{action: trackActionRemove, track: s.screenTrackSender.Track()}:
+			case s.tracksCh <- trackActionContext{action: trackActionRemove, localTrack: s.screenTrackSender.Track()}:
 			default:
 				s.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", s.cfg.SessionID))
 			}
@@ -170,7 +173,7 @@ func (c *call) handleSessionClose(us *session) {
 		}
 	}
 	for _, track := range us.rxTracks {
-		c.metrics.DecRTPTracks(us.cfg.GroupID, "out", getTrackType(track.Kind()))
+		c.metrics.DecRTPTracks(us.cfg.GroupID, "out", getTrackKind(track.Kind()))
 	}
 
 	// We check whether the closing session was also sending any track
@@ -183,6 +186,11 @@ func (c *call) handleSessionClose(us *session) {
 		outTracks[us.outScreenAudioTrack.ID()] = true
 	}
 	for _, tracks := range us.outScreenTracks {
+		for _, track := range tracks {
+			outTracks[track.ID()] = true
+		}
+	}
+	for _, tracks := range us.outVideoTracks {
 		for _, track := range tracks {
 			outTracks[track.ID()] = true
 		}
@@ -214,7 +222,7 @@ func (c *call) handleSessionClose(us *session) {
 				// sharing ends.
 				if track.Kind() == webrtc.RTPCodecTypeVideo {
 					select {
-					case ss.tracksCh <- trackActionContext{action: trackActionRemove, track: track}:
+					case ss.tracksCh <- trackActionContext{action: trackActionRemove, localTrack: track}:
 					default:
 						ss.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", ss.cfg.SessionID))
 					}

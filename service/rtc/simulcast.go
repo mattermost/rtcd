@@ -227,14 +227,14 @@ func (s *session) handleSenderBitrateChange(downRate int, lossRate int) (bool, i
 	)
 
 	select {
-	case s.tracksCh <- trackActionContext{action: trackActionRemove, track: currTrack}:
+	case s.tracksCh <- trackActionContext{action: trackActionRemove, localTrack: currTrack}:
 	default:
 		s.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", s.cfg.SessionID))
 		return false, 0, ""
 	}
 
 	select {
-	case s.tracksCh <- trackActionContext{action: trackActionAdd, track: newTrack}:
+	case s.tracksCh <- trackActionContext{action: trackActionAdd, localTrack: newTrack}:
 	default:
 		s.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", s.cfg.SessionID))
 		return false, 0, ""

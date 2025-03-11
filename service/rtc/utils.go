@@ -21,12 +21,14 @@ const (
 	trackTypeVoice       trackType = "voice"
 	trackTypeScreen      trackType = "screen"
 	trackTypeScreenAudio trackType = "screen-audio"
+	trackTypeVideo       trackType = "video"
 )
 
 var trackTypes = map[string]trackType{
 	"voice":        trackTypeVoice,
 	"screen":       trackTypeScreen,
 	"screen-audio": trackTypeScreenAudio,
+	"video":        trackTypeVideo,
 }
 
 func genTrackID(tt trackType, baseID string) string {
@@ -46,7 +48,16 @@ func isValidTrackID(trackID string) bool {
 	return trackTypes[fields[0]] != ""
 }
 
-func getTrackType(kind webrtc.RTPCodecType) string {
+func getTrackType(trackID string) trackType {
+	fields := strings.Split(trackID, "_")
+	if len(fields) != 3 {
+		return ""
+	}
+
+	return trackTypes[fields[0]]
+}
+
+func getTrackKind(kind webrtc.RTPCodecType) string {
 	if kind == webrtc.RTPCodecTypeAudio {
 		return "audio"
 	}
