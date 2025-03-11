@@ -23,7 +23,6 @@ const (
 	VoiceOffMessage
 	VideoOnMessage
 	VideoOffMessage
-	MediaMapMessage
 )
 
 type Message struct {

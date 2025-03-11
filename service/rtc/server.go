@@ -299,7 +299,7 @@ func (s *Server) msgReader() {
 			session.outVoiceTrackEnabled = enabled
 			session.mut.Unlock()
 		default:
-			s.log.Error("received unexpected message type")
+			s.log.Error("received unexpected message type", mlog.Int("msgType", int(msg.Type)))
 		}
 	}
 }

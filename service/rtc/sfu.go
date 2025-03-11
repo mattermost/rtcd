@@ -392,7 +392,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 		if trackMimeType == rtpAudioCodec.MimeType {
 			trackType := trackTypeVoice
-			if streamID == screenStreamID {
+			if streamID != "" && streamID == screenStreamID {
 				s.log.Debug("received screen sharing audio track", mlog.String("sessionID", us.cfg.SessionID))
 				trackType = trackTypeScreenAudio
 			}
