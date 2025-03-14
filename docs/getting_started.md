@@ -3,8 +3,9 @@
 ## Prerequisites
 
 - An [Enterprise](https://docs.mattermost.com/about/editions-and-offerings.html#mattermost-enterprise) licensed Mattermost installation with [Calls](https://github.com/mattermost/mattermost-plugin-calls) installed.
-- A working version of [Docker](https://www.docker.com/) installed, if [running as a container](#as-a-docker-container)
-- [systemd](https://systemd.io/), if [running as a simple service](#as-a-systemd-service)
+  - A working version of [Docker](https://www.docker.com/) installed, if [running as a container](#as-a-docker-container)
+  - OR
+  - [systemd](https://systemd.io/), if [running as a simple service](#as-a-systemd-service)
 
 ## Installation
 
