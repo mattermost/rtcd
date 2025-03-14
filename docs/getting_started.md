@@ -3,7 +3,8 @@
 ## Prerequisites
 
 - An [Enterprise](https://docs.mattermost.com/about/editions-and-offerings.html#mattermost-enterprise) licensed Mattermost installation with [Calls](https://github.com/mattermost/mattermost-plugin-calls) installed.
-- A working version of [Docker](https://www.docker.com/) installed.
+- A working version of [Docker](https://www.docker.com/) installed, if [running as a container](#as-a-docker-container)
+- [systemd](https://systemd.io/), if [running as a simple service](#as-a-systemd-service)
 
 ## Installation
 
@@ -15,8 +16,7 @@ docker pull mattermost/rtcd:latest
 
 ## Running
 
-
-### Docker
+### As a Docker container
 
 To start `rtcd` we can run the following command:
 
@@ -27,11 +27,11 @@ docker run --name rtcd -e "RTCD_LOGGER_ENABLEFILE=false" -e "RTCD_API_SECURITY_A
 > **_Note:_**
 >
 >- By default the service starts even if no configuration file is provided. In such case default values are used. In the example above we are overriding a couple of config settings:
->    - `logger.enable_file` We set this to `false` to prevent warnings since the process has no permissions to write files. If a log file is needed a volume should be mounted accordingly.
->    - `api.security.allow_self_registration` We set this to `true` so that clients (Mattermost instances) can automatically self register and authenticate to the service without manually having to create accounts. This is fine as long as the service is running in an internal/private network.
+>   - `logger.enable_file` We set this to `false` to prevent warnings since the process has no permissions to write files. If a log file is needed a volume should be mounted accordingly.
+>   - `api.security.allow_self_registration` We set this to `true` so that clients (Mattermost instances) can automatically self register and authenticate to the service without manually having to create accounts. This is fine as long as the service is running in an internal/private network.
 >- We are exposing to the host the two ports the service is listening on:
->    - `8443/udp` and `8443/tcp` are the ports used to route all the calls related media traffic (i.e. voice, screen share). The first one (UDP) is preferred but the latter (TCP) can be used as a fallback.
->    - `8045/tcp` Is the port used to serve the HTTP/WebSocket internal API to communicate with the Mattermost side (Calls plugin).
+>   - `8443/udp` and `8443/tcp` are the ports used to route all the calls related media traffic (i.e. voice, screen share). The first one (UDP) is preferred but the latter (TCP) can be used as a fallback.
+>   - `8045/tcp` Is the port used to serve the HTTP/WebSocket internal API to communicate with the Mattermost side (Calls plugin).
 
 #### Running with config file
 
@@ -41,7 +41,7 @@ Of course it's also possible to provide the service with a complete config file 
 docker run --name rtcd -v /path/to/rtcd/config:/config mattermost/rtcd -config /config/config.toml
 ```
 
-### Systemd
+### As a systemd service
 
 Alternatively, the `rtcd` binary can be executed using a systemd service file.
 
@@ -68,7 +68,8 @@ WantedBy=multi-user.target
 ```
 
 > **_Note:_** By default the service starts even if no configuration file is provided. In such case default values are used. In the service file above we are overriding a config setting through environment variables:
->    - `api.security.allow_self_registration` We set this to `true` so that clients (Mattermost instances) can automatically self register and authenticate to the service without manually having to create accounts. This is fine as long as the service is running in an internal/private network.
+>
+> - `api.security.allow_self_registration` We set this to `true` so that clients (Mattermost instances) can automatically self register and authenticate to the service without manually having to create accounts. This is fine as long as the service is running in an internal/private network.
 
 Load the service file:
 
