@@ -73,9 +73,7 @@ const (
 	clientStateClosed
 )
 
-var (
-	ErrAlreadySubscribed = errors.New("already subscribed")
-)
+var ErrAlreadySubscribed = errors.New("already subscribed")
 
 // Client is a Golang implementation of a client for Mattermost Calls.
 type Client struct {
@@ -98,13 +96,16 @@ type Client struct {
 	currentConnID       string
 
 	// WebRTC
-	pc                 *webrtc.PeerConnection
-	dc                 atomic.Pointer[webrtc.DataChannel]
-	iceCh              chan webrtc.ICECandidateInit
-	receivers          map[string][]*webrtc.RTPReceiver
-	voiceSender        *webrtc.RTPSender
-	screenTransceivers []*webrtc.RTPTransceiver
-	rtcMon             *rtcMonitor
+	pc                   *webrtc.PeerConnection
+	dc                   atomic.Pointer[webrtc.DataChannel]
+	dcNegotiationStarted atomic.Bool
+	dcNegotiated         atomic.Bool
+	dcLockedCh           chan bool
+	iceCh                chan webrtc.ICECandidateInit
+	receivers            map[string][]*webrtc.RTPReceiver
+	voiceSender          *webrtc.RTPSender
+	screenTransceivers   []*webrtc.RTPTransceiver
+	rtcMon               *rtcMonitor
 
 	state int32
 
@@ -138,6 +139,7 @@ func New(cfg Config, opts ...Option) (*Client, error) {
 		iceCh:         make(chan webrtc.ICECandidateInit, iceChSize),
 		receivers:     make(map[string][]*webrtc.RTPReceiver),
 		apiClient:     apiClient,
+		dcLockedCh:    make(chan bool, 1),
 	}
 
 	for _, opt := range opts {

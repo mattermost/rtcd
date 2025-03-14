@@ -25,6 +25,8 @@ const (
 	MessageTypeLossRate                             // float64
 	MessageTypeRoundTripTime                        // float64
 	MessageTypeJitter                               // float64
+	MessageTypeLock                                 // bool
+	MessageTypeUnlock                               // no payload
 )
 
 // Supported payloads
@@ -118,6 +120,18 @@ func DecodeMessage(msg []byte) (MessageType, any, error) {
 			return 0, nil, fmt.Errorf("failed to decode message type %d: %w", t, err)
 		}
 		return MessageType(t), payload, nil
+	case MessageTypeLock:
+		// MessageTypeLock can either be used as a request or as a response.
+		// A payload is expected in response only.
+		var payload bool
+		err := dec.Decode(&payload)
+		if err == nil {
+			return MessageTypeLock, payload, nil
+		}
+
+		return MessageTypeLock, nil, nil
+	case MessageTypeUnlock:
+		return MessageTypeUnlock, nil, nil
 	}
 
 	return 0, nil, fmt.Errorf("unexpected dc message type: %d", t)

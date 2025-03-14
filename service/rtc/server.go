@@ -11,8 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mattermost/rtcd/service/rtc/dc"
-
 	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
 
@@ -375,40 +373,6 @@ func (s *Server) handleIncomingSDP(us *session, answerCh chan<- Message, data []
 		}
 	} else {
 		return fmt.Errorf("unexpected sdp type: %d", sdp.Type)
-	}
-
-	return nil
-}
-
-func (s *Server) handleDCMessage(data []byte, us *session, dataCh *webrtc.DataChannel) error {
-	mt, payload, err := dc.DecodeMessage(data)
-	if err != nil {
-		return fmt.Errorf("failed to decode DC message: %w", err)
-	}
-
-	// Identify and handle message
-	switch mt {
-	case dc.MessageTypePong:
-		// nothing to do as pong is only received by clients at this point
-	case dc.MessageTypePing:
-		data, err := dc.EncodeMessage(dc.MessageTypePong, nil)
-		if err != nil {
-			return fmt.Errorf("failed to encode pong message: %w", err)
-		}
-
-		if err := dataCh.Send(data); err != nil {
-			return fmt.Errorf("failed to send pong message: %w", err)
-		}
-	case dc.MessageTypeSDP:
-		if err := s.handleIncomingSDP(us, us.dcSDPCh, payload.([]byte)); err != nil {
-			return fmt.Errorf("failed to handle incoming sdp message: %w", err)
-		}
-	case dc.MessageTypeLossRate:
-		s.metrics.ObserveRTCClientLossRate(us.cfg.GroupID, payload.(float64))
-	case dc.MessageTypeRoundTripTime:
-		s.metrics.ObserveRTCClientRTT(us.cfg.GroupID, payload.(float64))
-	case dc.MessageTypeJitter:
-		s.metrics.ObserveRTCClientJitter(us.cfg.GroupID, payload.(float64))
 	}
 
 	return nil
