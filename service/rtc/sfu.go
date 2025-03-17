@@ -351,6 +351,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		s.log.Debug("new track received",
 			mlog.Any("codec", remoteTrack.Codec().RTPCodecCapability),
 			mlog.Int("payload", int(remoteTrack.PayloadType())),
+			mlog.Int("kind", int(remoteTrack.Kind())),
 			mlog.String("type", trackMimeType),
 			mlog.String("streamID", streamID),
 			mlog.String("remoteTrackID", remoteTrack.ID()),
@@ -390,7 +391,8 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 		if trackMimeType == rtpAudioCodec.MimeType {
 			trackType := trackTypeVoice
-			if streamID == screenStreamID {
+			if streamID != "" && streamID == screenStreamID {
+ {
 				s.log.Debug("received screen sharing audio track", mlog.String("sessionID", us.cfg.SessionID))
 				trackType = trackTypeScreenAudio
 			}
