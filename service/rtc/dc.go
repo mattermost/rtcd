@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
 	"github.com/mattermost/rtcd/service/rtc/dc"
 	"github.com/pion/webrtc/v4"
@@ -100,7 +101,7 @@ func (s *Server) handleDCMessage(data []byte, us *session, dataCh *webrtc.DataCh
 	case dc.MessageTypeLock:
 		locked := us.signalingLock.TryLock()
 		if locked {
-			us.startLockTime = time.Now()
+			us.startLockTime.Store(model.NewPointer(time.Now()))
 		}
 
 		s.log.Debug("received lock message", mlog.String("sessionID", us.cfg.SessionID), mlog.Bool("locked", locked))
@@ -114,9 +115,9 @@ func (s *Server) handleDCMessage(data []byte, us *session, dataCh *webrtc.DataCh
 			return fmt.Errorf("failed to send lock message: channel is full")
 		}
 	case dc.MessageTypeUnlock:
-		if !us.startLockTime.IsZero() {
-			s.metrics.ObserveRTCSignalingLockLockedTime(us.cfg.GroupID, time.Since(us.startLockTime).Seconds())
-			us.startLockTime = time.Time{}
+		if startLockTime := us.startLockTime.Load(); startLockTime != nil && !startLockTime.IsZero() {
+			s.metrics.ObserveRTCSignalingLockLockedTime(us.cfg.GroupID, time.Since(*startLockTime).Seconds())
+			us.startLockTime.Store(model.NewPointer(time.Time{}))
 		}
 
 		s.log.Debug("received unlock message", mlog.String("sessionID", us.cfg.SessionID))

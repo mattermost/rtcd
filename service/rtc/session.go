@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -55,8 +56,8 @@ type session struct {
 	dcOutCh        chan dcMessage
 	dcOpenCh       chan struct{}
 	signalingLock  *dc.Lock
-	startLockTime  time.Time
-	tracksInitDone bool
+	startLockTime  atomic.Pointer[time.Time]
+	tracksInitDone atomic.Bool
 
 	// Sender (publishing side)
 	outVoiceTrack        *webrtc.TrackLocalStaticRTP
@@ -635,10 +636,4 @@ func (s *session) dcSignaling() bool {
 	}
 
 	return s.cfg.Props.DCSignaling()
-}
-
-func (s *session) isTracksInitDone() bool {
-	s.mut.RLock()
-	defer s.mut.RUnlock()
-	return s.tracksInitDone
 }

@@ -417,7 +417,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				// that hasn't finished initializing its tracks (they are still connecting).
 				// This is to avoid queuing duplicate tracks. The call of call.mut.Lock() is needed to guarantee
 				// we won't be missing any tracks.
-				if ss.cfg.SessionID == us.cfg.SessionID || !ss.isTracksInitDone() {
+				if ss.cfg.SessionID == us.cfg.SessionID || !ss.tracksInitDone.Load() {
 					return
 				}
 
@@ -560,7 +560,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				// that hasn't finished initializing its tracks (they are still connecting).
 				// This is to avoid queuing duplicate tracks. The call of call.mut.Lock() is needed to guarantee
 				// we won't be missing any tracks.
-				if ss.cfg.SessionID == us.cfg.SessionID || !ss.isTracksInitDone() {
+				if ss.cfg.SessionID == us.cfg.SessionID || !ss.tracksInitDone.Load() {
 					return
 				}
 
@@ -794,9 +794,7 @@ func (s *Server) handleTracks(call *call, us *session) {
 			}
 		}
 	})
-	us.mut.Lock()
-	us.tracksInitDone = true
-	us.mut.Unlock()
+	us.tracksInitDone.Store(true)
 	call.mut.Unlock()
 
 	// Incoming offers handler. This requires a dedicated goroutine since the other handler below could be blocked
