@@ -122,6 +122,15 @@ func (c *Client) handleAnswer(sdp string) error {
 		}
 	}
 
+	if c.dcNegotiated.Load() {
+		c.log.Debug("unlocking signaling lock")
+		if err := c.unlockSignalingLock(); err != nil {
+			c.log.Error("failed to unlock signaling lock", slog.String("err", err.Error()))
+		}
+	} else {
+		c.dcNegotiated.Store(true)
+	}
+
 	return nil
 }
 
@@ -337,9 +346,7 @@ func (c *Client) initRTCSession() error {
 		})
 	})
 
-	pc.OnNegotiationNeeded(func() {
-		c.log.Debug("negotiation needed")
-
+	onNegotiationNeeded := func() {
 		offer, err := pc.CreateOffer(nil)
 		if err != nil {
 			c.log.Error("failed to create offer", slog.String("err", err.Error()))
@@ -390,6 +397,24 @@ func (c *Client) initRTCSession() error {
 				return
 			}
 		}
+	}
+
+	pc.OnNegotiationNeeded(func() {
+		c.log.Debug("negotiation needed")
+
+		if !c.dcNegotiationStarted.Load() {
+			onNegotiationNeeded()
+			c.dcNegotiationStarted.Store(true)
+			return
+		}
+
+		go func() {
+			if err := c.grabSignalingLock(); err != nil {
+				c.log.Error("failed to grab signaling lock", slog.String("err", err.Error()))
+				return
+			}
+			onNegotiationNeeded()
+		}()
 	})
 
 	// DC creation must happen after OnNegotiationNeeded has been registered
@@ -491,10 +516,66 @@ func (c *Client) initRTCSession() error {
 					c.log.Error("failed to answer", slog.String("err", err.Error()))
 				}
 			}
+		case dc.MessageTypeLock:
+			locked := payload.(bool)
+			c.log.Debug("received lock message", slog.Bool("locked", locked))
+			select {
+			case c.dcLockedCh <- locked:
+			default:
+				c.log.Error("dcLockedCh is full")
+			}
 		default:
 			c.log.Error("unexpected dc message type", slog.Any("mt", mt))
 		}
 	})
 
 	return nil
+}
+
+func (c *Client) unlockSignalingLock() error {
+	dataCh := c.dc.Load()
+	if dataCh == nil || dataCh.ReadyState() != webrtc.DataChannelStateOpen {
+		return fmt.Errorf("dc not connected")
+	}
+	msg, err := dc.EncodeMessage(dc.MessageTypeUnlock, nil)
+	if err != nil {
+		return fmt.Errorf("failed to encode unlock msg: %w", err)
+	}
+	if err := dataCh.Send(msg); err != nil {
+		return fmt.Errorf("failed to send unlock msg: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Client) grabSignalingLock() error {
+	for {
+		c.log.Debug("attempting to grab signaling lock")
+		dataCh := c.dc.Load()
+		if dataCh == nil || dataCh.ReadyState() != webrtc.DataChannelStateOpen {
+			return fmt.Errorf("dc not connected")
+		}
+		msg, err := dc.EncodeMessage(dc.MessageTypeLock, nil)
+		if err != nil {
+			return fmt.Errorf("failed to encode lock msg: %w", err)
+		}
+		if err := dataCh.Send(msg); err != nil {
+			return fmt.Errorf("failed to send lock msg: %w", err)
+		}
+
+		select {
+		case locked := <-c.dcLockedCh:
+			if locked {
+				c.log.Debug("dc lock acquired")
+				return nil
+			}
+			c.log.Debug("dc lock not acquired, retrying")
+			time.Sleep(100 * time.Millisecond)
+			continue
+		case <-time.After(5 * time.Second):
+			return fmt.Errorf("failed to lock dc")
+		case <-c.wsCloseCh:
+			return fmt.Errorf("closing")
+		}
+	}
 }

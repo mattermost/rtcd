@@ -9,10 +9,12 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/time/rate"
 
+	"github.com/mattermost/rtcd/service/rtc/dc"
 	"github.com/mattermost/rtcd/service/rtc/vad"
 
 	"github.com/pion/interceptor/pkg/cc"
@@ -23,8 +25,9 @@ import (
 )
 
 const (
-	signalChSize = 20
-	tracksChSize = 100
+	signalChSize         = 20
+	tracksChSize         = 100
+	signalingLockTimeout = 5 * time.Second
 )
 
 // offerMessage is a wrapper struct to tie offers to a given answerCh
@@ -34,17 +37,27 @@ type offerMessage struct {
 	answerCh chan<- Message
 }
 
+type dcMessage struct {
+	msgType dc.MessageType
+	payload any
+}
+
 // session contains all the state necessary to connect a user to a call.
 type session struct {
 	cfg SessionConfig
 
 	// WebRTC
-	rtcConn       *webrtc.PeerConnection
-	tracksCh      chan trackActionContext
-	iceInCh       chan []byte
-	sdpOfferInCh  chan offerMessage
-	sdpAnswerInCh chan webrtc.SessionDescription
-	dcSDPCh       chan Message
+	rtcConn        *webrtc.PeerConnection
+	tracksCh       chan trackActionContext
+	iceInCh        chan []byte
+	sdpOfferInCh   chan offerMessage
+	sdpAnswerInCh  chan webrtc.SessionDescription
+	dcSDPCh        chan Message
+	dcOutCh        chan dcMessage
+	dcOpenCh       chan struct{}
+	signalingLock  *dc.Lock
+	startLockTime  atomic.Pointer[time.Time]
+	tracksInitDone atomic.Bool
 
 	// Sender (publishing side)
 	outVoiceTrack        *webrtc.TrackLocalStaticRTP
@@ -120,7 +133,7 @@ func (s *Server) addSession(cfg SessionConfig, peerConn *webrtc.PeerConnection, 
 	return us, nil
 }
 
-func (s *Server) handleNegotiations(us *session, call *call) {
+func (s *Server) handleDCNegotiation(us *session, call *call) {
 	defer func() {
 		// Only close channel if not already closed. This can happen in case of a failure
 		// during the initial negotiation (e.g. timeout).
@@ -171,7 +184,17 @@ func (s *Server) handleNegotiations(us *session, call *call) {
 		us.handleICE(s.metrics)
 	}()
 
-	s.handleTracks(call, us)
+	start := time.Now()
+
+	// Wait for DC to be open before doing more signaling (e.g. sending out tracks). This ensures
+	// the DC can be used to synchronize any further signaling through dc.Lock
+	select {
+	case <-us.dcOpenCh:
+		s.metrics.ObserveRTCDataChannelOpenTime(us.cfg.GroupID, time.Since(start).Seconds())
+		s.log.Debug("DC is open, starting to handle tracks", mlog.String("sessionID", us.cfg.SessionID))
+		s.handleTracks(call, us)
+	case <-us.closeCh:
+	}
 
 	<-iceDoneCh
 }
@@ -412,7 +435,7 @@ func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) (er
 		s.mut.Unlock()
 		return fmt.Errorf("failed to add track %s: %w", track.ID(), err)
 	}
-	s.call.metrics.IncRTPTracks(s.cfg.GroupID, "out", getTrackType(track.Kind()))
+	s.call.metrics.IncRTPTracks(s.cfg.GroupID, "out", getTrackMimeType(track))
 	s.mut.Unlock()
 
 	defer func() {
@@ -426,7 +449,7 @@ func (s *session) addTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) (er
 				mlog.String("sessionID", s.cfg.SessionID),
 				mlog.String("trackID", track.ID()))
 		} else {
-			s.call.metrics.DecRTPTracks(s.cfg.GroupID, "out", getTrackType(track.Kind()))
+			s.call.metrics.DecRTPTracks(s.cfg.GroupID, "out", getTrackMimeType(track))
 			delete(s.rxTracks, track.ID())
 		}
 		s.mut.Unlock()
@@ -491,7 +514,7 @@ func (s *session) removeTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) 
 		s.mut.Unlock()
 		return fmt.Errorf("failed to remove track: %w", err)
 	}
-	s.call.metrics.DecRTPTracks(s.cfg.GroupID, "out", getTrackType(track.Kind()))
+	s.call.metrics.DecRTPTracks(s.cfg.GroupID, "out", getTrackMimeType(track))
 	delete(s.rxTracks, track.ID())
 	if s.screenTrackSender == sender {
 		s.screenTrackSender = nil

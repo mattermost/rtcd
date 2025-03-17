@@ -14,7 +14,6 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/mattermost/rtcd/service/random"
-	"github.com/mattermost/rtcd/service/rtc/dc"
 
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
 
@@ -192,6 +191,8 @@ func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, <-chan cc.B
 }
 
 func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
+	start := time.Now()
+
 	if err := cfg.IsValid(); err != nil {
 		return fmt.Errorf("invalid session config: %w", err)
 	}
@@ -310,6 +311,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		if state == webrtc.PeerConnectionStateConnected {
 			s.log.Debug("rtc connected!", mlog.String("sessionID", cfg.SessionID))
 			s.metrics.IncRTCConnState("connected")
+			s.metrics.ObserveRTCConnectionTime(cfg.GroupID, time.Since(start).Seconds())
 		} else if state == webrtc.PeerConnectionStateDisconnected {
 			s.log.Debug("peer connection disconnected", mlog.String("sessionID", cfg.SessionID))
 			s.metrics.IncRTCConnState("disconnected")
@@ -339,42 +341,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 	})
 
 	peerConn.OnDataChannel(func(dataCh *webrtc.DataChannel) {
-		s.log.Debug("data channel open", mlog.String("sessionID", cfg.SessionID))
-
-		go func() {
-			for {
-				select {
-				case msg := <-us.dcSDPCh:
-					dcMsg, err := dc.EncodeMessage(dc.MessageTypeSDP, msg.Data)
-					if err != nil {
-						s.log.Error("failed to encode sdp message", mlog.Err(err), mlog.String("sessionID", cfg.SessionID))
-						continue
-					}
-
-					if err := dataCh.Send(dcMsg); err != nil {
-						s.log.Error("failed to send message", mlog.Err(err), mlog.String("sessionID", cfg.SessionID))
-						continue
-					}
-				case <-us.closeCh:
-					return
-				}
-			}
-		}()
-
-		dataCh.OnMessage(func(msg webrtc.DataChannelMessage) {
-			// DEPRECATED
-			// keeping this for compatibility with older clients (i.e. mobile)
-			if string(msg.Data) == "ping" {
-				if err := dataCh.SendText("pong"); err != nil {
-					s.log.Error("failed to send message", mlog.Err(err), mlog.String("sessionID", cfg.SessionID))
-				}
-				return
-			}
-
-			if err := s.handleDCMessage(msg.Data, us, dataCh); err != nil {
-				s.log.Error("failed to handle dc message", mlog.Err(err), mlog.String("sessionID", cfg.SessionID))
-			}
-		})
+		s.handleDC(us, dataCh)
 	})
 
 	peerConn.OnTrack(func(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
@@ -384,6 +351,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		s.log.Debug("new track received",
 			mlog.Any("codec", remoteTrack.Codec().RTPCodecCapability),
 			mlog.Int("payload", int(remoteTrack.PayloadType())),
+			mlog.Int("kind", int(remoteTrack.Kind())),
 			mlog.String("type", trackMimeType),
 			mlog.String("streamID", streamID),
 			mlog.String("remoteTrackID", remoteTrack.ID()),
@@ -392,7 +360,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			mlog.String("sessionID", us.cfg.SessionID),
 		)
 
-		s.metrics.IncRTPTracks(us.cfg.GroupID, "in", getTrackType(remoteTrack.Kind()))
+		s.metrics.IncRTPTracks(us.cfg.GroupID, "in", trackMimeType)
 		defer func() {
 			s.log.Debug("exiting track handler",
 				mlog.String("streamID", streamID),
@@ -411,7 +379,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					mlog.String("sessionID", us.cfg.SessionID))
 			}
 
-			s.metrics.DecRTPTracks(us.cfg.GroupID, "in", getTrackType(remoteTrack.Kind()))
+			s.metrics.DecRTPTracks(us.cfg.GroupID, "in", trackMimeType)
 		}()
 
 		var screenStreamID string
@@ -423,7 +391,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 		if trackMimeType == rtpAudioCodec.MimeType {
 			trackType := trackTypeVoice
-			if streamID == screenStreamID {
+			if streamID != "" && streamID == screenStreamID {
 				s.log.Debug("received screen sharing audio track", mlog.String("sessionID", us.cfg.SessionID))
 				trackType = trackTypeScreenAudio
 			}
@@ -434,6 +402,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				return
 			}
 
+			call.mut.Lock()
 			us.mut.Lock()
 			if trackType == trackTypeVoice {
 				us.outVoiceTrack = outAudioTrack
@@ -444,9 +413,14 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			us.mut.Unlock()
 
 			call.iterSessions(func(ss *session) {
-				if ss.cfg.SessionID == us.cfg.SessionID {
+				// We skip sending the track to the current session (the one sending it) and to any session
+				// that hasn't finished initializing its tracks (they are still connecting).
+				// This is to avoid queuing duplicate tracks. The call of call.mut.Lock() is needed to guarantee
+				// we won't be missing any tracks.
+				if ss.cfg.SessionID == us.cfg.SessionID || !ss.tracksInitDone.Load() {
 					return
 				}
+
 				select {
 				case ss.tracksCh <- trackActionContext{action: trackActionAdd, track: outAudioTrack}:
 				default:
@@ -458,6 +432,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					)
 				}
 			})
+			call.mut.Unlock()
 
 			var audioLevelExtensionID int
 			for _, ext := range receiver.GetParameters().HeaderExtensions {
@@ -571,6 +546,9 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			}
 
 			trackIdx := getTrackIndex(trackMimeType, rid)
+
+			call.mut.Lock()
+
 			us.mut.Lock()
 			us.outScreenTracks[trackIdx] = outScreenTracks
 			us.remoteScreenTracks[trackIdx] = remoteTrack
@@ -578,7 +556,11 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			us.mut.Unlock()
 
 			call.iterSessions(func(ss *session) {
-				if ss.cfg.SessionID == us.cfg.SessionID {
+				// We skip sending the track to the current session (the one sending it) and to any session
+				// that hasn't finished initializing its tracks (they are still connecting).
+				// This is to avoid queuing duplicate tracks. The call of call.mut.Lock() is needed to guarantee
+				// we won't be missing any tracks.
+				if ss.cfg.SessionID == us.cfg.SessionID || !ss.tracksInitDone.Load() {
 					return
 				}
 
@@ -620,6 +602,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					)
 				}
 			})
+			call.mut.Unlock()
 
 			writeTrack := func(writerCh <-chan *rtp.Packet, outTrack *webrtc.TrackLocalStaticRTP) {
 				for pkt := range writerCh {
@@ -693,7 +676,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		}
 	})
 
-	go s.handleNegotiations(us, call)
+	go s.handleDCNegotiation(us, call)
 
 	s.log.Debug("session has joined call",
 		mlog.String("userID", cfg.UserID),
@@ -770,6 +753,7 @@ func (s *Server) CloseSession(sessionID string) error {
 
 // handleTracks manages (adds and removes) a/v tracks for the peer associated with the session.
 func (s *Server) handleTracks(call *call, us *session) {
+	call.mut.Lock()
 	call.iterSessions(func(ss *session) {
 		if ss.cfg.SessionID == us.cfg.SessionID {
 			return
@@ -810,7 +794,31 @@ func (s *Server) handleTracks(call *call, us *session) {
 			}
 		}
 	})
+	us.tracksInitDone.Store(true)
+	call.mut.Unlock()
 
+	// Incoming offers handler. This requires a dedicated goroutine since the other handler below could be blocked
+	// waiting for the signaling lock which is released by the client upon receiving an answer.
+	go func() {
+		for {
+			select {
+			case offerMsg, ok := <-us.sdpOfferInCh:
+				if !ok {
+					return
+				}
+
+				if err := us.signaling(offerMsg.sdp, offerMsg.answerCh); err != nil {
+					s.metrics.IncRTCErrors(us.cfg.GroupID, "signaling")
+					s.log.Error("failed to signal", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+					continue
+				}
+			case <-us.closeCh:
+				return
+			}
+		}
+	}()
+
+	// Outgoing offers handler
 	for {
 		select {
 		case ctx, ok := <-us.tracksCh:
@@ -823,11 +831,22 @@ func (s *Server) handleTracks(call *call, us *session) {
 				sdpCh = us.dcSDPCh
 			}
 
+			start := time.Now()
+			err := us.signalingLock.Lock(signalingLockTimeout)
+			s.metrics.ObserveRTCSignalingLockGrabTime(us.cfg.GroupID, time.Since(start).Seconds())
+			if err != nil {
+				s.log.Error("failed to grab signaling lock", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+				s.metrics.IncRTCErrors(us.cfg.GroupID, "signaling_lock_timeout")
+				continue
+			}
+
+			start = time.Now()
+			s.log.Debug("signaling lock acquired", mlog.String("sessionID", us.cfg.SessionID))
+
 			if ctx.action == trackActionAdd {
 				if err := us.addTrack(sdpCh, ctx.track); err != nil {
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 					s.log.Error("failed to add track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID), mlog.String("trackID", ctx.track.ID()))
-					continue
 				}
 			} else if ctx.action == trackActionRemove {
 				if err := us.removeTrack(sdpCh, ctx.track); err != nil {
@@ -837,22 +856,16 @@ func (s *Server) handleTracks(call *call, us *session) {
 						trackID = ctx.track.ID()
 					}
 					s.log.Error("failed to remove track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID), mlog.String("trackID", trackID))
-					continue
 				}
 			} else {
 				s.log.Error("invalid track action", mlog.Int("action", int(ctx.action)), mlog.String("sessionID", us.cfg.SessionID))
-				continue
-			}
-		case offerMsg, ok := <-us.sdpOfferInCh:
-			if !ok {
-				return
 			}
 
-			if err := us.signaling(offerMsg.sdp, offerMsg.answerCh); err != nil {
-				s.metrics.IncRTCErrors(us.cfg.GroupID, "signaling")
-				s.log.Error("failed to signal", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
-				continue
+			s.log.Debug("releasing signaling lock", mlog.String("sessionID", us.cfg.SessionID))
+			if err := us.signalingLock.Unlock(); err != nil {
+				s.log.Error("failed to unlock signaling lock", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 			}
+			s.metrics.ObserveRTCSignalingLockLockedTime(us.cfg.GroupID, time.Since(start).Seconds())
 		case <-us.closeCh:
 			return
 		}

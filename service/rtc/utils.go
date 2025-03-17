@@ -46,18 +46,6 @@ func isValidTrackID(trackID string) bool {
 	return trackTypes[fields[0]] != ""
 }
 
-func getTrackType(kind webrtc.RTPCodecType) string {
-	if kind == webrtc.RTPCodecTypeAudio {
-		return "audio"
-	}
-
-	if kind == webrtc.RTPCodecTypeVideo {
-		return "video"
-	}
-
-	return "unknown"
-}
-
 func generateAddrsPairs(localIPs []netip.Addr, publicAddrsMap map[netip.Addr]string, hostOverride string, dualStack bool) ([]string, error) {
 	var err error
 	var pairs []string
@@ -171,4 +159,12 @@ func pickRandom[S ~[]*E, E any](s S) *E {
 		return nil
 	}
 	return s[rand.Intn(len(s))]
+}
+
+func getTrackMimeType(track webrtc.TrackLocal) string {
+	if localTrack, ok := track.(*webrtc.TrackLocalStaticRTP); ok {
+		return localTrack.Codec().MimeType
+	}
+
+	return "unknown"
 }

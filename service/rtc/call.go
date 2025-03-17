@@ -11,6 +11,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
+	"github.com/mattermost/rtcd/service/rtc/dc"
 )
 
 type call struct {
@@ -43,6 +44,9 @@ func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection, clo
 		sdpOfferInCh:       make(chan offerMessage, signalChSize),
 		sdpAnswerInCh:      make(chan webrtc.SessionDescription, signalChSize),
 		dcSDPCh:            make(chan Message, signalChSize),
+		dcOutCh:            make(chan dcMessage, signalChSize),
+		dcOpenCh:           make(chan struct{}, 1),
+		signalingLock:      dc.NewLock(),
 		closeCh:            make(chan struct{}),
 		closeCb:            closeCb,
 		doneCh:             make(chan struct{}),
@@ -76,8 +80,6 @@ func (c *call) setScreenSession(s *session) bool {
 }
 
 func (c *call) iterSessions(cb func(s *session)) {
-	c.mut.RLock()
-	defer c.mut.RUnlock()
 	for _, session := range c.sessions {
 		cb(session)
 	}
@@ -168,7 +170,7 @@ func (c *call) handleSessionClose(us *session) {
 		}
 	}
 	for _, track := range us.rxTracks {
-		c.metrics.DecRTPTracks(us.cfg.GroupID, "out", getTrackType(track.Kind()))
+		c.metrics.DecRTPTracks(us.cfg.GroupID, "out", getTrackMimeType(track))
 	}
 
 	// We check whether the closing session was also sending any track
