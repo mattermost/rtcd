@@ -12,9 +12,9 @@ require (
 	github.com/pborman/uuid v1.2.1
 	github.com/pion/ice/v4 v4.0.3
 	github.com/pion/interceptor v0.1.37
-	github.com/pion/logging v0.2.2
+	github.com/pion/logging v0.2.3
 	github.com/pion/rtcp v1.2.15
-	github.com/pion/rtp v1.8.10
+	github.com/pion/rtp v1.8.13
 	github.com/pion/stun/v3 v3.0.0
 	github.com/pion/webrtc/v4 v4.0.7
 	github.com/prometheus/client_golang v1.15.0
@@ -26,7 +26,7 @@ require (
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 )
 
-replace github.com/pion/interceptor v0.1.37 => github.com/streamer45/interceptor v0.0.0-20250106110758-7e0fb613abef
+replace github.com/pion/interceptor v0.1.37 => github.com/streamer45/interceptor v0.0.0-20250317194950-ed17137a270a
 
 require (
 	github.com/abcum/lcp v0.0.0-20201209214815-7a3f3840be81 // indirect
