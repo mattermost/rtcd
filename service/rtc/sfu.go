@@ -360,7 +360,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			mlog.String("sessionID", us.cfg.SessionID),
 		)
 
-		s.metrics.IncRTPTracks(us.cfg.GroupID, "in", getTrackType(remoteTrack.Kind()))
+		s.metrics.IncRTPTracks(us.cfg.GroupID, "in", trackMimeType)
 		defer func() {
 			s.log.Debug("exiting track handler",
 				mlog.String("streamID", streamID),
@@ -379,7 +379,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					mlog.String("sessionID", us.cfg.SessionID))
 			}
 
-			s.metrics.DecRTPTracks(us.cfg.GroupID, "in", getTrackType(remoteTrack.Kind()))
+			s.metrics.DecRTPTracks(us.cfg.GroupID, "in", trackMimeType)
 		}()
 
 		var screenStreamID string

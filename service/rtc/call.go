@@ -170,7 +170,7 @@ func (c *call) handleSessionClose(us *session) {
 		}
 	}
 	for _, track := range us.rxTracks {
-		c.metrics.DecRTPTracks(us.cfg.GroupID, "out", getTrackType(track.Kind()))
+		c.metrics.DecRTPTracks(us.cfg.GroupID, "out", getTrackMimeType(track))
 	}
 
 	// We check whether the closing session was also sending any track
