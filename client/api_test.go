@@ -670,7 +670,7 @@ func TestAPIScreenShare(t *testing.T) {
 			userScreenTrack := th.newScreenTrack(webrtc.MimeTypeVP8)
 			_, err = th.userClient.StartScreenShare([]webrtc.TrackLocal{userScreenTrack})
 			require.NoError(t, err)
-			go th.screenTrackWriter(userScreenTrack, userCloseCh)
+			go th.videoTrackWriter(userScreenTrack, userCloseCh)
 
 			screenTrackCh := make(chan struct{})
 			err = th.adminClient.On(RTCTrackEvent, func(_ any) error {
@@ -816,7 +816,7 @@ func TestAPIScreenShareAV1(t *testing.T) {
 	userScreenTrack := th.newScreenTrack(webrtc.MimeTypeAV1)
 	_, err = th.userClient.StartScreenShare([]webrtc.TrackLocal{userScreenTrack})
 	require.NoError(t, err)
-	go th.screenTrackWriter(userScreenTrack, userCloseCh)
+	go th.videoTrackWriter(userScreenTrack, userCloseCh)
 
 	screenTrackCh := make(chan struct{})
 	err = th.adminClient.On(RTCTrackEvent, func(ctx any) error {
@@ -1002,6 +1002,262 @@ func TestAPIConcurrency(t *testing.T) {
 	})
 }
 
+func TestAPIVideoConcurrency(t *testing.T) {
+	th := setupTestHelper(t, "calls0")
+
+	// Setup
+	userConnectCh := make(chan struct{})
+	err := th.userClient.On(RTCConnectEvent, func(_ any) error {
+		close(userConnectCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	err = th.userClient.Connect()
+	require.NoError(t, err)
+
+	select {
+	case <-userConnectCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for user connect event")
+	}
+
+	userCloseCh := make(chan struct{})
+
+	t.Run("empty tracks", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Add(10)
+		for i := 0; i < 10; i++ {
+			go func() {
+				defer wg.Done()
+				_, err := th.userClient.StartVideo([]webrtc.TrackLocal{})
+				require.EqualError(t, err, "invalid empty tracks")
+			}()
+		}
+		wg.Wait()
+	})
+
+	t.Run("too many tracks", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Add(10)
+		for i := 0; i < 10; i++ {
+			go func() {
+				defer wg.Done()
+				_, err := th.userClient.StartVideo([]webrtc.TrackLocal{
+					th.newVideoTrack(webrtc.MimeTypeVP8),
+					th.newVideoTrack(webrtc.MimeTypeVP8),
+					th.newVideoTrack(webrtc.MimeTypeVP8),
+				})
+				require.EqualError(t, err, "too many tracks")
+			}()
+		}
+		wg.Wait()
+	})
+
+	t.Run("start and stop video", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Add(20)
+
+		for i := 0; i < 10; i++ {
+			go func() {
+				defer wg.Done()
+				track := th.newVideoTrack(webrtc.MimeTypeVP8)
+				_, err := th.userClient.StartVideo([]webrtc.TrackLocal{track})
+				require.NoError(t, err)
+			}()
+
+			go func() {
+				defer wg.Done()
+				err := th.userClient.StopVideo()
+				require.NoError(t, err)
+			}()
+		}
+		wg.Wait()
+	})
+
+	err = th.userClient.On(CloseEvent, func(_ any) error {
+		close(userCloseCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	err = th.userClient.Close()
+	require.NoError(t, err)
+
+	select {
+	case <-userCloseCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for close event")
+	}
+}
+
+func TestAPIVideoAndVoice(t *testing.T) {
+	th := setupTestHelper(t, "calls0")
+
+	// Setup
+	userConnectCh := make(chan struct{})
+	err := th.userClient.On(RTCConnectEvent, func(_ any) error {
+		close(userConnectCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	go func() {
+		err := th.userClient.Connect()
+		require.NoError(t, err)
+	}()
+
+	select {
+	case <-userConnectCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for user connect event")
+	}
+
+	userCloseCh := make(chan struct{})
+	adminCloseCh := make(chan struct{})
+
+	// Test logic
+
+	// User starts video, admin should receive the track
+	userVideoTrack := th.newVideoTrack(webrtc.MimeTypeVP8)
+	_, err = th.userClient.StartVideo([]webrtc.TrackLocal{userVideoTrack})
+	require.NoError(t, err)
+	go th.videoTrackWriter(userVideoTrack, userCloseCh)
+
+	// User unmutes, admin should receive the track
+	userVoiceTrack := th.newVoiceTrack()
+	err = th.userClient.Unmute(userVoiceTrack)
+	require.NoError(t, err)
+	go th.voiceTrackWriter(userVoiceTrack, userCloseCh)
+
+	videoTrackCh := make(chan struct{})
+	userVoiceTrackCh := make(chan struct{})
+	err = th.adminClient.On(RTCTrackEvent, func(ctx any) error {
+		m := ctx.(map[string]any)
+		track := m["track"].(*webrtc.TrackRemote)
+		if track.Kind() == webrtc.RTPCodecTypeAudio {
+			close(userVoiceTrackCh)
+		}
+		if track.Kind() == webrtc.RTPCodecTypeVideo {
+			close(videoTrackCh)
+		}
+		return nil
+	})
+	require.NoError(t, err)
+
+	var packets int
+	adminVoiceTrackCh := make(chan struct{})
+	readerDoneCh := make(chan struct{})
+	err = th.userClient.On(RTCTrackEvent, func(ctx any) error {
+		m := ctx.(map[string]any)
+		track := m["track"].(*webrtc.TrackRemote)
+		if track.Kind() == webrtc.RTPCodecTypeAudio {
+			go func() {
+				defer close(readerDoneCh)
+				for {
+					_, _, readErr := track.ReadRTP()
+					if readErr != nil {
+						return
+					}
+					packets++
+				}
+			}()
+			close(adminVoiceTrackCh)
+		}
+		return nil
+	})
+	require.NoError(t, err)
+
+	adminConnectCh := make(chan struct{})
+	err = th.adminClient.On(RTCConnectEvent, func(_ any) error {
+		close(adminConnectCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	go func() {
+		err := th.adminClient.Connect()
+		require.NoError(t, err)
+	}()
+
+	select {
+	case <-adminConnectCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for admin connect event")
+	}
+
+	select {
+	case <-videoTrackCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for video track")
+	}
+
+	select {
+	case <-userVoiceTrackCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for voice track")
+	}
+
+	// Admin unmutes, user should receive the track
+	adminVoiceTrack := th.newVoiceTrack()
+	err = th.adminClient.Unmute(adminVoiceTrack)
+	require.NoError(t, err)
+	go th.voiceTrackWriter(adminVoiceTrack, adminCloseCh)
+
+	select {
+	case <-adminVoiceTrackCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for admin voice track")
+	}
+
+	// Give it time to send/receive some packets.
+	time.Sleep(time.Second)
+
+	// Teardown
+
+	err = th.userClient.On(CloseEvent, func(_ any) error {
+		close(userCloseCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	err = th.adminClient.On(CloseEvent, func(_ any) error {
+		close(adminCloseCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	go func() {
+		err := th.userClient.Close()
+		require.NoError(t, err)
+	}()
+
+	go func() {
+		err := th.adminClient.Close()
+		require.NoError(t, err)
+	}()
+
+	select {
+	case <-userCloseCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for close event")
+	}
+
+	select {
+	case <-adminCloseCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for close event")
+	}
+
+	select {
+	case <-readerDoneCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for reader to be done")
+	}
+
+	require.Greater(t, packets, 10)
+}
+
 func TestAPIScreenShareAndVoice(t *testing.T) {
 	th := setupTestHelper(t, "calls0")
 
@@ -1033,7 +1289,7 @@ func TestAPIScreenShareAndVoice(t *testing.T) {
 	userScreenTrack := th.newScreenTrack(webrtc.MimeTypeVP8)
 	_, err = th.userClient.StartScreenShare([]webrtc.TrackLocal{userScreenTrack})
 	require.NoError(t, err)
-	go th.screenTrackWriter(userScreenTrack, userCloseCh)
+	go th.videoTrackWriter(userScreenTrack, userCloseCh)
 
 	// User unmutes, admin should receive the track
 	userVoiceTrack := th.newVoiceTrack()
@@ -1242,7 +1498,7 @@ func TestAPIScreenSharePLI(t *testing.T) {
 	adminScreenTrack := th.newScreenTrack(webrtc.MimeTypeVP8)
 	_, err = th.adminClient.StartScreenShare([]webrtc.TrackLocal{adminScreenTrack})
 	require.NoError(t, err)
-	go th.screenTrackWriter(adminScreenTrack, adminCloseCh)
+	go th.videoTrackWriter(adminScreenTrack, adminCloseCh)
 
 	var pliCount int
 	err = th.adminClient.On(RTCSenderRTCPPacketEvent, func(ctx any) error {
@@ -1306,4 +1562,300 @@ func TestAPIScreenSharePLI(t *testing.T) {
 	}
 
 	require.Equal(t, 1, pliCount)
+}
+
+func TestAPIVideo(t *testing.T) {
+	// Repeat test with EnableDCSignaling on and off
+	for _, v := range []bool{false, true} {
+		t.Run(fmt.Sprintf("EnableDCSignaling=%t", v), func(t *testing.T) {
+			th := setupTestHelper(t, "calls0")
+			th.userClient.cfg.EnableDCSignaling = v
+			th.adminClient.cfg.EnableDCSignaling = v
+
+			// Setup
+			userConnectCh := make(chan struct{})
+			err := th.userClient.On(RTCConnectEvent, func(_ any) error {
+				close(userConnectCh)
+				return nil
+			})
+			require.NoError(t, err)
+
+			adminConnectCh := make(chan struct{})
+			err = th.adminClient.On(RTCConnectEvent, func(_ any) error {
+				close(adminConnectCh)
+				return nil
+			})
+			require.NoError(t, err)
+
+			t.Run("not initialized", func(t *testing.T) {
+				_, err := th.userClient.StartVideo([]webrtc.TrackLocal{th.newVideoTrack(webrtc.MimeTypeVP8)})
+				require.EqualError(t, err, "rtc client is not initialized")
+			})
+
+			go func() {
+				err := th.userClient.Connect()
+				require.NoError(t, err)
+			}()
+
+			go func() {
+				err := th.adminClient.Connect()
+				require.NoError(t, err)
+			}()
+
+			select {
+			case <-userConnectCh:
+			case <-time.After(waitTimeout):
+				require.Fail(t, "timed out waiting for user connect event")
+			}
+
+			select {
+			case <-adminConnectCh:
+			case <-time.After(waitTimeout):
+				require.Fail(t, "timed out waiting for admin connect event")
+			}
+
+			userCloseCh := make(chan struct{})
+			adminCloseCh := make(chan struct{})
+
+			// Test logic
+
+			// User starts video, admin should receive the track
+			userVideoTrack := th.newVideoTrack(webrtc.MimeTypeVP8)
+			_, err = th.userClient.StartVideo([]webrtc.TrackLocal{userVideoTrack})
+			require.NoError(t, err)
+			go th.videoTrackWriter(userVideoTrack, userCloseCh)
+
+			videoTrackCh := make(chan struct{})
+			err = th.adminClient.On(RTCTrackEvent, func(_ any) error {
+				close(videoTrackCh)
+				return nil
+			})
+			require.NoError(t, err)
+
+			userVideoOnCh := make(chan struct{})
+			err = th.adminClient.On(WSCallVideoOnEvent, func(ctx any) error {
+				sessionID := ctx.(string)
+				if sessionID == th.userClient.originalConnID {
+					close(userVideoOnCh)
+				}
+				return nil
+			})
+			require.NoError(t, err)
+
+			select {
+			case <-userVideoOnCh:
+			case <-time.After(waitTimeout):
+				require.Fail(t, "timed out waiting for user video on event")
+			}
+
+			select {
+			case <-videoTrackCh:
+			case <-time.After(waitTimeout):
+				require.Fail(t, "timed out waiting for video track")
+			}
+
+			userVideoOffCh := make(chan struct{})
+			err = th.adminClient.On(WSCallVideoOffEvent, func(ctx any) error {
+				sessionID := ctx.(string)
+				if sessionID == th.userClient.originalConnID {
+					close(userVideoOffCh)
+				}
+				return nil
+			})
+			require.NoError(t, err)
+
+			err = th.userClient.StopVideo()
+			require.NoError(t, err)
+
+			select {
+			case <-userVideoOffCh:
+			case <-time.After(waitTimeout):
+				require.Fail(t, "timed out waiting for user video off event")
+			}
+
+			// Teardown
+
+			err = th.userClient.On(CloseEvent, func(_ any) error {
+				close(userCloseCh)
+				return nil
+			})
+			require.NoError(t, err)
+
+			err = th.adminClient.On(CloseEvent, func(_ any) error {
+				close(adminCloseCh)
+				return nil
+			})
+			require.NoError(t, err)
+
+			go func() {
+				err := th.userClient.Close()
+				require.NoError(t, err)
+			}()
+
+			go func() {
+				err := th.adminClient.Close()
+				require.NoError(t, err)
+			}()
+
+			select {
+			case <-userCloseCh:
+			case <-time.After(waitTimeout):
+				require.Fail(t, "timed out waiting for close event")
+			}
+
+			select {
+			case <-adminCloseCh:
+			case <-time.After(waitTimeout):
+				require.Fail(t, "timed out waiting for close event")
+			}
+		})
+	}
+}
+
+func TestAPIVideoAV1(t *testing.T) {
+	th := setupTestHelper(t, "calls0")
+
+	th.userClient.cfg.EnableAV1 = true
+	th.adminClient.cfg.EnableAV1 = true
+
+	// Setup
+	userConnectCh := make(chan struct{})
+	err := th.userClient.On(RTCConnectEvent, func(_ any) error {
+		close(userConnectCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	adminConnectCh := make(chan struct{})
+	err = th.adminClient.On(RTCConnectEvent, func(_ any) error {
+		close(adminConnectCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	t.Run("not initialized", func(t *testing.T) {
+		_, err := th.userClient.StartVideo([]webrtc.TrackLocal{th.newVideoTrack(webrtc.MimeTypeAV1)})
+		require.EqualError(t, err, "rtc client is not initialized")
+	})
+
+	go func() {
+		err := th.userClient.Connect()
+		require.NoError(t, err)
+	}()
+
+	go func() {
+		err := th.adminClient.Connect()
+		require.NoError(t, err)
+	}()
+
+	select {
+	case <-userConnectCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for user connect event")
+	}
+
+	select {
+	case <-adminConnectCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for admin connect event")
+	}
+
+	userCloseCh := make(chan struct{})
+	adminCloseCh := make(chan struct{})
+
+	// Test logic
+
+	// User starts video with AV1, admin should receive the track
+	userVideoTrack := th.newVideoTrack(webrtc.MimeTypeAV1)
+	_, err = th.userClient.StartVideo([]webrtc.TrackLocal{userVideoTrack})
+	require.NoError(t, err)
+	go th.videoTrackWriter(userVideoTrack, userCloseCh)
+
+	videoTrackCh := make(chan struct{})
+	err = th.adminClient.On(RTCTrackEvent, func(ctx any) error {
+		m := ctx.(map[string]any)
+		track := m["track"].(*webrtc.TrackRemote)
+		if track.Codec().MimeType == webrtc.MimeTypeAV1 {
+			close(videoTrackCh)
+		}
+		return nil
+	})
+	require.NoError(t, err)
+
+	userVideoOnCh := make(chan struct{})
+	err = th.adminClient.On(WSCallVideoOnEvent, func(ctx any) error {
+		sessionID := ctx.(string)
+		if sessionID == th.userClient.originalConnID {
+			close(userVideoOnCh)
+		}
+		return nil
+	})
+	require.NoError(t, err)
+
+	select {
+	case <-userVideoOnCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for user video on event")
+	}
+
+	select {
+	case <-videoTrackCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for video track")
+	}
+
+	userVideoOffCh := make(chan struct{})
+	err = th.adminClient.On(WSCallVideoOffEvent, func(ctx any) error {
+		sessionID := ctx.(string)
+		if sessionID == th.userClient.originalConnID {
+			close(userVideoOffCh)
+		}
+		return nil
+	})
+	require.NoError(t, err)
+
+	err = th.userClient.StopVideo()
+	require.NoError(t, err)
+
+	select {
+	case <-userVideoOffCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for user video off event")
+	}
+
+	// Teardown
+
+	err = th.userClient.On(CloseEvent, func(_ any) error {
+		close(userCloseCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	err = th.adminClient.On(CloseEvent, func(_ any) error {
+		close(adminCloseCh)
+		return nil
+	})
+	require.NoError(t, err)
+
+	go func() {
+		err := th.userClient.Close()
+		require.NoError(t, err)
+	}()
+
+	go func() {
+		err := th.adminClient.Close()
+		require.NoError(t, err)
+	}()
+
+	select {
+	case <-userCloseCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for close event")
+	}
+
+	select {
+	case <-adminCloseCh:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "timed out waiting for close event")
+	}
 }
