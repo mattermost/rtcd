@@ -128,7 +128,7 @@ func TestIsValidTrackID(t *testing.T) {
 		},
 		{
 			name:   "invalid track type",
-			input:  "video_id_id",
+			input:  "ai_id_id",
 			result: false,
 		},
 		{
@@ -139,6 +139,11 @@ func TestIsValidTrackID(t *testing.T) {
 		{
 			name:   "valid voice",
 			input:  "voice_id_id",
+			result: true,
+		},
+		{
+			name:   "valid video",
+			input:  "video_id_id",
 			result: true,
 		},
 		{

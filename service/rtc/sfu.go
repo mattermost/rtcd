@@ -403,6 +403,8 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			screenStreamID = screenSession.getScreenStreamID()
 		}
 
+		videoStreamID := us.getVideoStreamID()
+
 		go us.handleReceiverRTCP(receiver, remoteTrack.RID())
 
 		if trackMimeType == rtpAudioCodec.MimeType {
@@ -423,8 +425,10 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			if trackType == trackTypeVoice {
 				us.outVoiceTrack = outAudioTrack
 				us.outVoiceTrackEnabled = true
+				us.remoteVoiceTrack = remoteTrack
 			} else {
 				us.outScreenAudioTrack = outAudioTrack
+				us.remoteScreenAudioTrack = remoteTrack
 			}
 			us.mut.Unlock()
 
@@ -438,7 +442,12 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				}
 
 				select {
-				case ss.tracksCh <- trackActionContext{action: trackActionAdd, track: outAudioTrack}:
+				case ss.tracksCh <- trackActionContext{
+					action:        trackActionAdd,
+					localTrack:    outAudioTrack,
+					remoteTrack:   remoteTrack,
+					senderSession: us,
+				}:
 				default:
 					s.log.Error("failed to send voice track: channel is full",
 						mlog.String("userID", ss.cfg.UserID),
@@ -516,20 +525,28 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				s.metrics.ObserveRTPTracksWrite(us.cfg.GroupID, string(trackType), time.Since(writeStartTime).Seconds())
 			}
 		} else if params, ok := rtpVideoCodecs[trackMimeType]; ok {
-			if screenStreamID != "" && screenStreamID != streamID {
+			// We want to ensure the track we are receiving belongs to the expected stream.
+			// The expected stream ID (screenStreamID or videoStreamID) is sent in advance by the sender through either the ScreenOn or VideoOn websocket message.
+			var outTrackType trackType
+			isScreen := screenStreamID != "" && screenStreamID == streamID
+			if isScreen {
+				s.log.Debug("received screen sharing stream", mlog.String("streamID", streamID), mlog.String("sessionID", us.cfg.SessionID))
+				outTrackType = trackTypeScreen
+			} else if videoStreamID != "" && videoStreamID == streamID {
+				s.log.Debug("received video stream", mlog.String("streamID", streamID), mlog.String("sessionID", us.cfg.SessionID))
+				outTrackType = trackTypeVideo
+			} else {
 				s.log.Error("received unexpected video track",
 					mlog.String("streamID", streamID), mlog.String("sessionID", us.cfg.SessionID))
 				return
 			}
 
-			s.log.Debug("received screen sharing stream", mlog.String("streamID", streamID), mlog.String("sessionID", us.cfg.SessionID))
-
 			// To improve concurrency and support larger calls we create NumCPU output tracks and randomly distribute the receivers among them.
-			createOutScreenTracks := func(num int) ([]*webrtc.TrackLocalStaticRTP, error) {
+			createOutTracks := func(num int) ([]*webrtc.TrackLocalStaticRTP, error) {
 				outTracks := make([]*webrtc.TrackLocalStaticRTP, num)
 				for i := 0; i < num; i++ {
 					outTrack, err := webrtc.NewTrackLocalStaticRTP(params.RTPCodecCapability,
-						genTrackID(trackTypeScreen, us.cfg.SessionID), random.NewID(), webrtc.WithRTPStreamID(remoteTrack.RID()))
+						genTrackID(outTrackType, us.cfg.SessionID), random.NewID(), webrtc.WithRTPStreamID(remoteTrack.RID()))
 					if err != nil {
 						return nil, fmt.Errorf("failed to create screen track")
 					}
@@ -538,7 +555,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				return outTracks, nil
 			}
 
-			outScreenTracks, err := createOutScreenTracks(runtime.NumCPU())
+			outTracks, err := createOutTracks(runtime.NumCPU())
 			if err != nil {
 				s.log.Error("failed to create local track",
 					mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
@@ -561,9 +578,15 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			call.mut.Lock()
 
 			us.mut.Lock()
-			us.outScreenTracks[trackIdx] = outScreenTracks
-			us.remoteScreenTracks[trackIdx] = remoteTrack
-			us.screenRateMonitors[trackIdx] = rm
+			if isScreen {
+				us.outScreenTracks[trackIdx] = outTracks
+				us.remoteScreenTracks[trackIdx] = remoteTrack
+				us.screenRateMonitors[trackIdx] = rm
+			} else {
+				us.outVideoTracks[trackIdx] = outTracks
+				us.remoteVideoTracks[trackIdx] = remoteTrack
+				us.videoRateMonitors[trackIdx] = rm
+			}
 			us.mut.Unlock()
 
 			call.iterSessions(func(ss *session) {
@@ -603,13 +626,19 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				)
 
 				select {
-				case ss.tracksCh <- trackActionContext{action: trackActionAdd, track: pickRandom(outScreenTracks)}:
+				case ss.tracksCh <- trackActionContext{
+					action:        trackActionAdd,
+					localTrack:    pickRandom(outTracks),
+					remoteTrack:   remoteTrack,
+					senderSession: us,
+				}:
 				default:
-					s.log.Error("failed to send screen track: channel is full",
+					s.log.Error("failed to send track: channel is full",
 						mlog.String("userID", ss.cfg.UserID),
 						mlog.String("sessionID", ss.cfg.SessionID),
 						mlog.String("trackUserID", us.cfg.UserID),
 						mlog.String("trackSessionID", us.cfg.SessionID),
+						mlog.String("trackType", outTrackType),
 					)
 				}
 			})
@@ -632,11 +661,11 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				}
 			}
 
-			writerChs := make([]chan *rtp.Packet, len(outScreenTracks))
-			for i := 0; i < len(outScreenTracks); i++ {
+			writerChs := make([]chan *rtp.Packet, len(outTracks))
+			for i := 0; i < len(outTracks); i++ {
 				writerChs[i] = make(chan *rtp.Packet, writerQueueSize)
 				defer close(writerChs[i])
-				go writeTrack(writerChs[i], outScreenTracks[i])
+				go writeTrack(writerChs[i], outTracks[i])
 			}
 
 			limiter := rate.NewLimiter(0.25, 1)
@@ -674,7 +703,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					select {
 					case writerCh <- &pkt:
 					default:
-						s.log.Error("failed to write RTP packet to writer channel", mlog.String("trackID", outScreenTracks[i].ID()))
+						s.log.Error("failed to write RTP packet to writer channel", mlog.String("trackID", outTracks[i].ID()))
 						s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					}
 				}
@@ -776,24 +805,43 @@ func (s *Server) handleTracks(call *call, us *session) {
 			screenTrackMimeType = webrtc.MimeTypeAV1
 		}
 		outScreenTracks := ss.outScreenTracks[getTrackIndex(screenTrackMimeType, SimulcastLevelDefault)]
-
 		outScreenAudioTrack := ss.outScreenAudioTrack
+		outVideoTracks := ss.outVideoTracks[getTrackIndex(screenTrackMimeType, SimulcastLevelDefault)]
+
+		remoteVoiceTrack := ss.remoteVoiceTrack
+		remoteScreenTrack := ss.remoteScreenTracks[getTrackIndex(screenTrackMimeType, SimulcastLevelDefault)]
+		remoteScreenAudioTrack := ss.remoteScreenAudioTrack
+		remoteVideoTrack := ss.remoteVideoTracks[getTrackIndex(screenTrackMimeType, SimulcastLevelDefault)]
+
 		ss.mut.RUnlock()
 
 		var outTracks []*webrtc.TrackLocalStaticRTP
+		var remoteTracks []*webrtc.TrackRemote
 		if outVoiceTrack != nil {
 			outTracks = append(outTracks, outVoiceTrack)
+			remoteTracks = append(remoteTracks, remoteVoiceTrack)
 		}
 		if len(outScreenTracks) > 0 {
 			outTracks = append(outTracks, pickRandom(outScreenTracks))
+			remoteTracks = append(remoteTracks, remoteScreenTrack)
 		}
 		if outScreenAudioTrack != nil {
 			outTracks = append(outTracks, outScreenAudioTrack)
+			remoteTracks = append(remoteTracks, remoteScreenAudioTrack)
+		}
+		if len(outVideoTracks) > 0 {
+			outTracks = append(outTracks, pickRandom(outVideoTracks))
+			remoteTracks = append(remoteTracks, remoteVideoTrack)
 		}
 
-		for _, track := range outTracks {
+		for i, track := range outTracks {
 			select {
-			case us.tracksCh <- trackActionContext{action: trackActionAdd, track: track}:
+			case us.tracksCh <- trackActionContext{
+				action:        trackActionAdd,
+				localTrack:    track,
+				remoteTrack:   remoteTracks[i],
+				senderSession: ss,
+			}:
 			default:
 				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 				s.log.Error("failed to add track on join: channel is full", mlog.String("sessionID", us.cfg.SessionID))
@@ -850,16 +898,16 @@ func (s *Server) handleTracks(call *call, us *session) {
 			s.log.Debug("signaling lock acquired", mlog.String("sessionID", us.cfg.SessionID))
 
 			if ctx.action == trackActionAdd {
-				if err := us.addTrack(sdpCh, ctx.track); err != nil {
+				if err := us.addTrack(sdpCh, ctx.localTrack, ctx.remoteTrack, ctx.senderSession); err != nil {
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
-					s.log.Error("failed to add track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID), mlog.String("trackID", ctx.track.ID()))
+					s.log.Error("failed to add track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID), mlog.String("trackID", ctx.localTrack.ID()))
 				}
 			} else if ctx.action == trackActionRemove {
-				if err := us.removeTrack(sdpCh, ctx.track); err != nil {
+				if err := us.removeTrack(sdpCh, ctx.localTrack); err != nil {
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
 					var trackID string
-					if ctx.track != nil {
-						trackID = ctx.track.ID()
+					if ctx.localTrack != nil {
+						trackID = ctx.localTrack.ID()
 					}
 					s.log.Error("failed to remove track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID), mlog.String("trackID", trackID))
 				}
