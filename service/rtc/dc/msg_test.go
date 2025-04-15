@@ -83,4 +83,30 @@ func TestEncodeMessage(t *testing.T) {
 		require.Equal(t, "screen", decodedMediaMap["2"].Type)
 		require.Equal(t, "sessionB", decodedMediaMap["2"].SenderID)
 	})
+
+	t.Run("codecsupportmap", func(t *testing.T) {
+		codecSupportMap := CodecSupportMap{
+			"video/av1":  CodecSupportFull,
+			"video/vp8":  CodecSupportPartial,
+			"video/h264": CodecSupportNone,
+			"audio/opus": CodecSupportFull,
+		}
+
+		dcMsg, err := EncodeMessage(MessageTypeCodecSupportMap, codecSupportMap)
+		require.NoError(t, err)
+
+		mt, payload, err := DecodeMessage(dcMsg)
+		require.NoError(t, err)
+		require.Equal(t, MessageTypeCodecSupportMap, mt)
+
+		decodedCodecSupportMap, ok := payload.(CodecSupportMap)
+		require.True(t, ok, "payload should be of type CodecSupportMap")
+		require.Equal(t, codecSupportMap, decodedCodecSupportMap)
+
+		// Verify individual entries
+		require.Equal(t, CodecSupportFull, decodedCodecSupportMap["video/av1"])
+		require.Equal(t, CodecSupportPartial, decodedCodecSupportMap["video/vp8"])
+		require.Equal(t, CodecSupportNone, decodedCodecSupportMap["video/h264"])
+		require.Equal(t, CodecSupportFull, decodedCodecSupportMap["audio/opus"])
+	})
 }

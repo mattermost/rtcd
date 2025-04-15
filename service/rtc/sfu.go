@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -340,8 +341,14 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		}
 	})
 
+	var handleDCOnce sync.Once
 	peerConn.OnDataChannel(func(dataCh *webrtc.DataChannel) {
-		s.handleDC(us, dataCh)
+		dataCh.OnOpen(func() {
+			s.log.Debug("data channel open", mlog.String("sessionID", us.cfg.SessionID))
+			handleDCOnce.Do(func() {
+				s.handleDC(us, dataCh)
+			})
+		})
 	})
 
 	peerConn.OnTrack(func(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
@@ -762,6 +769,8 @@ func (s *Server) CloseSession(sessionID string) error {
 			s.mut.Unlock()
 		}
 		group.mut.Unlock()
+	} else {
+		call.sendCodecSupportMap(s.log)
 	}
 	call.mut.Unlock()
 

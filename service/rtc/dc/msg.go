@@ -19,15 +19,16 @@ import (
 type MessageType uint8
 
 const (
-	MessageTypePing          MessageType = iota + 1 // no payload
-	MessageTypePong                                 // no payload
-	MessageTypeSDP                                  // MessageSDP
-	MessageTypeLossRate                             // float64
-	MessageTypeRoundTripTime                        // float64
-	MessageTypeJitter                               // float64
-	MessageTypeLock                                 // bool
-	MessageTypeUnlock                               // no payload
-	MessageTypeMediaMap                             // MediaMap
+	MessageTypePing            MessageType = iota + 1 // no payload
+	MessageTypePong                                   // no payload
+	MessageTypeSDP                                    // MessageSDP
+	MessageTypeLossRate                               // float64
+	MessageTypeRoundTripTime                          // float64
+	MessageTypeJitter                                 // float64
+	MessageTypeLock                                   // bool
+	MessageTypeUnlock                                 // no payload
+	MessageTypeMediaMap                               // MediaMap
+	MessageTypeCodecSupportMap                        // CodecSupportMap
 )
 
 type TrackInfo struct {
@@ -35,10 +36,20 @@ type TrackInfo struct {
 	SenderID string `msgpack:"sender_id"` // the session ID of the sender
 }
 
-type MediaMap map[string]TrackInfo
+type CodecSupportLevel int
+
+const (
+	CodecSupportNone CodecSupportLevel = iota
+	CodecSupportPartial
+	CodecSupportFull
+)
 
 // Supported payloads
-type MessageSDP []byte // payload is zlib compressed data of a JSON serialized webrtc.SessionDescription
+type (
+	MediaMap        map[string]TrackInfo
+	MessageSDP      []byte                       // payload is zlib compressed data of a JSON serialized webrtc.SessionDescription
+	CodecSupportMap map[string]CodecSupportLevel // keys are mime types (e.g. "video/av1")
+)
 
 func unpackData(data []byte) ([]byte, error) {
 	rd, err := zlib.NewReader(bytes.NewBuffer(data))
@@ -147,6 +158,13 @@ func DecodeMessage(msg []byte) (MessageType, any, error) {
 			return 0, nil, fmt.Errorf("failed to decode media map message: %w", err)
 		}
 		return MessageTypeMediaMap, payload, nil
+	case MessageTypeCodecSupportMap:
+		var payload CodecSupportMap
+		err := dec.Decode(&payload)
+		if err != nil {
+			return 0, nil, fmt.Errorf("failed to decode codec support map message: %w", err)
+		}
+		return MessageTypeCodecSupportMap, payload, nil
 	}
 
 	return 0, nil, fmt.Errorf("unexpected dc message type: %d", t)
