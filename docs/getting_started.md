@@ -62,7 +62,7 @@ Restart=always
 RestartSec=10
 User=mattermost
 Group=mattermost
-Environment=API_SECURITY_ALLOWSELFREGISTRATION=true
+Environment=RTCD_API_SECURITY_ALLOWSELFREGISTRATION=true
 
 [Install]
 WantedBy=multi-user.target
