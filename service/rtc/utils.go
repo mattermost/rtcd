@@ -21,12 +21,14 @@ const (
 	trackTypeVoice       trackType = "voice"
 	trackTypeScreen      trackType = "screen"
 	trackTypeScreenAudio trackType = "screen-audio"
+	trackTypeVideo       trackType = "video"
 )
 
 var trackTypes = map[string]trackType{
 	"voice":        trackTypeVoice,
 	"screen":       trackTypeScreen,
 	"screen-audio": trackTypeScreenAudio,
+	"video":        trackTypeVideo,
 }
 
 func genTrackID(tt trackType, baseID string) string {
@@ -44,6 +46,15 @@ func isValidTrackID(trackID string) bool {
 	}
 
 	return trackTypes[fields[0]] != ""
+}
+
+func getTrackType(trackID string) trackType {
+	fields := strings.Split(trackID, "_")
+	if len(fields) != 3 {
+		return ""
+	}
+
+	return trackTypes[fields[0]]
 }
 
 func generateAddrsPairs(localIPs []netip.Addr, publicAddrsMap map[netip.Addr]string, hostOverride string, dualStack bool) ([]string, error) {
