@@ -343,11 +343,30 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 	var handleDCOnce sync.Once
 	peerConn.OnDataChannel(func(dataCh *webrtc.DataChannel) {
+		dataCh.OnError(func(err error) {
+			s.log.Error("data channel error", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+		})
+
 		dataCh.OnOpen(func() {
 			s.log.Debug("data channel open", mlog.String("sessionID", us.cfg.SessionID))
 			handleDCOnce.Do(func() {
 				s.handleDC(us, dataCh)
 			})
+		})
+
+		dataCh.OnMessage(func(msg webrtc.DataChannelMessage) {
+			// DEPRECATED
+			// keeping this for compatibility with older clients (i.e. mobile)
+			if string(msg.Data) == "ping" {
+				if err := dataCh.SendText("pong"); err != nil {
+					s.log.Error("failed to send message", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+				}
+				return
+			}
+
+			if err := s.handleDCMessage(msg.Data, us, dataCh); err != nil {
+				s.log.Error("failed to handle dc message", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+			}
 		})
 	})
 

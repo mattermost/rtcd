@@ -52,21 +52,6 @@ func (s *Server) handleDC(us *session, dataCh *webrtc.DataChannel) {
 			}
 		}
 	}()
-
-	dataCh.OnMessage(func(msg webrtc.DataChannelMessage) {
-		// DEPRECATED
-		// keeping this for compatibility with older clients (i.e. mobile)
-		if string(msg.Data) == "ping" {
-			if err := dataCh.SendText("pong"); err != nil {
-				s.log.Error("failed to send message", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
-			}
-			return
-		}
-
-		if err := s.handleDCMessage(msg.Data, us, dataCh); err != nil {
-			s.log.Error("failed to handle dc message", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
-		}
-	})
 }
 
 func (s *Server) handleDCMessage(data []byte, us *session, dataCh *webrtc.DataChannel) error {

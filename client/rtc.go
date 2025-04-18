@@ -560,6 +560,8 @@ func (c *Client) unlockSignalingLock() error {
 }
 
 func (c *Client) grabSignalingLock() error {
+	timeoutCh := time.After(5 * time.Second)
+
 	for {
 		c.log.Debug("attempting to grab signaling lock")
 		dataCh := c.dc.Load()
@@ -583,8 +585,8 @@ func (c *Client) grabSignalingLock() error {
 			c.log.Debug("dc lock not acquired, retrying")
 			time.Sleep(100 * time.Millisecond)
 			continue
-		case <-time.After(5 * time.Second):
-			return fmt.Errorf("failed to lock dc")
+		case <-timeoutCh:
+			return fmt.Errorf("failed to lock dc: timed out")
 		case <-c.wsCloseCh:
 			return fmt.Errorf("closing")
 		}
