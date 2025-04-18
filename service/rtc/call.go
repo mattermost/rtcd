@@ -54,6 +54,7 @@ func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection, clo
 		outScreenTracks:    make(map[string][]*webrtc.TrackLocalStaticRTP),
 		remoteScreenTracks: make(map[string]*webrtc.TrackRemote),
 		screenRateMonitors: make(map[string]*RateMonitor),
+		screenTrackSenders: make(map[string]*webrtc.RTPSender),
 		outVideoTracks:     make(map[string][]*webrtc.TrackLocalStaticRTP),
 		remoteVideoTracks:  make(map[string]*webrtc.TrackRemote),
 		videoRateMonitors:  make(map[string]*RateMonitor),
@@ -63,7 +64,23 @@ func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection, clo
 	}
 
 	c.sessions[cfg.SessionID] = s
+
+	c.sendCodecSupportMap(log)
+
 	return s, true
+}
+
+// sendCodecSupportMap sends the codec support map to all sessions.
+// NOTE: this is expected to always be called under lock (call.mut).
+func (c *call) sendCodecSupportMap(log mlog.LoggerIFace) {
+	supportMap := c.getCodecSupportMap()
+	for _, us := range c.sessions {
+		select {
+		case us.dcOutCh <- dcMessage{msgType: dc.MessageTypeCodecSupportMap, payload: supportMap}:
+		default:
+			log.Error("failed to send codec support map: channel is full", mlog.String("sessionID", us.cfg.SessionID))
+		}
+	}
 }
 
 func (c *call) getScreenSession() *session {
@@ -110,13 +127,15 @@ func (c *call) clearScreenState(screenSession *session) error {
 		if s == c.screenSession {
 			s.clearScreenState()
 			c.screenSession = nil
-		} else if s.screenTrackSender != nil {
-			select {
-			case s.tracksCh <- trackActionContext{action: trackActionRemove, localTrack: s.screenTrackSender.Track()}:
-			default:
-				s.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", s.cfg.SessionID))
+		} else if len(s.screenTrackSenders) > 0 {
+			for _, sender := range s.screenTrackSenders {
+				select {
+				case s.tracksCh <- trackActionContext{action: trackActionRemove, localTrack: sender.Track()}:
+				default:
+					s.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", s.cfg.SessionID))
+				}
 			}
-			s.screenTrackSender = nil
+			s.screenTrackSenders = map[string]*webrtc.RTPSender{}
 		}
 		s.mut.Unlock()
 	}
@@ -156,7 +175,7 @@ func (c *call) handleSessionClose(us *session) {
 				continue
 			}
 			ss.mut.Lock()
-			ss.screenTrackSender = nil
+			ss.screenTrackSenders = map[string]*webrtc.RTPSender{}
 			ss.mut.Unlock()
 		}
 	}
@@ -233,4 +252,39 @@ func (c *call) handleSessionClose(us *session) {
 		}
 		ss.mut.Unlock()
 	}
+}
+
+// getCodecSupportMap returns a map of codec support for the call.
+// NOTE: this is expected to always be called under lock (call.mut).
+func (c *call) getCodecSupportMap() dc.CodecSupportMap {
+	supportMap := dc.CodecSupportMap{
+		webrtc.MimeTypeAV1: dc.CodecSupportNone,
+	}
+
+	// If there are no sessions, we have no support
+	if len(c.sessions) == 0 {
+		return supportMap
+	}
+
+	// Count how many sessions support AV1
+	av1SupportCount := 0
+	for _, s := range c.sessions {
+		if s.supportsAV1() {
+			av1SupportCount++
+		}
+	}
+
+	// Determine support level:
+	// - Full: All sessions support AV1
+	// - Partial: Some sessions support AV1, but not all
+	// - None: No sessions support AV1
+	if av1SupportCount == len(c.sessions) {
+		supportMap[webrtc.MimeTypeAV1] = dc.CodecSupportFull
+	} else if av1SupportCount > 0 {
+		supportMap[webrtc.MimeTypeAV1] = dc.CodecSupportPartial
+	} else {
+		supportMap[webrtc.MimeTypeAV1] = dc.CodecSupportNone
+	}
+
+	return supportMap
 }

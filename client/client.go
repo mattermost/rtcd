@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/mattermost/rtcd/service/rtc/dc"
 	"github.com/mattermost/rtcd/service/ws"
 
 	"github.com/mattermost/mattermost/server/public/model"
@@ -110,6 +111,7 @@ type Client struct {
 	screenTransceivers   []*webrtc.RTPTransceiver
 	rtcMon               *rtcMonitor
 	videoTransceivers    []*webrtc.RTPTransceiver
+	codecSupportMap      atomic.Pointer[dc.CodecSupportMap]
 
 	state int32
 

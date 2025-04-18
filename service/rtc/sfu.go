@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -340,8 +341,33 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		}
 	})
 
+	var handleDCOnce sync.Once
 	peerConn.OnDataChannel(func(dataCh *webrtc.DataChannel) {
-		s.handleDC(us, dataCh)
+		dataCh.OnError(func(err error) {
+			s.log.Error("data channel error", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+		})
+
+		dataCh.OnOpen(func() {
+			s.log.Debug("data channel open", mlog.String("sessionID", us.cfg.SessionID))
+			handleDCOnce.Do(func() {
+				s.handleDC(us, dataCh)
+			})
+		})
+
+		dataCh.OnMessage(func(msg webrtc.DataChannelMessage) {
+			// DEPRECATED
+			// keeping this for compatibility with older clients (i.e. mobile)
+			if string(msg.Data) == "ping" {
+				if err := dataCh.SendText("pong"); err != nil {
+					s.log.Error("failed to send message", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+				}
+				return
+			}
+
+			if err := s.handleDCMessage(msg.Data, us, dataCh); err != nil {
+				s.log.Error("failed to handle dc message", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+			}
+		})
 	})
 
 	peerConn.OnTrack(func(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
@@ -596,12 +622,10 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					return
 				}
 
-				if trackMimeType == ScreenTrackMimeTypeDefault && us.supportsAV1() && ss.supportsAV1() {
-					s.log.Debug("skipping VP8 track for AV1 supported receiver",
-						mlog.String("sessionID", ss.cfg.SessionID),
-					)
-					return
-				} else if trackMimeType == webrtc.MimeTypeAV1 && !ss.supportsAV1() {
+				// NOTE: Since MM-63776, we are not skipping VP8 tracks for AV1-supported clients since
+				// depending on the call wide support (CodecSupportMap) we may have
+				// AV1-supported client sending VP8 to maintain compatibility.
+				if trackMimeType == webrtc.MimeTypeAV1 && !ss.supportsAV1() {
 					s.log.Debug("skipping AV1 track for unsupported receiver",
 						mlog.String("sessionID", ss.cfg.SessionID),
 					)
@@ -762,6 +786,8 @@ func (s *Server) CloseSession(sessionID string) error {
 			s.mut.Unlock()
 		}
 		group.mut.Unlock()
+	} else {
+		call.sendCodecSupportMap(s.log)
 	}
 	call.mut.Unlock()
 
@@ -780,6 +806,58 @@ func (s *Server) CloseSession(sessionID string) error {
 	return nil
 }
 
+// collectSessionTracks gathers all available tracks from a session that should be delivered to the target session.
+func collectSessionTracks(senderSession *session, targetSession *session) ([]*webrtc.TrackLocalStaticRTP, []*webrtc.TrackRemote) {
+	senderSession.mut.RLock()
+	defer senderSession.mut.RUnlock()
+
+	var outTracks []*webrtc.TrackLocalStaticRTP
+	var remoteTracks []*webrtc.TrackRemote
+
+	// Voice track
+	if senderSession.outVoiceTrack != nil {
+		outTracks = append(outTracks, senderSession.outVoiceTrack)
+		remoteTracks = append(remoteTracks, senderSession.remoteVoiceTrack)
+	}
+
+	// NOTE: Since MM-63776, we are not skipping delivery of VP8 tracks
+	// for AV1-supported clients since depending on the call wide support (CodecSupportMap)
+	// we may still have AV1-supported clients sending VP8 tracks to maintain compatibility.
+
+	// Process screen and video tracks for different codecs
+	for _, trackType := range []struct {
+		outTracks    map[string][]*webrtc.TrackLocalStaticRTP
+		remoteTracks map[string]*webrtc.TrackRemote
+	}{
+		{senderSession.outScreenTracks, senderSession.remoteScreenTracks},
+		{senderSession.outVideoTracks, senderSession.remoteVideoTracks},
+	} {
+		// Always add VP8 tracks
+		trackIdx := getTrackIndex(webrtc.MimeTypeVP8, SimulcastLevelDefault)
+		tracks := trackType.outTracks[trackIdx]
+		if len(tracks) > 0 {
+			outTracks = append(outTracks, pickRandom(tracks))
+			remoteTracks = append(remoteTracks, trackType.remoteTracks[trackIdx])
+		}
+
+		// Add AV1 tracks only if target supports it
+		trackIdx = getTrackIndex(webrtc.MimeTypeAV1, SimulcastLevelDefault)
+		tracks = trackType.outTracks[trackIdx]
+		if len(tracks) > 0 && targetSession.supportsAV1() {
+			outTracks = append(outTracks, pickRandom(tracks))
+			remoteTracks = append(remoteTracks, trackType.remoteTracks[trackIdx])
+		}
+	}
+
+	// Screen audio track
+	if senderSession.outScreenAudioTrack != nil {
+		outTracks = append(outTracks, senderSession.outScreenAudioTrack)
+		remoteTracks = append(remoteTracks, senderSession.remoteScreenAudioTrack)
+	}
+
+	return outTracks, remoteTracks
+}
+
 // handleTracks manages (adds and removes) a/v tracks for the peer associated with the session.
 func (s *Server) handleTracks(call *call, us *session) {
 	call.mut.Lock()
@@ -788,45 +866,8 @@ func (s *Server) handleTracks(call *call, us *session) {
 			return
 		}
 
-		ss.mut.RLock()
-		outVoiceTrack := ss.outVoiceTrack
-
-		// Screen track selection. Both sender and receiver support it
-		// in order to send out the AV1 track.
-		screenTrackMimeType := ScreenTrackMimeTypeDefault
-		if ss.supportsAV1() && us.supportsAV1() {
-			s.log.Debug("both sender and receiver support AV1", mlog.String("sessionID", us.cfg.SessionID))
-			screenTrackMimeType = webrtc.MimeTypeAV1
-		}
-		outScreenTracks := ss.outScreenTracks[getTrackIndex(screenTrackMimeType, SimulcastLevelDefault)]
-		outScreenAudioTrack := ss.outScreenAudioTrack
-		outVideoTracks := ss.outVideoTracks[getTrackIndex(screenTrackMimeType, SimulcastLevelDefault)]
-
-		remoteVoiceTrack := ss.remoteVoiceTrack
-		remoteScreenTrack := ss.remoteScreenTracks[getTrackIndex(screenTrackMimeType, SimulcastLevelDefault)]
-		remoteScreenAudioTrack := ss.remoteScreenAudioTrack
-		remoteVideoTrack := ss.remoteVideoTracks[getTrackIndex(screenTrackMimeType, SimulcastLevelDefault)]
-
-		ss.mut.RUnlock()
-
-		var outTracks []*webrtc.TrackLocalStaticRTP
-		var remoteTracks []*webrtc.TrackRemote
-		if outVoiceTrack != nil {
-			outTracks = append(outTracks, outVoiceTrack)
-			remoteTracks = append(remoteTracks, remoteVoiceTrack)
-		}
-		if len(outScreenTracks) > 0 {
-			outTracks = append(outTracks, pickRandom(outScreenTracks))
-			remoteTracks = append(remoteTracks, remoteScreenTrack)
-		}
-		if outScreenAudioTrack != nil {
-			outTracks = append(outTracks, outScreenAudioTrack)
-			remoteTracks = append(remoteTracks, remoteScreenAudioTrack)
-		}
-		if len(outVideoTracks) > 0 {
-			outTracks = append(outTracks, pickRandom(outVideoTracks))
-			remoteTracks = append(remoteTracks, remoteVideoTrack)
-		}
+		// Collect all the tracks that ss may be sending that we should deliver to the target session (us).
+		outTracks, remoteTracks := collectSessionTracks(ss, us)
 
 		for i, track := range outTracks {
 			select {

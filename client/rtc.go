@@ -526,12 +526,21 @@ func (c *Client) initRTCSession() error {
 			}
 		case dc.MessageTypeMediaMap:
 			c.log.Debug("received media map message", slog.Any("payload", payload))
+		case dc.MessageTypeCodecSupportMap:
+			c.log.Debug("received codec support map message", slog.Any("payload", payload))
+			if csm, ok := payload.(dc.CodecSupportMap); ok {
+				c.codecSupportMap.Store(&csm)
+			}
 		default:
 			c.log.Error("unexpected dc message type", slog.Any("mt", mt))
 		}
 	})
 
 	return nil
+}
+
+func (c *Client) CodecSupportMap() *dc.CodecSupportMap {
+	return c.codecSupportMap.Load()
 }
 
 func (c *Client) unlockSignalingLock() error {
@@ -551,6 +560,8 @@ func (c *Client) unlockSignalingLock() error {
 }
 
 func (c *Client) grabSignalingLock() error {
+	timeoutCh := time.After(5 * time.Second)
+
 	for {
 		c.log.Debug("attempting to grab signaling lock")
 		dataCh := c.dc.Load()
@@ -574,8 +585,8 @@ func (c *Client) grabSignalingLock() error {
 			c.log.Debug("dc lock not acquired, retrying")
 			time.Sleep(100 * time.Millisecond)
 			continue
-		case <-time.After(5 * time.Second):
-			return fmt.Errorf("failed to lock dc")
+		case <-timeoutCh:
+			return fmt.Errorf("failed to lock dc: timed out")
 		case <-c.wsCloseCh:
 			return fmt.Errorf("closing")
 		}
