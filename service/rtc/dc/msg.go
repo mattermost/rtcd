@@ -34,6 +34,7 @@ const (
 type TrackInfo struct {
 	Type     string `msgpack:"type"`      // "voice", "screen", "screen-audio", "video"
 	SenderID string `msgpack:"sender_id"` // the session ID of the sender
+	MimeType string `msgpack:"mime_type"` // the mime type of the track (e.g. "video/AV1")
 }
 
 type CodecSupportLevel int

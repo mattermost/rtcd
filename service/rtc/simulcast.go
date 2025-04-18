@@ -158,7 +158,8 @@ func (s *session) handleSenderBitrateChange(downRate int, lossRate int) (bool, i
 	}
 
 	s.mut.RLock()
-	sender := s.screenTrackSender
+	// For now we only support simulcast on VP8.
+	sender := s.screenTrackSenders[webrtc.MimeTypeVP8]
 	s.mut.RUnlock()
 
 	if sender == nil {

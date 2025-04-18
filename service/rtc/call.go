@@ -54,6 +54,7 @@ func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection, clo
 		outScreenTracks:    make(map[string][]*webrtc.TrackLocalStaticRTP),
 		remoteScreenTracks: make(map[string]*webrtc.TrackRemote),
 		screenRateMonitors: make(map[string]*RateMonitor),
+		screenTrackSenders: make(map[string]*webrtc.RTPSender),
 		outVideoTracks:     make(map[string][]*webrtc.TrackLocalStaticRTP),
 		remoteVideoTracks:  make(map[string]*webrtc.TrackRemote),
 		videoRateMonitors:  make(map[string]*RateMonitor),
@@ -126,13 +127,15 @@ func (c *call) clearScreenState(screenSession *session) error {
 		if s == c.screenSession {
 			s.clearScreenState()
 			c.screenSession = nil
-		} else if s.screenTrackSender != nil {
-			select {
-			case s.tracksCh <- trackActionContext{action: trackActionRemove, localTrack: s.screenTrackSender.Track()}:
-			default:
-				s.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", s.cfg.SessionID))
+		} else if len(s.screenTrackSenders) > 0 {
+			for _, sender := range s.screenTrackSenders {
+				select {
+				case s.tracksCh <- trackActionContext{action: trackActionRemove, localTrack: sender.Track()}:
+				default:
+					s.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", s.cfg.SessionID))
+				}
 			}
-			s.screenTrackSender = nil
+			s.screenTrackSenders = map[string]*webrtc.RTPSender{}
 		}
 		s.mut.Unlock()
 	}
@@ -172,7 +175,7 @@ func (c *call) handleSessionClose(us *session) {
 				continue
 			}
 			ss.mut.Lock()
-			ss.screenTrackSender = nil
+			ss.screenTrackSenders = map[string]*webrtc.RTPSender{}
 			ss.mut.Unlock()
 		}
 	}

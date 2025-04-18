@@ -77,9 +77,9 @@ type session struct {
 	videoRateMonitors map[string]*RateMonitor
 
 	// Receiver
-	bwEstimator       cc.BandwidthEstimator
-	screenTrackSender *webrtc.RTPSender
-	rxTracks          map[string]webrtc.TrackLocal
+	bwEstimator        cc.BandwidthEstimator
+	screenTrackSenders map[string]*webrtc.RTPSender
+	rxTracks           map[string]webrtc.TrackLocal
 
 	closeCh chan struct{}
 	closeCb func() error
@@ -417,9 +417,9 @@ func (s *session) addTrack(sdpOutCh chan<- Message, localTrack webrtc.TrackLocal
 		}
 	}
 
-	if getTrackType(localTrack.ID()) == trackTypeScreen && s.screenTrackSender != nil {
+	if getTrackType(localTrack.ID()) == trackTypeScreen && s.screenTrackSenders[getTrackMimeType(localTrack)] != nil {
 		s.mut.Unlock()
-		return fmt.Errorf("screen track sender is already set")
+		return fmt.Errorf("screen track sender already set")
 	}
 
 	sender, err := s.rtcConn.AddTrack(localTrack)
@@ -464,7 +464,7 @@ func (s *session) addTrack(sdpOutCh chan<- Message, localTrack webrtc.TrackLocal
 
 		s.mut.Lock()
 		if getTrackType(localTrack.ID()) == trackTypeScreen {
-			s.screenTrackSender = sender
+			s.screenTrackSenders[getTrackMimeType(localTrack)] = sender
 		}
 		s.rxTracks[localTrack.ID()] = localTrack
 		s.mut.Unlock()
@@ -508,8 +508,8 @@ func (s *session) removeTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) 
 	}
 	s.call.metrics.DecRTPTracks(s.cfg.GroupID, "out", getTrackMimeType(track))
 	delete(s.rxTracks, track.ID())
-	if s.screenTrackSender == sender {
-		s.screenTrackSender = nil
+	if s.screenTrackSenders[getTrackMimeType(track)] == sender {
+		delete(s.screenTrackSenders, getTrackMimeType(track))
 	}
 	s.mut.Unlock()
 
@@ -651,6 +651,7 @@ func (s *session) sendMediaMapping() error {
 		mediaMap[trx.Mid()] = dc.TrackInfo{
 			Type:     string(trackType),
 			SenderID: s.cfg.SessionID,
+			MimeType: getTrackMimeType(track),
 		}
 	}
 
