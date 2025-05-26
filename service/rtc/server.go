@@ -314,16 +314,19 @@ func (s *Server) initUDP(localIPs []netip.Addr, network string) error {
 		return nil
 	}
 
-	// If an address is specified we create a single udp mux.
+	// If an address is specified we create udp mux for each address specified (it could a comma separated list).
 	if s.cfg.ICEAddressUDP != "" {
-		if err := initUDPMux(net.JoinHostPort(s.cfg.ICEAddressUDP, fmt.Sprintf("%d", s.cfg.ICEPortUDP))); err != nil {
-			return err
+		for _, ip := range s.cfg.ICEAddressUDP.Parse() {
+			if err := initUDPMux(net.JoinHostPort(ip, fmt.Sprintf("%d", s.cfg.ICEPortUDP))); err != nil {
+				return err
+			}
+			s.udpMux = ice.NewMultiUDPMuxDefault(udpMuxes...)
 		}
-		s.udpMux = udpMuxes[0]
+
 		return nil
 	}
 
-	// If no address is specified we create a mux for each interface we find.
+	// If no address is specified we create a UDP mux for each interface we find.
 	for _, ip := range localIPs {
 		if err := initUDPMux(netip.AddrPortFrom(ip, uint16(s.cfg.ICEPortUDP)).String()); err != nil {
 			return err
@@ -336,17 +339,43 @@ func (s *Server) initUDP(localIPs []netip.Addr, network string) error {
 }
 
 func (s *Server) initTCP(network string) error {
-	tcpListener, err := net.Listen(network, net.JoinHostPort(s.cfg.ICEAddressTCP, fmt.Sprintf("%d", s.cfg.ICEPortTCP)))
-	if err != nil {
-		return fmt.Errorf("failed to create TCP listener: %w", err)
+	initTCPMux := func(host string) (ice.TCPMux, error) {
+		tcpListener, err := net.Listen(network, net.JoinHostPort(host, fmt.Sprintf("%d", s.cfg.ICEPortTCP)))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create TCP listener: %w", err)
+		}
+
+		return ice.NewTCPMuxDefault(ice.TCPMuxParams{
+			Logger:          newPionLeveledLogger(s.log),
+			Listener:        tcpListener,
+			ReadBufferSize:  tcpConnReadBufferLength,
+			WriteBufferSize: tcpSocketWriteBufferSize,
+		}), nil
 	}
 
-	s.tcpMux = ice.NewTCPMuxDefault(ice.TCPMuxParams{
-		Logger:          newPionLeveledLogger(s.log),
-		Listener:        tcpListener,
-		ReadBufferSize:  tcpConnReadBufferLength,
-		WriteBufferSize: tcpSocketWriteBufferSize,
-	})
+	// If an address is specified we create a TCP mux for each address specified (it could a comma separated list).
+	if s.cfg.ICEAddressTCP != "" {
+		var tcpMuxes []ice.TCPMux
+		for _, ip := range s.cfg.ICEAddressTCP.Parse() {
+			tcpMux, err := initTCPMux(ip)
+			if err != nil {
+				return err
+			}
+
+			tcpMuxes = append(tcpMuxes, tcpMux)
+		}
+
+		s.tcpMux = ice.NewMultiTCPMuxDefault(tcpMuxes...)
+
+		return nil
+	}
+
+	tcpMux, err := initTCPMux(string(s.cfg.ICEAddressTCP))
+	if err != nil {
+		return err
+	}
+
+	s.tcpMux = tcpMux
 
 	return nil
 }

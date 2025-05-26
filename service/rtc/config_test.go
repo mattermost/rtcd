@@ -21,12 +21,12 @@ func TestServerConfigIsValid(t *testing.T) {
 		cfg.ICEAddressUDP = "not_an_address"
 		err := cfg.IsValid()
 		require.Error(t, err)
-		require.Equal(t, "invalid ICEAddressUDP value: not a valid address", err.Error())
+		require.Equal(t, "invalid ICEAddressUDP value: invalid ICEAddress value: not_an_address is not a valid IP address", err.Error())
 
 		cfg.ICEAddressUDP = "127.0.0.0.1"
 		err = cfg.IsValid()
 		require.Error(t, err)
-		require.Equal(t, "invalid ICEAddressUDP value: not a valid address", err.Error())
+		require.Equal(t, "invalid ICEAddressUDP value: invalid ICEAddress value: 127.0.0.0.1 is not a valid IP address", err.Error())
 	})
 
 	t.Run("invalid ICEPortUDP", func(t *testing.T) {
@@ -406,5 +406,37 @@ func TestSessionProps(t *testing.T) {
 		}
 		require.Equal(t, "channelID", cfg.Props.ChannelID())
 		require.True(t, cfg.Props.AV1Support())
+	})
+}
+
+func TestICEAddressIsValid(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		var addr ICEAddress
+		err := addr.IsValid()
+		require.NoError(t, err)
+	})
+
+	t.Run("valid single address", func(t *testing.T) {
+		addr := ICEAddress("127.0.0.1")
+		err := addr.IsValid()
+		require.NoError(t, err)
+	})
+
+	t.Run("valid multiple addresses", func(t *testing.T) {
+		addr := ICEAddress("127.0.0.1,192.168.45.45")
+		err := addr.IsValid()
+		require.NoError(t, err)
+	})
+
+	t.Run("invalid address", func(t *testing.T) {
+		addr := ICEAddress("127.0.0.256")
+		err := addr.IsValid()
+		require.EqualError(t, err, "invalid ICEAddress value: 127.0.0.256 is not a valid IP address")
+	})
+
+	t.Run("invalid address in list", func(t *testing.T) {
+		addr := ICEAddress("127.0.0.1,192.168.45.45,256.45.45.45")
+		err := addr.IsValid()
+		require.EqualError(t, err, "invalid ICEAddress value: 256.45.45.45 is not a valid IP address")
 	})
 }
