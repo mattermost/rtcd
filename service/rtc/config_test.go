@@ -428,6 +428,12 @@ func TestICEAddressIsValid(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("valid multiple addresses, with extra spaces", func(t *testing.T) {
+		addr := ICEAddress("127.0.0.1 , 192.168.45.45   ,  10.8.8.8")
+		err := addr.IsValid()
+		require.NoError(t, err)
+	})
+
 	t.Run("invalid address", func(t *testing.T) {
 		addr := ICEAddress("127.0.0.256")
 		err := addr.IsValid()

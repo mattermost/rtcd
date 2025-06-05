@@ -347,7 +347,11 @@ func (s *ICEHostPortOverride) UnmarshalTOML(data interface{}) error {
 type ICEAddress string
 
 func (a ICEAddress) Parse() []string {
-	return strings.Split(string(a), ",")
+	var addrs []string
+	for _, addr := range strings.Split(string(a), ",") {
+		addrs = append(addrs, strings.TrimSpace(addr))
+	}
+	return addrs
 }
 
 func (a ICEAddress) IsValid() error {
