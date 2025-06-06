@@ -13,11 +13,11 @@ import (
 
 type ServerConfig struct {
 	// ICEAddressUDP specifies the UDP address the RTC service should listen on.
-	ICEAddressUDP string `toml:"ice_address_udp"`
+	ICEAddressUDP ICEAddress `toml:"ice_address_udp"`
 	// ICEPortUDP specifies the UDP port the RTC service should listen to.
 	ICEPortUDP int `toml:"ice_port_udp"`
 	// ICEAddressTCP specifies the TCP address the RTC service should listen on.
-	ICEAddressTCP string `toml:"ice_address_tcp"`
+	ICEAddressTCP ICEAddress `toml:"ice_address_tcp"`
 	// ICEPortTCP specifies the TCP port the RTC service should listen to.
 	ICEPortTCP int `toml:"ice_port_tcp"`
 	// ICEHostOverride optionally specifies an IP address (or hostname)
@@ -41,12 +41,12 @@ type ServerConfig struct {
 }
 
 func (c ServerConfig) IsValid() error {
-	if c.ICEAddressUDP != "" && net.ParseIP(c.ICEAddressUDP) == nil {
-		return fmt.Errorf("invalid ICEAddressUDP value: not a valid address")
+	if err := c.ICEAddressUDP.IsValid(); err != nil {
+		return fmt.Errorf("invalid ICEAddressUDP value: %w", err)
 	}
 
-	if c.ICEAddressTCP != "" && net.ParseIP(c.ICEAddressTCP) == nil {
-		return fmt.Errorf("invalid ICEAddressTCP value: not a valid address")
+	if err := c.ICEAddressTCP.IsValid(); err != nil {
+		return fmt.Errorf("invalid ICEAddressTCP value: %w", err)
 	}
 
 	if c.ICEPortUDP < 80 || c.ICEPortUDP > 49151 {
@@ -339,6 +339,30 @@ func (s *ICEHostPortOverride) UnmarshalTOML(data interface{}) error {
 		*s = ICEHostPortOverride(fmt.Sprintf("%v", data))
 	default:
 		return fmt.Errorf("unknown type %T", t)
+	}
+
+	return nil
+}
+
+type ICEAddress string
+
+func (a ICEAddress) Parse() []string {
+	var addrs []string
+	for _, addr := range strings.Split(string(a), ",") {
+		addrs = append(addrs, strings.TrimSpace(addr))
+	}
+	return addrs
+}
+
+func (a ICEAddress) IsValid() error {
+	if a == "" {
+		return nil
+	}
+
+	for _, addr := range a.Parse() {
+		if net.ParseIP(addr) == nil {
+			return fmt.Errorf("invalid ICEAddress value: %s is not a valid IP address", addr)
+		}
 	}
 
 	return nil
