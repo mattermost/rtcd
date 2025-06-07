@@ -168,6 +168,102 @@ func (c *Client) StopScreenShare() error {
 	return c.sendWS(wsEventScreenOff, nil, false)
 }
 
+func (c *Client) StartVideo(tracks []webrtc.TrackLocal) (*webrtc.RTPTransceiver, error) {
+	if len(tracks) == 0 {
+		return nil, fmt.Errorf("invalid empty tracks")
+	}
+
+	if len(tracks) > 2 {
+		return nil, fmt.Errorf("too many tracks")
+	}
+
+	data, err := json.Marshal(map[string]string{
+		"videoStreamID": tracks[0].StreamID(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal data: %w", err)
+	}
+
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
+	if c.pc == nil {
+		return nil, fmt.Errorf("rtc client is not initialized")
+	}
+
+	if err := c.sendWS(wsEventVideoOn, map[string]any{
+		"data": string(data),
+	}, false); err != nil {
+		return nil, fmt.Errorf("failed to send video on event: %w", err)
+	}
+
+	trx, err := c.pc.AddTransceiverFromTrack(tracks[0], webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly})
+	if err != nil {
+		return nil, fmt.Errorf("failed to add transceiver for track: %w", err)
+	}
+
+	// Simulcast
+	if len(tracks) > 1 {
+		if err := trx.Sender().AddEncoding(tracks[1]); err != nil {
+			return nil, fmt.Errorf("failed to add encoding: %w", err)
+		}
+	}
+
+	c.videoTransceivers = append(c.videoTransceivers, trx)
+
+	sender := trx.Sender()
+
+	rtcpHandler := func(rid string) {
+		defer c.log.Debug("exiting RTCP handler")
+		var n int
+		var err error
+		rtcpBuf := make([]byte, receiveMTU)
+		for {
+			if rid != "" {
+				n, _, err = sender.ReadSimulcast(rtcpBuf, rid)
+			} else {
+				n, _, err = sender.Read(rtcpBuf)
+			}
+			if err != nil {
+				if !errors.Is(err, io.EOF) {
+					c.log.Error("failed to read RTCP packet", slog.String("err", err.Error()))
+				}
+				return
+			}
+			if pkts, err := rtcp.Unmarshal(rtcpBuf[:n]); err != nil {
+				c.log.Error("failed to unmarshal RTCP packet", slog.String("err", err.Error()))
+			} else {
+				c.emit(RTCSenderRTCPPacketEvent, map[string]any{
+					"pkts":   pkts,
+					"rid":    rid,
+					"sender": sender,
+				})
+			}
+		}
+	}
+
+	for _, track := range tracks {
+		go rtcpHandler(track.RID())
+	}
+
+	return trx, nil
+}
+
+func (c *Client) StopVideo() error {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
+	for _, trx := range c.videoTransceivers {
+		if err := c.pc.RemoveTrack(trx.Sender()); err != nil {
+			return fmt.Errorf("failed to remove track: %w", err)
+		}
+	}
+
+	c.videoTransceivers = nil
+
+	return c.sendWS(wsEventVideoOff, nil, false)
+}
+
 func (c *Client) RaiseHand() error {
 	return c.SendWS(wsEventRaiseHand, nil, false)
 }
