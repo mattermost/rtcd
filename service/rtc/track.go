@@ -15,6 +15,8 @@ const (
 )
 
 type trackActionContext struct {
-	action trackAction
-	track  webrtc.TrackLocal
+	action        trackAction
+	localTrack    webrtc.TrackLocal
+	remoteTrack   *webrtc.TrackRemote
+	senderSession *session
 }

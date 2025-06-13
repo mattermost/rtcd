@@ -15,3 +15,4 @@ Chart.lock
 # App Specific
 config/config.toml
 *.log
+.aider*
