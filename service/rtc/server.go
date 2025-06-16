@@ -118,7 +118,7 @@ func (s *Server) Start() error {
 				s.localIPs = append(s.localIPs, ip)
 			}
 		}
-		s.log.Debug("rtc: ICE addresses set, overriding local IPs", mlog.Any("localIPs", s.localIPs))
+		s.log.Debug("rtc: ICE addresses set, only using filtered local IPs", mlog.Any("localIPs", s.localIPs))
 	}
 
 	if m, _ := s.cfg.ICEHostPortOverride.ParseMap(); len(m) > 0 {
