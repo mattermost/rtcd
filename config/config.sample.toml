@@ -28,7 +28,7 @@ security.session_cache.expiration_minutes = 1440
 # If left empty it has the same effect as using the 0.0.0.0 catch-all address,
 # causing the server to listen on all available network interfaces.
 #
-# Since version 1.2.0 this setting supports passing multiple local addresses through
+# Since version 1.1.2 this setting supports passing multiple local addresses through
 # a comma separated list.
 ice_address_udp = ""
 # The UDP port used to route media (audio/screen/video tracks).
@@ -39,7 +39,7 @@ ice_port_udp = 8443
 # If left empty it has the same effect as using the 0.0.0.0 catch-all address,
 # causing the server to listen on all available network interfaces.
 #
-# Since version 1.2.0 this setting supports passing multiple local addresses through
+# Since version 1.1.2 this setting supports passing multiple local addresses through
 # a comma separated list.
 ice_address_tcp = ""
 # The TCP port used to route media (audio/screen/video tracks). This is used to

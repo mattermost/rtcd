@@ -409,6 +409,44 @@ func TestSessionProps(t *testing.T) {
 	})
 }
 
+func TestICEAddressParse(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		var addr ICEAddress
+		addrs := addr.Parse()
+		require.Nil(t, addrs)
+	})
+
+	t.Run("single address", func(t *testing.T) {
+		addr := ICEAddress("127.0.0.1")
+		addrs := addr.Parse()
+		require.Equal(t, []string{"127.0.0.1"}, addrs)
+	})
+
+	t.Run("multiple addresses", func(t *testing.T) {
+		addr := ICEAddress("127.0.0.1,192.168.1.1")
+		addrs := addr.Parse()
+		require.Equal(t, []string{"127.0.0.1", "192.168.1.1"}, addrs)
+	})
+
+	t.Run("multiple addresses with spaces", func(t *testing.T) {
+		addr := ICEAddress("127.0.0.1 , 192.168.1.1   ,  10.0.0.1")
+		addrs := addr.Parse()
+		require.Equal(t, []string{"127.0.0.1", "192.168.1.1", "10.0.0.1"}, addrs)
+	})
+
+	t.Run("single address with spaces", func(t *testing.T) {
+		addr := ICEAddress("  127.0.0.1  ")
+		addrs := addr.Parse()
+		require.Equal(t, []string{"127.0.0.1"}, addrs)
+	})
+
+	t.Run("IPv6 addresses", func(t *testing.T) {
+		addr := ICEAddress("::1,2001:db8::1")
+		addrs := addr.Parse()
+		require.Equal(t, []string{"::1", "2001:db8::1"}, addrs)
+	})
+}
+
 func TestICEAddressIsValid(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
 		var addr ICEAddress

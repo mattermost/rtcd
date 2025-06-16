@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/netip"
 	"os"
 	"runtime"
 	"time"
@@ -95,6 +97,20 @@ func (s *Server) initSettingEngine() (webrtc.SettingEngine, error) {
 		s.log.Warn("RTCD_RTC_DTLS_INSECURE_SKIP_HELLOVERIFY is set, will skip hello verify phase")
 		sEngine.SetDTLSInsecureSkipHelloVerify(true)
 	}
+
+	// Only generate candidates for the local IPs we are listening on.
+	sEngine.SetIPFilter(func(ip net.IP) bool {
+		for _, localIP := range s.localIPs {
+			addr, ok := netip.AddrFromSlice(ip)
+			if ok && addr == localIP {
+				s.log.Debug("including candidate for ip", mlog.String("ip", ip.String()), mlog.String("localIP", localIP.String()))
+				return true
+			}
+
+			s.log.Debug("skipping candidate for ip", mlog.String("ip", ip.String()), mlog.String("localIP", localIP.String()))
+		}
+		return false
+	})
 
 	pairs, err := generateAddrsPairs(s.localIPs, s.publicAddrsMap, s.cfg.ICEHostOverride, s.cfg.EnableIPv6)
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
 	"sync"
 	"time"
 
@@ -105,10 +106,25 @@ func (s *Server) Start() error {
 
 	s.log.Debug("rtc: found local IPs", mlog.Any("ips", s.localIPs))
 
+	udpLocalIPs := s.cfg.ICEAddressUDP.Parse()
+	tcpLocalIPs := s.cfg.ICEAddressTCP.Parse()
+
+	// If listening on specific IPs, ensure the localIPs are filtered accordingly.
+	// We should discard anything that isn't appearing in either udpLocalIPs or tcpLocalIPs.
+	if len(udpLocalIPs) > 0 || len(tcpLocalIPs) > 0 {
+		s.localIPs = nil
+		for _, ip := range localIPs {
+			if slices.Contains(udpLocalIPs, ip.String()) || slices.Contains(tcpLocalIPs, ip.String()) {
+				s.localIPs = append(s.localIPs, ip)
+			}
+		}
+		s.log.Debug("rtc: ICE addresses set, overriding local IPs", mlog.Any("localIPs", s.localIPs))
+	}
+
 	if m, _ := s.cfg.ICEHostPortOverride.ParseMap(); len(m) > 0 {
 		s.log.Debug("rtc: found ice host port override mappings", mlog.Any("mappings", s.cfg.ICEHostPortOverride))
 
-		for _, ip := range localIPs {
+		for _, ip := range s.localIPs {
 			if port, ok := m[ip.String()]; ok {
 				s.log.Debug("rtc: found port override for local address", mlog.String("address", ip.String()), mlog.Int("port", port))
 				s.cfg.ICEHostPortOverride = ICEHostPortOverride(fmt.Sprintf("%d", port))
@@ -120,7 +136,7 @@ func (s *Server) Start() error {
 
 	// Populate public IP addresses map if override is not set and STUN is provided.
 	if s.cfg.ICEHostOverride == "" && len(s.cfg.ICEServers) > 0 {
-		for _, ip := range localIPs {
+		for _, ip := range s.localIPs {
 			udpListenAddr := netip.AddrPortFrom(ip, uint16(s.cfg.ICEPortUDP)).String()
 			udpAddr, err := net.ResolveUDPAddr(udpNetwork, udpListenAddr)
 			if err != nil {
@@ -141,7 +157,7 @@ func (s *Server) Start() error {
 		}
 	}
 
-	if err := s.initUDP(localIPs, udpNetwork); err != nil {
+	if err := s.initUDP(s.localIPs, udpNetwork); err != nil {
 		return err
 	}
 
