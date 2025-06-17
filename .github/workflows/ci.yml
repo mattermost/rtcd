@@ -32,3 +32,35 @@ jobs:
         make test
       env:
         CI: true
+
+  test-fips:
+    env:
+      GOPATH: ${{ github.workspace }}
+
+    defaults:
+      run:
+        working-directory: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: chainguard-dev/setup-chainctl@main
+      with:
+        identity: ee399b4c72dd4e58e3d617f78fc47b74733c9557/922f2d48307d6f5f
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+    - name: Install Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/go.mod
+        cache-dependency-path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}/go.sum
+    - name: Execute Tests
+      run: |
+        go env
+        go mod download
+        go mod verify
+        go test -mod=readonly -failfast -v ./...
+      env:
+        CI: true
