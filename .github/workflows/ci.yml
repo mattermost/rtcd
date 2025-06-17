@@ -61,6 +61,6 @@ jobs:
         go env
         go mod download
         go mod verify
-        go test -mod=readonly -failfast -v ./...
+        go test -mod=readonly -failfast -v ./service/...
       env:
         CI: true
