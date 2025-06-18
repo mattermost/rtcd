@@ -1,5 +1,11 @@
-on: [push]
 name: CI
+
+on: [push]
+
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   test:
     env:
@@ -44,6 +50,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Install system dependencies
+      run: sudo apt-get update && sudo apt-get install -y lynx
     - uses: chainguard-dev/setup-chainctl@main
       with:
         identity: ee399b4c72dd4e58e3d617f78fc47b74733c9557/f6f21541a4fdea18
