@@ -74,3 +74,5 @@ jobs:
         go test -mod=readonly -failfast -v ./service/...
       env:
         CI: true
+        CGO_ENABLED: 1
+        GOEXPERIMENT: boringcrypto
