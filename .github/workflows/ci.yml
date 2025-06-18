@@ -46,7 +46,7 @@ jobs:
     steps:
     - uses: chainguard-dev/setup-chainctl@main
       with:
-        identity: ee399b4c72dd4e58e3d617f78fc47b74733c9557/922f2d48307d6f5f
+        identity: ee399b4c72dd4e58e3d617f78fc47b74733c9557/f6f21541a4fdea18
     - name: Checkout Code
       uses: actions/checkout@v4
       with:
