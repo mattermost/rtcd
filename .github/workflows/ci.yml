@@ -50,6 +50,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
     - name: Install system dependencies
       run: |
         sudo apt-get update
@@ -57,10 +61,6 @@ jobs:
     - uses: chainguard-dev/setup-chainctl@main
       with:
         identity: ee399b4c72dd4e58e3d617f78fc47b74733c9557/f6f21541a4fdea18
-    - name: Checkout Code
-      uses: actions/checkout@v4
-      with:
-        path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
     - name: Install Go
       uses: actions/setup-go@v5
       with:
