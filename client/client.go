@@ -31,19 +31,21 @@ const (
 	CloseEvent EventType = "Close"
 	ErrorEvent EventType = "Error"
 
-	WSConnectEvent            EventType = "WSConnect"
-	WSDisconnectEvent         EventType = "WSDisconnect"
-	WSCallJoinEvent           EventType = "WSCallJoin"
-	WSCallRecordingStateEvent EventType = "WSCallRecordingState" // DEPRECATED
-	WSCallJobStateEvent       EventType = "WSCallJobState"
-	WSJobStopEvent            EventType = "WSStopJobEvent"
-	WSCallHostChangedEvent    EventType = "WSCallHostChanged"
-	WSCallMutedEvent          EventType = "WSCallMuted"
-	WSCallUnmutedEvent        EventType = "WSCallUnmuted"
-	WSCallRaisedHandEvent     EventType = "WSCallRaisedHand"
-	WSCallLoweredHandEvent    EventType = "WSCallLoweredHand"
-	WSCallScreenOnEvent       EventType = "WSCallScreenOn"
-	WSCallScreenOffEvent      EventType = "WSCallScreenOff"
+	WSConnectEvent              EventType = "WSConnect"
+	WSDisconnectEvent           EventType = "WSDisconnect"
+	WSCallJoinEvent             EventType = "WSCallJoin"
+	WSCallRecordingStateEvent   EventType = "WSCallRecordingState" // DEPRECATED
+	WSCallJobStateEvent         EventType = "WSCallJobState"
+	WSJobStopEvent              EventType = "WSStopJobEvent"
+	WSCallHostChangedEvent      EventType = "WSCallHostChanged"
+	WSCallMutedEvent            EventType = "WSCallMuted"
+	WSCallUnmutedEvent          EventType = "WSCallUnmuted"
+	WSCallRaisedHandEvent       EventType = "WSCallRaisedHand"
+	WSCallLoweredHandEvent      EventType = "WSCallLoweredHand"
+	WSCallScreenOnEvent         EventType = "WSCallScreenOn"
+	WSCallScreenOffEvent        EventType = "WSCallScreenOff"
+	WSStartLiveTranslationEvent EventType = "WSStartLiveTranslationEvent"
+	WSStopLiveTranslationEvent  EventType = "WSStopLiveTranslationEvent"
 )
 
 func (e EventType) IsValid() bool {
@@ -59,6 +61,7 @@ func (e EventType) IsValid() bool {
 		WSCallRaisedHandEvent, WSCallLoweredHandEvent,
 		WSCallScreenOnEvent, WSCallScreenOffEvent,
 		WSCallJobStateEvent,
+		WSStartLiveTranslationEvent, WSStopLiveTranslationEvent,
 		WSJobStopEvent:
 		return true
 	default:

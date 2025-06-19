@@ -45,20 +45,22 @@ const (
 	wsEventReconnect = wsEvPrefix + "reconnect"
 
 	// Server sent events
-	wsEventSignal          = wsEvPrefix + "signal"
-	wsEventError           = wsEvPrefix + "error"
-	wsEventUserLeft        = wsEvPrefix + "user_left"
-	wsEventCallEnd         = wsEvPrefix + "call_end"
-	wsEventCallJobState    = wsEvPrefix + "call_job_state"
-	wsEventJobStop         = wsEvPrefix + "job_stop"
-	wsEventCallHostChanged = wsEvPrefix + "call_host_changed"
-	wsEventUserMuted       = wsEvPrefix + "user_muted"
-	wsEventUserUnmuted     = wsEvPrefix + "user_unmuted"
-	wsEventUserRaisedHand  = wsEvPrefix + "user_raise_hand"
-	wsEventUserLoweredHand = wsEvPrefix + "user_unraise_hand"
-	wsEventUserScreenOn    = wsEvPrefix + "user_screen_on"
-	wsEventUserScreenOff   = wsEvPrefix + "user_screen_off"
-	wsEventUserReacted     = wsEvPrefix + "user_reacted"
+	wsEventSignal               = wsEvPrefix + "signal"
+	wsEventError                = wsEvPrefix + "error"
+	wsEventUserLeft             = wsEvPrefix + "user_left"
+	wsEventCallEnd              = wsEvPrefix + "call_end"
+	wsEventCallJobState         = wsEvPrefix + "call_job_state"
+	wsEventJobStop              = wsEvPrefix + "job_stop"
+	wsEventCallHostChanged      = wsEvPrefix + "call_host_changed"
+	wsEventUserMuted            = wsEvPrefix + "user_muted"
+	wsEventUserUnmuted          = wsEvPrefix + "user_unmuted"
+	wsEventUserRaisedHand       = wsEvPrefix + "user_raise_hand"
+	wsEventUserLoweredHand      = wsEvPrefix + "user_unraise_hand"
+	wsEventUserScreenOn         = wsEvPrefix + "user_screen_on"
+	wsEventUserScreenOff        = wsEvPrefix + "user_screen_off"
+	wsEventUserReacted          = wsEvPrefix + "user_reacted"
+	wsEventStartLiveTranslation = wsEvPrefix + "start_live_translation"
+	wsEventStopLiveTranslation  = wsEvPrefix + "stop_live_translation"
 )
 
 var (
@@ -297,6 +299,34 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 				evType = WSCallScreenOffEvent
 			}
 			c.emit(evType, sessionID)
+		case wsEventStartLiveTranslation:
+			channelID, _ := ev.GetData()["channel_id"].(string)
+			if channelID != c.cfg.ChannelID {
+				return nil
+			}
+
+			sessionID, _ := ev.GetData()["session_id"].(string)
+			if sessionID == c.originalConnID || sessionID == c.currentConnID {
+				targetSessionID, _ := ev.GetData()["target_session_id"].(string)
+				targetLang, _ := ev.GetData()["target_language"].(string)
+				c.emit(WSStartLiveTranslationEvent, map[string]string{
+					"target_session_id": targetSessionID,
+					"target_language":   targetLang,
+				})
+			}
+		case wsEventStopLiveTranslation:
+			channelID, _ := ev.GetData()["channel_id"].(string)
+			if channelID != c.cfg.ChannelID {
+				return nil
+			}
+
+			sessionID, _ := ev.GetData()["session_id"].(string)
+			if sessionID == c.originalConnID || sessionID == c.currentConnID {
+				targetSessionID, _ := ev.GetData()["target_session_id"].(string)
+				c.emit(WSStopLiveTranslationEvent, map[string]string{
+					"target_session_id": targetSessionID,
+				})
+			}
 		default:
 		}
 	case ws.BinaryMessage:
