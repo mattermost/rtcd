@@ -479,15 +479,6 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					return
 				}
 
-				// Mitigating against https://github.com/pion/webrtc/issues/2403
-				// The padding will be stripped by pion but the header bit will be forwarded as is (set).
-				// This causes clients (e.g. calls-transcriber) to fail to decode the packet.
-				// Since the payload is empty, we simply reset the padding to 0.
-				if packet.Padding && len(packet.Payload) == 0 {
-					packet.Padding = false
-					packet.PaddingSize = 0
-				}
-
 				if hasVAD {
 					var ext rtp.AudioLevelExtension
 					audioExtData := packet.GetExtension(uint8(audioLevelExtensionID))
@@ -517,6 +508,10 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					return
+				} else if err != nil {
+					s.log.Warn("failed to write RTP packet",
+						mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+					continue
 				}
 				s.metrics.ObserveRTPTracksWrite(us.cfg.GroupID, string(trackType), time.Since(writeStartTime).Seconds())
 			}
@@ -628,6 +623,10 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 							mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
 						s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 						continue
+					} else if err != nil {
+						s.log.Warn("failed to write RTP packet",
+							mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+						continue
 					}
 					s.metrics.ObserveRTPTracksWrite(us.cfg.GroupID, string(trackTypeScreen), time.Since(writeStartTime).Seconds())
 				}
@@ -650,15 +649,6 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 						s.metrics.IncRTCErrors(us.cfg.GroupID, "rtp")
 					}
 					return
-				}
-
-				// Mitigating against https://github.com/pion/webrtc/issues/2403
-				// The padding will be stripped by pion but the header bit will be forwarded as is (set).
-				// This causes clients (e.g. calls-transcriber) to fail to decode the packet.
-				// Since the payload is empty, we simply reset the padding to 0.
-				if packet.Padding && len(packet.Payload) == 0 {
-					packet.Padding = false
-					packet.PaddingSize = 0
 				}
 
 				rm.PushSample(packet.MarshalSize())
