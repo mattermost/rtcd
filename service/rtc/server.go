@@ -274,6 +274,19 @@ func (s *Server) msgReader() {
 			if err := call.clearScreenState(session); err != nil {
 				s.log.Error("failed to clear screen state", mlog.Err(err))
 			}
+		case VideoOnMessage:
+			data := map[string]string{}
+			if err := json.Unmarshal(msg.Data, &data); err != nil {
+				s.log.Error("failed to unmarshal video msg data", mlog.Err(err))
+				continue
+			}
+
+			s.log.Debug("received video stream ID", mlog.String("videoStreamID", data["videoStreamID"]))
+
+			session.mut.Lock()
+			session.videoStreamID = data["videoStreamID"]
+			session.mut.Unlock()
+		case VideoOffMessage:
 		case MuteMessage, UnmuteMessage:
 			session.mut.RLock()
 			track := session.outVoiceTrack
@@ -303,7 +316,7 @@ func (s *Server) msgReader() {
 			session.outVoiceTrackEnabled = enabled
 			session.mut.Unlock()
 		default:
-			s.log.Error("received unexpected message type")
+			s.log.Error("received unexpected message type", mlog.Int("msgType", int(msg.Type)))
 		}
 	}
 }

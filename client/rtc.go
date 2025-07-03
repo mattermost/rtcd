@@ -302,7 +302,7 @@ func (c *Client) initRTCSession() error {
 			return
 		}
 
-		if trackType != TrackTypeVoice && trackType != TrackTypeScreen {
+		if trackType != TrackTypeVoice && trackType != TrackTypeScreen && trackType != TrackTypeVideo {
 			c.log.Debug("ignoring unsupported track type", slog.Any("trackType", trackType))
 			if err := receiver.Stop(); err != nil {
 				c.log.Error("failed to stop receiver", slog.String("err", err.Error()))
@@ -524,6 +524,8 @@ func (c *Client) initRTCSession() error {
 			default:
 				c.log.Error("dcLockedCh is full")
 			}
+		case dc.MessageTypeMediaMap:
+			c.log.Debug("received media map message", slog.Any("payload", payload))
 		default:
 			c.log.Error("unexpected dc message type", slog.Any("mt", mt))
 		}

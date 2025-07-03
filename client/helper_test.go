@@ -5,6 +5,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -49,6 +50,25 @@ const (
 	waitTimeout = 10 * time.Second
 )
 
+func (th *TestHelper) newVideoTrack(mimeType string) *webrtc.TrackLocalStaticRTP {
+	th.tb.Helper()
+
+	track, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{
+		MimeType:    mimeType,
+		ClockRate:   90000,
+		SDPFmtpLine: "",
+		RTCPFeedback: []webrtc.RTCPFeedback{
+			{Type: "goog-remb", Parameter: ""},
+			{Type: "ccm", Parameter: "fir"},
+			{Type: "nack", Parameter: ""},
+			{Type: "nack", Parameter: "pli"},
+		},
+	}, "video", "video_"+random.NewID())
+	require.NoError(th.tb, err)
+
+	return track
+}
+
 func (th *TestHelper) newScreenTrack(mimeType string) *webrtc.TrackLocalStaticRTP {
 	th.tb.Helper()
 
@@ -68,7 +88,7 @@ func (th *TestHelper) newScreenTrack(mimeType string) *webrtc.TrackLocalStaticRT
 	return track
 }
 
-func (th *TestHelper) screenTrackWriter(track *webrtc.TrackLocalStaticRTP, closeCh <-chan struct{}) {
+func (th *TestHelper) videoTrackWriter(track *webrtc.TrackLocalStaticRTP, closeCh <-chan struct{}) {
 	var payloader rtp.Payloader
 	payloader = &codecs.VP8Payloader{
 		EnablePictureID: true,
@@ -150,6 +170,16 @@ func (th *TestHelper) transmitScreenTrack(c *Client) {
 
 	track := th.newScreenTrack(webrtc.MimeTypeVP8)
 
+	data, err := json.Marshal(map[string]string{
+		"screenStreamID": track.StreamID(),
+	})
+	require.NoError(th.tb, err)
+
+	err = c.sendWS(wsEventScreenOn, map[string]any{
+		"data": string(data),
+	}, false)
+	require.NoError(th.tb, err)
+
 	sender, err := c.pc.AddTrack(track)
 	require.NoError(th.tb, err)
 
@@ -165,7 +195,7 @@ func (th *TestHelper) transmitScreenTrack(c *Client) {
 		}
 	}()
 
-	go th.screenTrackWriter(track, closeCh)
+	go th.videoTrackWriter(track, closeCh)
 }
 
 func (th *TestHelper) newVoiceTrack() *webrtc.TrackLocalStaticSample {
