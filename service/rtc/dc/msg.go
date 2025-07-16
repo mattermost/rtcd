@@ -27,7 +27,15 @@ const (
 	MessageTypeJitter                               // float64
 	MessageTypeLock                                 // bool
 	MessageTypeUnlock                               // no payload
+	MessageTypeMediaMap                             // MediaMap
 )
+
+type TrackInfo struct {
+	Type     string `msgpack:"type"`      // "voice", "screen", "screen-audio", "video"
+	SenderID string `msgpack:"sender_id"` // the session ID of the sender
+}
+
+type MediaMap map[string]TrackInfo
 
 // Supported payloads
 type MessageSDP []byte // payload is zlib compressed data of a JSON serialized webrtc.SessionDescription
@@ -132,6 +140,13 @@ func DecodeMessage(msg []byte) (MessageType, any, error) {
 		return MessageTypeLock, nil, nil
 	case MessageTypeUnlock:
 		return MessageTypeUnlock, nil, nil
+	case MessageTypeMediaMap:
+		var payload MediaMap
+		err := dec.Decode(&payload)
+		if err != nil {
+			return 0, nil, fmt.Errorf("failed to decode media map message: %w", err)
+		}
+		return MessageTypeMediaMap, payload, nil
 	}
 
 	return 0, nil, fmt.Errorf("unexpected dc message type: %d", t)

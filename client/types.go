@@ -43,4 +43,5 @@ func (cjs *CallJobState) FromMap(m map[string]any) {
 const (
 	TrackTypeVoice  = "voice"
 	TrackTypeScreen = "screen"
+	TrackTypeVideo  = "video"
 )
