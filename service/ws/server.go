@@ -37,7 +37,7 @@ type Server struct {
 // NewServer initializes and returns a new WebSocket server.
 func NewServer(cfg ServerConfig, log mlog.LoggerIFace, opts ...ServerOption) (*Server, error) {
 	if err := cfg.IsValid(); err != nil {
-		return nil, fmt.Errorf("failed to validate config: %w", err)
+		return nil, fmt.Errorf("ws: failed to validate config: %w", err)
 	}
 
 	s := &Server{
@@ -50,7 +50,7 @@ func NewServer(cfg ServerConfig, log mlog.LoggerIFace, opts ...ServerOption) (*S
 
 	for _, opt := range opts {
 		if err := opt(s); err != nil {
-			return nil, fmt.Errorf("failed to apply option: %w", err)
+			return nil, fmt.Errorf("ws: failed to apply option: %w", err)
 		}
 	}
 
@@ -65,13 +65,13 @@ func (s *Server) Send(msg Message) error {
 	defer s.mut.RUnlock()
 
 	if s.closed {
-		return fmt.Errorf("server is closed")
+		return fmt.Errorf("ws: server is closed")
 	}
 
 	select {
 	case s.sendCh <- msg:
 	default:
-		return fmt.Errorf("failed to send ws message, channel is full")
+		return fmt.Errorf("ws: failed to send message, channel is full")
 	}
 	return nil
 }
@@ -95,7 +95,7 @@ func (s *Server) Close() {
 	conns := s.getConns()
 	for _, conn := range conns {
 		if err := conn.close(); err != nil {
-			s.log.Error("failed to close ws conn", mlog.Err(err))
+			s.log.Error("ws: failed to close conn", mlog.Err(err))
 		}
 		<-conn.closeCh
 	}
@@ -120,7 +120,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if s.authCb != nil {
 		clientID, _, err = s.authCb(w, r)
 		if err != nil {
-			s.log.Error("authCb failed", mlog.Err(err))
+			s.log.Error("ws: auth callback failed", mlog.Err(err))
 			return
 		}
 	}
@@ -131,7 +131,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		s.log.Error("failed to upgrade connection", mlog.Err(err))
+		s.log.Error("ws: failed to upgrade connection", mlog.Err(err))
 		sendCloseMsg(clientID)
 		return
 	}
@@ -152,7 +152,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ws.SetReadLimit(connMaxReadBytes)
 	if err := ws.SetReadDeadline(time.Now().Add(2 * s.cfg.PingInterval)); err != nil {
-		s.log.Error("failed to set read deadline", mlog.Err(err))
+		s.log.Error("ws: failed to set read deadline", mlog.Err(err))
 		return
 	}
 	ws.SetPongHandler(func(_ string) error {
@@ -162,7 +162,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for {
 		mt, data, err := ws.ReadMessage()
 		if err != nil {
-			s.log.Error("ws read failed", mlog.Err(err))
+			s.log.Error("ws: read failed", mlog.Err(err))
 			break
 		}
 
@@ -173,7 +173,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case websocket.BinaryMessage:
 			msgType = BinaryMessage
 		default:
-			s.log.Error("unexpected ws message", mlog.Int("type", mt))
+			s.log.Error("ws: unexpected message", mlog.Int("type", mt))
 			continue
 		}
 
@@ -199,7 +199,7 @@ func (s *Server) connWriter() {
 
 			conn := s.getConn(msg.ConnID)
 			if conn == nil {
-				s.log.Error("failed to get conn for sending", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
+				s.log.Error("ws: failed to get conn for sending", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
 				continue
 			}
 
@@ -212,24 +212,24 @@ func (s *Server) connWriter() {
 			case CloseMessage:
 				msgType = websocket.CloseMessage
 			default:
-				s.log.Error("unexpected ws message", mlog.Int("type", int(msg.Type)))
+				s.log.Error("ws: unexpected message", mlog.Int("type", int(msg.Type)))
 				continue
 			}
 
 			if err := conn.ws.SetWriteDeadline(time.Now().Add(writeWaitTime)); err != nil {
-				s.log.Error("failed to set write deadline", mlog.String("connID", msg.ConnID), mlog.Err(err))
+				s.log.Error("ws: failed to set write deadline", mlog.String("connID", msg.ConnID), mlog.Err(err))
 			}
 			if err := conn.ws.WriteMessage(msgType, msg.Data); err != nil {
-				s.log.Error("failed to write message", mlog.String("connID", msg.ConnID), mlog.Err(err))
+				s.log.Error("ws: failed to write message", mlog.String("connID", msg.ConnID), mlog.Err(err))
 			}
 		case <-pingTicker.C:
 			conns := s.getConns()
 			for _, conn := range conns {
 				if err := conn.ws.SetWriteDeadline(time.Now().Add(writeWaitTime)); err != nil {
-					s.log.Error("failed to set write deadline", mlog.String("connID", conn.id), mlog.Err(err))
+					s.log.Error("ws: failed to set write deadline", mlog.String("connID", conn.id), mlog.Err(err))
 				}
 				if err := conn.ws.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
-					s.log.Error("failed to write ping message", mlog.String("connID", conn.id), mlog.Err(err))
+					s.log.Error("ws: failed to write ping message", mlog.String("connID", conn.id), mlog.Err(err))
 				}
 			}
 		}
