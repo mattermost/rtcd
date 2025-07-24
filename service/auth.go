@@ -52,7 +52,7 @@ func (s *Service) basicAuthHandler(_ http.ResponseWriter, r *http.Request) (stri
 	}
 
 	if err := s.auth.Authenticate(clientID, authKey); err != nil {
-		s.log.Error("authentication failed", mlog.Err(err), mlog.String("clientID", clientID))
+		s.log.Error("service: authentication failed", mlog.Err(err), mlog.String("clientID", clientID))
 		return "", http.StatusUnauthorized, errors.New("authentication failed")
 	}
 
@@ -120,7 +120,7 @@ func (s *Service) registerClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.log.Debug("registered new client", mlog.String("clientID", clientID))
+	s.log.Info("service: registered new mattermost client", mlog.String("clientID", clientID))
 	data.code = http.StatusCreated
 	data.resData["clientID"] = clientID
 }
@@ -140,7 +140,7 @@ func (s *Service) unregisterClient(w http.ResponseWriter, r *http.Request) {
 	// If an admin client is not enabled, and self registration is not allowed,
 	// clients cannot unregister themselves.
 	if !s.cfg.API.Security.EnableAdmin && !s.cfg.API.Security.AllowSelfRegistration {
-		s.log.Warn("/unregister was called, but enable_admin and allow_self_registration are both false")
+		s.log.Warn("service: /unregister was called, but enable_admin and allow_self_registration are both false")
 		data.err = "unregister not enabled"
 		data.code = http.StatusForbidden
 		return
@@ -182,7 +182,7 @@ func (s *Service) unregisterClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.log.Debug("unregistered client", mlog.String("clientID", clientID))
+	s.log.Info("service: unregistered mattermost client", mlog.String("clientID", clientID))
 	data.code = http.StatusOK
 }
 
@@ -213,7 +213,7 @@ func (s *Service) loginClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.log.Debug("logged in client", mlog.String("clientID", clientID))
+	s.log.Info("service: logged in mattermost client", mlog.String("clientID", clientID))
 	data.code = http.StatusOK
 	data.resData["bearerToken"] = bearerToken
 }

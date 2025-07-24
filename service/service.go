@@ -64,7 +64,7 @@ func New(cfg Config) (*Service, error) {
 		return nil, fmt.Errorf("rtcd: failed to init logger: %w", err)
 	}
 
-	s.log.Info("rtcd: starting up", getVersionInfo().logFields()...)
+	s.log.Info("service: starting up", getVersionInfo().logFields()...)
 
 	// Mac does not have /proc/stat
 	if runtime.GOOS != "darwin" {
@@ -81,7 +81,7 @@ func New(cfg Config) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create store: %w", err)
 	}
-	s.log.Info("initiated data store", mlog.String("DataSource", cfg.Store.DataSource))
+	s.log.Info("service: initiated data store", mlog.String("DataSource", cfg.Store.DataSource))
 
 	s.sessionCache, err = auth.NewSessionCache(cfg.API.Security.SessionCache)
 	if err != nil {
@@ -92,7 +92,7 @@ func New(cfg Config) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create auth service: %w", err)
 	}
-	s.log.Info("initiated auth service")
+	s.log.Info("service: initiated auth service")
 
 	s.apiServer, err = api.NewServer(cfg.API.HTTP, s.log)
 	if err != nil {
@@ -159,7 +159,7 @@ func (s *Service) Start() error {
 		for msg := range s.wsServer.ReceiveCh() {
 			switch msg.Type {
 			case ws.OpenMessage:
-				s.log.Debug("connect", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
+				s.log.Info("service: mattermost client successfully connected", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
 				s.metrics.IncWSConnections(msg.ClientID)
 
 				data, err := NewPackedClientMessage(ClientMessageHello, map[string]string{
@@ -167,29 +167,29 @@ func (s *Service) Start() error {
 					"connID":   msg.ConnID,
 				})
 				if err != nil {
-					s.log.Error("failed to pack hello message", mlog.Err(err))
+					s.log.Error("service: failed to pack hello message", mlog.Err(err))
 					continue
 				}
 
 				if err := s.sendClientMessage(msg.ConnID, msg.ClientID, data); err != nil {
-					s.log.Error("failed to send hello message", mlog.Err(err))
+					s.log.Error("service: failed to send hello message", mlog.Err(err))
 					continue
 				}
 			case ws.CloseMessage:
-				s.log.Debug("disconnect", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
+				s.log.Warn("service: mattermost client disconnected", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
 				s.metrics.DecWSConnections(msg.ClientID)
 			case ws.TextMessage:
-				s.log.Warn("unexpected text message", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
+				s.log.Warn("service: unexpected text message", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
 			case ws.BinaryMessage:
 				if err := s.handleClientMsg(msg); err != nil {
-					s.log.Error("failed to handle message",
+					s.log.Error("service: failed to handle message",
 						mlog.Err(err),
 						mlog.String("connID", msg.ConnID),
 						mlog.String("clientID", msg.ClientID))
 					continue
 				}
 			default:
-				s.log.Warn("unexpected ws message", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
+				s.log.Warn("service: unexpected ws message", mlog.String("connID", msg.ConnID), mlog.String("clientID", msg.ClientID))
 			}
 		}
 	}()
@@ -197,7 +197,7 @@ func (s *Service) Start() error {
 	go func() {
 		for msg := range s.rtcServer.ReceiveCh() {
 			if err := s.handleRTCMsg(msg); err != nil {
-				s.log.Error("failed to handle message",
+				s.log.Error("service: failed to handle message",
 					mlog.Err(err),
 					mlog.String("groupID", msg.GroupID),
 					mlog.String("sessionID", msg.SessionID))
@@ -211,7 +211,7 @@ func (s *Service) Start() error {
 
 func (s *Service) Stop() error {
 	defer s.log.Flush()
-	s.log.Info("rtcd: shutting down")
+	s.log.Info("service: shutting down")
 
 	close(s.stopCh)
 
@@ -318,7 +318,7 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 			return nil
 		}
 
-		s.log.Debug("join message", mlog.Any("sessionCfg", cfg))
+		s.log.Debug("service: join message", mlog.Any("sessionCfg", cfg))
 
 		if err := s.rtcServer.InitSession(cfg, closeCb); err != nil {
 			return fmt.Errorf("failed to initialize rtc session: %w", err)
@@ -339,7 +339,7 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 			return fmt.Errorf("missing sessionID in client message")
 		}
 
-		s.log.Debug("reconnect message, updating connMap", mlog.String("sessionID", sessionID))
+		s.log.Debug("service: reconnect message, updating connMap", mlog.String("sessionID", sessionID))
 		s.mut.Lock()
 		s.connMap[sessionID] = msg.ConnID
 		s.mut.Unlock()
@@ -355,7 +355,7 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 			return fmt.Errorf("missing sessionID in client message")
 		}
 
-		s.log.Debug("leave message", mlog.String("sessionID", sessionID))
+		s.log.Debug("service: leave message", mlog.String("sessionID", sessionID))
 		if err := s.rtcServer.CloseSession(sessionID); err != nil {
 			return fmt.Errorf("failed to close session: %w", err)
 		}
@@ -366,7 +366,7 @@ func (s *Service) handleClientMsg(msg ws.Message) error {
 		if !ok {
 			return fmt.Errorf("unexpected data type: %T", cm.Data)
 		}
-		s.log.Debug("rtc message", mlog.String("sessionID", rtcMsg.SessionID), mlog.Int("type", int(rtcMsg.Type)))
+		s.log.Debug("service: rtc message", mlog.String("sessionID", rtcMsg.SessionID), mlog.Int("type", int(rtcMsg.Type)))
 	default:
 		return fmt.Errorf("unexpected client message type: %s", cm.Type)
 	}

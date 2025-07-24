@@ -509,5 +509,5 @@ func TestRaceSendClose(t *testing.T) {
 
 	wg.Wait()
 
-	require.EqualError(t, s.Send(Message{}), "server is closed")
+	require.EqualError(t, s.Send(Message{}), "ws: server is closed")
 }
