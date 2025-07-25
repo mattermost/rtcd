@@ -222,6 +222,10 @@ func (c *Client) initRTCSession() error {
 
 	s := webrtc.SettingEngine{}
 	s.EnableSCTPZeroChecksum(true)
+	s.SetNetworkTypes([]webrtc.NetworkType{
+		webrtc.NetworkTypeUDP4,
+		webrtc.NetworkTypeTCP4,
+	})
 
 	api := webrtc.NewAPI(webrtc.WithMediaEngine(&m), webrtc.WithInterceptorRegistry(&i), webrtc.WithSettingEngine(s))
 
