@@ -53,4 +53,34 @@ func TestEncodeMessage(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, sdp, decodedSDP)
 	})
+
+	t.Run("mediamap", func(t *testing.T) {
+		mediaMap := MediaMap{
+			"1": TrackInfo{
+				Type:     "voice",
+				SenderID: "sessionA",
+			},
+			"2": TrackInfo{
+				Type:     "screen",
+				SenderID: "sessionB",
+			},
+		}
+
+		dcMsg, err := EncodeMessage(MessageTypeMediaMap, mediaMap)
+		require.NoError(t, err)
+
+		mt, payload, err := DecodeMessage(dcMsg)
+		require.NoError(t, err)
+		require.Equal(t, MessageTypeMediaMap, mt)
+
+		decodedMediaMap, ok := payload.(MediaMap)
+		require.True(t, ok, "payload should be of type MediaMap")
+		require.Equal(t, mediaMap, decodedMediaMap)
+
+		// Verify individual entries
+		require.Equal(t, "voice", decodedMediaMap["1"].Type)
+		require.Equal(t, "sessionA", decodedMediaMap["1"].SenderID)
+		require.Equal(t, "screen", decodedMediaMap["2"].Type)
+		require.Equal(t, "sessionB", decodedMediaMap["2"].SenderID)
+	})
 }

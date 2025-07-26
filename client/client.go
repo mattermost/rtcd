@@ -44,6 +44,8 @@ const (
 	WSCallLoweredHandEvent    EventType = "WSCallLoweredHand"
 	WSCallScreenOnEvent       EventType = "WSCallScreenOn"
 	WSCallScreenOffEvent      EventType = "WSCallScreenOff"
+	WSCallVideoOnEvent        EventType = "WSCallVideoOn"
+	WSCallVideoOffEvent       EventType = "WSCallVideoOff"
 )
 
 func (e EventType) IsValid() bool {
@@ -58,6 +60,7 @@ func (e EventType) IsValid() bool {
 		WSCallUnmutedEvent, WSCallMutedEvent,
 		WSCallRaisedHandEvent, WSCallLoweredHandEvent,
 		WSCallScreenOnEvent, WSCallScreenOffEvent,
+		WSCallVideoOnEvent, WSCallVideoOffEvent,
 		WSCallJobStateEvent,
 		WSJobStopEvent:
 		return true
@@ -106,6 +109,7 @@ type Client struct {
 	voiceSender          *webrtc.RTPSender
 	screenTransceivers   []*webrtc.RTPTransceiver
 	rtcMon               *rtcMonitor
+	videoTransceivers    []*webrtc.RTPTransceiver
 
 	state int32
 
