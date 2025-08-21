@@ -44,6 +44,13 @@ const (
 	WSCallLoweredHandEvent    EventType = "WSCallLoweredHand"
 	WSCallScreenOnEvent       EventType = "WSCallScreenOn"
 	WSCallScreenOffEvent      EventType = "WSCallScreenOff"
+
+	// Host control events
+	WSCallHostMuteEvent       EventType = "WSCallHostMute"
+	WSCallHostScreenOffEvent  EventType = "WSCallHostScreenOff"
+	WSCallHostLowerHandEvent  EventType = "WSCallHostLowerHand"
+	WSCallHostRemovedEvent    EventType = "WSCallHostRemoved"
+	WSCallUserReactedEvent    EventType = "WSCallUserReacted"
 )
 
 func (e EventType) IsValid() bool {
@@ -58,6 +65,9 @@ func (e EventType) IsValid() bool {
 		WSCallUnmutedEvent, WSCallMutedEvent,
 		WSCallRaisedHandEvent, WSCallLoweredHandEvent,
 		WSCallScreenOnEvent, WSCallScreenOffEvent,
+		WSCallHostMuteEvent, WSCallHostScreenOffEvent,
+		WSCallHostLowerHandEvent, WSCallHostRemovedEvent,
+		WSCallUserReactedEvent,
 		WSCallJobStateEvent,
 		WSJobStopEvent:
 		return true

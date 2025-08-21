@@ -59,6 +59,12 @@ const (
 	wsEventUserScreenOn    = wsEvPrefix + "user_screen_on"
 	wsEventUserScreenOff   = wsEvPrefix + "user_screen_off"
 	wsEventUserReacted     = wsEvPrefix + "user_reacted"
+
+	// Host control events
+	wsEventHostMute       = wsEvPrefix + "host_mute"
+	wsEventHostScreenOff  = wsEvPrefix + "host_screen_off"
+	wsEventHostLowerHand  = wsEvPrefix + "host_lower_hand"
+	wsEventHostRemoved    = wsEvPrefix + "host_removed"
 )
 
 var (
@@ -297,6 +303,68 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 				evType = WSCallScreenOffEvent
 			}
 			c.emit(evType, sessionID)
+		case wsEventHostMute:
+			channelID := ev.GetBroadcast().ChannelId
+			if channelID == "" {
+				channelID, _ = ev.GetData()["channelID"].(string)
+			}
+			if channelID != c.cfg.ChannelID {
+				return nil
+			}
+			sessionID, _ := ev.GetData()["session_id"].(string)
+			if sessionID == "" {
+				return fmt.Errorf("missing session_id from %s event", ev.EventType())
+			}
+			c.emit(WSCallHostMuteEvent, sessionID)
+		case wsEventHostScreenOff:
+			channelID := ev.GetBroadcast().ChannelId
+			if channelID == "" {
+				channelID, _ = ev.GetData()["channelID"].(string)
+			}
+			if channelID != c.cfg.ChannelID {
+				return nil
+			}
+			sessionID, _ := ev.GetData()["session_id"].(string)
+			if sessionID == "" {
+				return fmt.Errorf("missing session_id from %s event", ev.EventType())
+			}
+			c.emit(WSCallHostScreenOffEvent, sessionID)
+		case wsEventHostLowerHand:
+			channelID := ev.GetBroadcast().ChannelId
+			if channelID == "" {
+				channelID, _ = ev.GetData()["channelID"].(string)
+			}
+			if channelID != c.cfg.ChannelID {
+				return nil
+			}
+			sessionID, _ := ev.GetData()["session_id"].(string)
+			if sessionID == "" {
+				return fmt.Errorf("missing session_id from %s event", ev.EventType())
+			}
+			c.emit(WSCallHostLowerHandEvent, sessionID)
+		case wsEventHostRemoved:
+			channelID := ev.GetBroadcast().ChannelId
+			if channelID == "" {
+				channelID, _ = ev.GetData()["channelID"].(string)
+			}
+			if channelID != c.cfg.ChannelID {
+				return nil
+			}
+			sessionID, _ := ev.GetData()["session_id"].(string)
+			if sessionID == "" {
+				return fmt.Errorf("missing session_id from %s event", ev.EventType())
+			}
+			c.emit(WSCallHostRemovedEvent, sessionID)
+		case wsEventUserReacted:
+			channelID := ev.GetBroadcast().ChannelId
+			if channelID == "" {
+				channelID, _ = ev.GetData()["channelID"].(string)
+			}
+			if channelID != c.cfg.ChannelID {
+				return nil
+			}
+			// User reactions don't require session_id validation since they're broadcast events
+			c.emit(WSCallUserReactedEvent, ev.GetData())
 		default:
 		}
 	case ws.BinaryMessage:
