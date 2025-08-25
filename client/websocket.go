@@ -61,10 +61,10 @@ const (
 	wsEventUserReacted     = wsEvPrefix + "user_reacted"
 
 	// Host control events
-	wsEventHostMute       = wsEvPrefix + "host_mute"
-	wsEventHostScreenOff  = wsEvPrefix + "host_screen_off"
-	wsEventHostLowerHand  = wsEvPrefix + "host_lower_hand"
-	wsEventHostRemoved    = wsEvPrefix + "host_removed"
+	wsEventHostMute      = wsEvPrefix + "host_mute"
+	wsEventHostScreenOff = wsEvPrefix + "host_screen_off"
+	wsEventHostLowerHand = wsEvPrefix + "host_lower_hand"
+	wsEventHostRemoved   = wsEvPrefix + "host_removed"
 )
 
 var (

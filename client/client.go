@@ -46,11 +46,11 @@ const (
 	WSCallScreenOffEvent      EventType = "WSCallScreenOff"
 
 	// Host control events
-	WSCallHostMuteEvent       EventType = "WSCallHostMute"
-	WSCallHostScreenOffEvent  EventType = "WSCallHostScreenOff"
-	WSCallHostLowerHandEvent  EventType = "WSCallHostLowerHand"
-	WSCallHostRemovedEvent    EventType = "WSCallHostRemoved"
-	WSCallUserReactedEvent    EventType = "WSCallUserReacted"
+	WSCallHostMuteEvent      EventType = "WSCallHostMute"
+	WSCallHostScreenOffEvent EventType = "WSCallHostScreenOff"
+	WSCallHostLowerHandEvent EventType = "WSCallHostLowerHand"
+	WSCallHostRemovedEvent   EventType = "WSCallHostRemoved"
+	WSCallUserReactedEvent   EventType = "WSCallUserReacted"
 )
 
 func (e EventType) IsValid() bool {
