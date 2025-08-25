@@ -14,11 +14,29 @@ else
 fi
 
 # Build
-cd .. && git clone -b ${GIT_BRANCH} https://github.com/mattermost/mattermost-plugin-calls && \
-cd mattermost-plugin-calls && \
-git fetch --tags && \
-cd standalone && npm ci && cd .. && \
-cd webapp && npm ci && cd .. && \
+cd ..
+if [ -d "mattermost-plugin-calls" ]; then
+  echo "Directory mattermost-plugin-calls already exists, using existing checkout"
+  cd mattermost-plugin-calls
+  git fetch origin
+  git checkout ${GIT_BRANCH}
+  git pull origin ${GIT_BRANCH}
+else
+  git clone -b ${GIT_BRANCH} https://github.com/mattermost/mattermost-plugin-calls
+  cd mattermost-plugin-calls
+fi
+git fetch --tags
+
+# Ensure mattermost-webapp dependencies are set up
+if [ ! -d "webapp/mattermost-webapp" ]; then
+  echo "mattermost-webapp directory not found, running install_mattermost_webapp.sh"
+  cd webapp && ./install_mattermost_webapp.sh && cd ..
+else
+  echo "mattermost-webapp directory exists, skipping install_mattermost_webapp.sh"
+fi
+
+cd standalone && npm install && cd .. && \
+cd webapp && npm install && cd .. && \
 echo "replace github.com/mattermost/rtcd => ../rtcd" >> go.mod && \
 go mod tidy && \
 make dist MM_SERVICESETTINGS_ENABLEDEVELOPER=true
