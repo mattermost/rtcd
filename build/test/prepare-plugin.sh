@@ -19,8 +19,7 @@ cd mattermost-plugin-calls && \
 git fetch --tags && \
 cd standalone && npm ci && cd .. && \
 cd webapp && npm ci && cd .. && \
-echo "replace github.com/mattermost/rtcd => ../rtcd" >> go.mod && \
-go mod tidy && \
+echo "replace github.com/mattermost/rtcd => ../rtcd" >> go.mod
 make dist MM_SERVICESETTINGS_ENABLEDEVELOPER=true
 
 # Installation
