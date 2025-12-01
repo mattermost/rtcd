@@ -14,11 +14,12 @@ else
 fi
 
 # Build
-cd .. && git clone -b ${GIT_BRANCH} https://github.com/mattermost/mattermost-plugin-calls && \
+cd .. && rm -rf mattermost-plugin-calls && \
+git clone -b ${GIT_BRANCH} https://github.com/mattermost/mattermost-plugin-calls && \
 cd mattermost-plugin-calls && \
 git fetch --tags && \
+cd webapp && ./install_mattermost_webapp.sh && npm ci && cd .. && \
 cd standalone && npm ci && cd .. && \
-cd webapp && npm ci && cd .. && \
 echo "replace github.com/mattermost/rtcd => ../rtcd" >> go.mod && \
 go mod tidy && \
 make dist MM_SERVICESETTINGS_ENABLEDEVELOPER=true
