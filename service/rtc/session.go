@@ -125,6 +125,7 @@ func (s *Server) addSession(cfg SessionConfig, peerConn *webrtc.PeerConnection, 
 			sessions:    map[string]*session{},
 			pliLimiters: map[webrtc.SSRC]*rate.Limiter{},
 			metrics:     s.metrics,
+			log:         s.log.With(mlog.String("callID", cfg.CallID)),
 		}
 		g.calls[c.id] = c
 	}
@@ -199,7 +200,7 @@ func (s *Server) handleDCNegotiation(us *session, call *call) {
 	select {
 	case <-us.dcOpenCh:
 		s.metrics.ObserveRTCDataChannelOpenTime(us.cfg.GroupID, time.Since(start).Seconds())
-		s.log.Debug("DC is open, starting to handle tracks", mlog.String("sessionID", us.cfg.SessionID))
+		us.log.Debug("DC is open, starting to handle tracks")
 		s.handleTracks(call, us)
 	case <-us.closeCh:
 	}
@@ -268,7 +269,7 @@ func (s *session) handleICE(m Metrics) {
 
 			var candidate webrtc.ICECandidateInit
 			if err := json.Unmarshal(data, &candidate); err != nil {
-				s.log.Error("failed to encode ice candidate", mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
+				s.log.Error("failed to encode ice candidate", mlog.Err(err))
 				continue
 			}
 
@@ -276,10 +277,10 @@ func (s *session) handleICE(m Metrics) {
 				continue
 			}
 
-			s.log.Debug("setting ICE candidate for remote", mlog.String("sessionID", s.cfg.SessionID))
+			s.log.Debug("setting ICE candidate for remote")
 
 			if err := s.rtcConn.AddICECandidate(candidate); err != nil {
-				s.log.Error("failed to add ice candidate", mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
+				s.log.Error("failed to add ice candidate", mlog.Err(err))
 				m.IncRTCErrors(s.cfg.GroupID, "ice")
 				continue
 			}
@@ -301,8 +302,7 @@ func (s *session) handleReceiverRTCP(receiver *webrtc.RTPReceiver, rid string) {
 		}
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				s.log.Error("failed to read RTCP packet",
-					mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
+				s.log.Error("failed to read RTCP packet", mlog.Err(err))
 			}
 			return
 		}
@@ -316,8 +316,7 @@ func (s *session) handleSenderRTCP(sender *webrtc.RTPSender, remoteTrack *webrtc
 		pkts, _, err := sender.ReadRTCP()
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				s.log.Error("failed to read RTCP packet",
-					mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
+				s.log.Error("failed to read RTCP packet", mlog.Err(err))
 			}
 			return
 		}
@@ -327,7 +326,7 @@ func (s *session) handleSenderRTCP(sender *webrtc.RTPSender, remoteTrack *webrtc
 				// to the peer generating the track (e.g. presenter).
 
 				for _, dstSSRC := range p.DestinationSSRC() {
-					s.log.Debug("received PLI request for track", mlog.String("sessionID", s.cfg.SessionID), mlog.Uint("SSRC", dstSSRC))
+					s.log.Debug("received PLI request for track", mlog.Uint("SSRC", dstSSRC))
 				}
 
 				s.call.mut.Lock()
@@ -343,9 +342,9 @@ func (s *session) handleSenderRTCP(sender *webrtc.RTPSender, remoteTrack *webrtc
 				s.call.mut.Unlock()
 
 				if limiter.Allow() {
-					s.log.Debug("forwarding PLI request for track", mlog.String("sessionID", s.cfg.SessionID), mlog.Uint("SSRC", remoteTrack.SSRC()))
+					s.log.Debug("forwarding PLI request for track", mlog.Uint("SSRC", remoteTrack.SSRC()))
 					if err := senderSession.rtcConn.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(remoteTrack.SSRC())}}); err != nil {
-						s.log.Error("failed to write RTCP packet", mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
+						s.log.Error("failed to write RTCP packet", mlog.Err(err))
 						return
 					}
 				}
@@ -397,8 +396,7 @@ func (s *session) addTrack(sdpOutCh chan<- Message, localTrack webrtc.TrackLocal
 		return fmt.Errorf("invalid nil senderSession")
 	}
 
-	s.log.Debug("addTrack", mlog.String("sessionID", s.cfg.SessionID),
-		mlog.String("trackID", localTrack.ID()))
+	s.log.Debug("addTrack", mlog.String("trackID", localTrack.ID()))
 
 	s.mut.Lock()
 	s.makingOffer = true
@@ -438,7 +436,6 @@ func (s *session) addTrack(sdpOutCh chan<- Message, localTrack webrtc.TrackLocal
 		s.mut.Lock()
 		if err := sender.ReplaceTrack(nil); err != nil {
 			s.log.Error("failed to replace track",
-				mlog.String("sessionID", s.cfg.SessionID),
 				mlog.String("trackID", localTrack.ID()))
 		} else {
 			s.call.metrics.DecRTPTracks(s.cfg.GroupID, "out", getTrackMimeType(localTrack))
@@ -484,8 +481,7 @@ func (s *session) removeTrack(sdpOutCh chan<- Message, track webrtc.TrackLocal) 
 		return fmt.Errorf("trying to remove a nil track")
 	}
 
-	s.log.Debug("removeTrack", mlog.String("sessionID", s.cfg.SessionID),
-		mlog.String("trackID", track.ID()))
+	s.log.Debug("removeTrack", mlog.String("trackID", track.ID()))
 
 	var sender *webrtc.RTPSender
 
@@ -580,7 +576,7 @@ func (s *session) hasSignalingConflict() bool {
 
 func (s *session) InitVAD(log mlog.LoggerIFace, msgCh chan<- Message) error {
 	monitor, err := vad.NewMonitor((vad.MonitorConfig{}).SetDefaults(), func(voice bool) {
-		log.Debug("vad", mlog.Bool("voice", voice), mlog.String("sessionID", s.cfg.SessionID))
+		s.log.Debug("vad", mlog.Bool("voice", voice))
 
 		var msgType MessageType
 		if voice {
