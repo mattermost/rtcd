@@ -17,7 +17,7 @@ func TestAddSession(t *testing.T) {
 	defer shutdown()
 
 	t.Run("invalid config", func(t *testing.T) {
-		us, err := server.addSession(SessionConfig{}, nil, nil)
+		us, err := server.addSession(SessionConfig{}, nil, nil, server.log)
 		require.Error(t, err)
 		require.Nil(t, us)
 	})
@@ -29,7 +29,7 @@ func TestAddSession(t *testing.T) {
 			UserID:    "test",
 			SessionID: "test",
 		}
-		us, err := server.addSession(cfg, nil, nil)
+		us, err := server.addSession(cfg, nil, nil, server.log)
 		require.Error(t, err)
 		require.Equal(t, "peerConn should not be nil", err.Error())
 		require.Nil(t, us)
@@ -46,7 +46,7 @@ func TestAddSession(t *testing.T) {
 		peerConn, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 		require.NoError(t, err)
 
-		us, err := server.addSession(cfg, peerConn, nil)
+		us, err := server.addSession(cfg, peerConn, nil, server.log)
 		require.NoError(t, err)
 		require.NotNil(t, us)
 
@@ -78,7 +78,7 @@ func TestAddSession(t *testing.T) {
 			return nil
 		}
 
-		us, err := server.addSession(cfg, peerConn, closeCbError)
+		us, err := server.addSession(cfg, peerConn, closeCbError, server.log)
 		require.NoError(t, err)
 		require.NotNil(t, us)
 
@@ -88,7 +88,7 @@ func TestAddSession(t *testing.T) {
 		require.Error(t, err)
 		require.Equal(t, cbError, err)
 
-		us, err = server.addSession(cfg, peerConn, closeCbSuccess)
+		us, err = server.addSession(cfg, peerConn, closeCbSuccess, server.log)
 		require.NoError(t, err)
 		require.NotNil(t, us)
 
@@ -114,7 +114,7 @@ func TestCloseSessionConcurrent(t *testing.T) {
 	peerConn, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	require.NoError(t, err)
 
-	us, err := server.addSession(cfg, peerConn, nil)
+	us, err := server.addSession(cfg, peerConn, nil, server.log)
 	require.NoError(t, err)
 	require.NotNil(t, us)
 
