@@ -46,6 +46,15 @@ func (s *Server) NewLogger(_ string) logging.LeveledLogger {
 	return newPionLeveledLogger(s.log)
 }
 
+// sessionLoggerFactory wraps a logger with session context for Pion to use.
+type sessionLoggerFactory struct {
+	log mlog.LoggerIFace
+}
+
+func (f *sessionLoggerFactory) NewLogger(_ string) logging.LeveledLogger {
+	return newPionLeveledLogger(f.log)
+}
+
 func (log *pionLogger) Trace(msg string) {
 	log.log.Trace(msg, mlog.String("origin", getLogOrigin()))
 }

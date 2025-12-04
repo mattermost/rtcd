@@ -95,7 +95,7 @@ type session struct {
 	mut sync.RWMutex
 }
 
-func (s *Server) addSession(cfg SessionConfig, peerConn *webrtc.PeerConnection, closeCb func() error) (*session, error) {
+func (s *Server) addSession(cfg SessionConfig, peerConn *webrtc.PeerConnection, closeCb func() error, sessionLog mlog.LoggerIFace) (*session, error) {
 	if err := cfg.IsValid(); err != nil {
 		return nil, err
 	}
@@ -119,19 +119,20 @@ func (s *Server) addSession(cfg SessionConfig, peerConn *webrtc.PeerConnection, 
 	g.mut.Lock()
 	c := g.calls[cfg.CallID]
 	if c == nil {
-		// call is missing, creating one
+		// call is missing, creating one - extract callID from sessionLog
+		callLog := s.log.With(mlog.String("callID", cfg.CallID))
 		c = &call{
 			id:          cfg.CallID,
 			sessions:    map[string]*session{},
 			pliLimiters: map[webrtc.SSRC]*rate.Limiter{},
 			metrics:     s.metrics,
-			log:         s.log.With(mlog.String("callID", cfg.CallID)),
+			log:         callLog,
 		}
 		g.calls[c.id] = c
 	}
 	g.mut.Unlock()
 
-	us, ok := c.addSession(cfg, peerConn, closeCb, s.log)
+	us, ok := c.addSession(cfg, peerConn, closeCb, sessionLog)
 	if !ok {
 		return nil, fmt.Errorf("user session already exists")
 	}

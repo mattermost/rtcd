@@ -38,9 +38,6 @@ func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection, clo
 		return s, false
 	}
 
-	// Create scoped logger that inherits call's logger (with callID) and adds sessionID
-	sessionLog := c.log.With(mlog.String("sessionID", cfg.SessionID))
-
 	s := &session{
 		cfg:                cfg,
 		rtcConn:            rtcConn,
@@ -61,7 +58,7 @@ func (c *call) addSession(cfg SessionConfig, rtcConn *webrtc.PeerConnection, clo
 		outVideoTracks:     make(map[string][]*webrtc.TrackLocalStaticRTP),
 		remoteVideoTracks:  make(map[string]*webrtc.TrackRemote),
 		videoRateMonitors:  make(map[string]*RateMonitor),
-		log:                sessionLog,
+		log:                log,
 		call:               c,
 		rxTracks:           make(map[string]webrtc.TrackLocal),
 	}
