@@ -43,6 +43,8 @@ const (
 	wsEventSDP       = wsEvPrefix + "sdp"
 	wsEventLeave     = wsEvPrefix + "leave"
 	wsEventReconnect = wsEvPrefix + "reconnect"
+	wsEventVideoOn   = wsEvPrefix + "video_on"
+	wsEventVideoOff  = wsEvPrefix + "video_off"
 
 	// Server sent events
 	wsEventSignal          = wsEvPrefix + "signal"
@@ -59,6 +61,8 @@ const (
 	wsEventUserScreenOn    = wsEvPrefix + "user_screen_on"
 	wsEventUserScreenOff   = wsEvPrefix + "user_screen_off"
 	wsEventUserReacted     = wsEvPrefix + "user_reacted"
+	wsEventUserVideoOn     = wsEvPrefix + "user_video_on"
+	wsEventUserVideoOff    = wsEvPrefix + "user_video_off"
 )
 
 var (
@@ -295,6 +299,24 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 			evType := WSCallScreenOnEvent
 			if ev.EventType() == wsEventUserScreenOff {
 				evType = WSCallScreenOffEvent
+			}
+			c.emit(evType, sessionID)
+		case wsEventUserVideoOn, wsEventUserVideoOff:
+			channelID := ev.GetBroadcast().ChannelId
+			if channelID == "" {
+				channelID, _ = ev.GetData()["channelID"].(string)
+			}
+			if channelID != c.cfg.ChannelID {
+				return nil
+			}
+			sessionID, _ := ev.GetData()["session_id"].(string)
+			if sessionID == "" {
+				return fmt.Errorf("missing session_id from %s event", ev.EventType())
+			}
+
+			evType := WSCallVideoOnEvent
+			if ev.EventType() == wsEventUserVideoOff {
+				evType = WSCallVideoOffEvent
 			}
 			c.emit(evType, sessionID)
 		default:

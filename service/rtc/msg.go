@@ -21,6 +21,8 @@ const (
 	ScreenOffMessage
 	VoiceOnMessage
 	VoiceOffMessage
+	VideoOnMessage
+	VideoOffMessage
 )
 
 type Message struct {
