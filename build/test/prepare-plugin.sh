@@ -14,8 +14,7 @@ else
 fi
 
 # Build
-cd .. && rm -rf mattermost-plugin-calls && \
-git clone -b ${GIT_BRANCH} https://github.com/mattermost/mattermost-plugin-calls && \
+cd .. && git clone -b ${GIT_BRANCH} https://github.com/mattermost/mattermost-plugin-calls && \
 cd mattermost-plugin-calls && \
 git fetch --tags && \
 cd webapp && ./install_mattermost_webapp.sh && npm ci && cd .. && \
