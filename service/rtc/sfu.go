@@ -258,7 +258,8 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 	}
 
 	// Create a scoped logger with callID and sessionID for this session
-	sessionLog := s.log.With(
+	// Use type assertion to handle plugin logger wrapper which may not properly support .With()
+	sessionLog := loggerWith(s.log,
 		mlog.String("callID", cfg.CallID),
 		mlog.String("sessionID", cfg.SessionID),
 	)

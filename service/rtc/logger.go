@@ -8,11 +8,31 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/mattermost/logr/v2"
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
 	"github.com/pion/logging"
 )
 
 const pionPkgPrefix = "github.com/pion/"
+
+// loggerWithFieldsInterface defines a method for creating scoped loggers
+// that return the proper interface type.
+type loggerWithFieldsInterface interface {
+	WithFields(fields ...logr.Field) mlog.LoggerIFace
+}
+
+// loggerWith is a helper that safely calls .With() on any logger implementation.
+// It first checks if the logger implements WithFields(),
+// falling back to the standard .With() method for native mlog.Logger.
+func loggerWith(log mlog.LoggerIFace, fields ...logr.Field) mlog.LoggerIFace {
+	// Check if the logger implements WithFields (plugin logger wrapper)
+	if lwf, ok := log.(loggerWithFieldsInterface); ok {
+		return lwf.WithFields(fields...)
+	}
+
+	// Fall back to standard .With() for native mlog.Logger
+	return log.With(fields...)
+}
 
 func getLogOrigin() string {
 	pc, file, line, ok := runtime.Caller(2)

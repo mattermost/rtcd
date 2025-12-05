@@ -120,7 +120,7 @@ func (s *Server) addSession(cfg SessionConfig, peerConn *webrtc.PeerConnection, 
 	c := g.calls[cfg.CallID]
 	if c == nil {
 		// call is missing, creating one - extract callID from sessionLog
-		callLog := s.log.With(mlog.String("callID", cfg.CallID))
+		callLog := loggerWith(s.log, mlog.String("callID", cfg.CallID))
 		c = &call{
 			id:          cfg.CallID,
 			sessions:    map[string]*session{},
