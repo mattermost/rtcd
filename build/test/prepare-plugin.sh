@@ -14,8 +14,7 @@ else
 fi
 
 # Build
-cd .. && rm -rf mattermost-plugin-calls && \
-git clone -b ${GIT_BRANCH} https://github.com/mattermost/mattermost-plugin-calls && \
+cd .. && git clone -b ${GIT_BRANCH} https://github.com/mattermost/mattermost-plugin-calls && \
 cd mattermost-plugin-calls && \
 git fetch --tags && \
 cd webapp && ./install_mattermost_webapp.sh && npm ci && cd .. && \
@@ -28,7 +27,16 @@ make dist MM_SERVICESETTINGS_ENABLEDEVELOPER=true
 PLUGIN_BUILD_PATH=$(realpath dist/*.tar.gz)
 PLUGIN_FILE_NAME=$(basename ${PLUGIN_BUILD_PATH})
 
-docker ps -a && \
+docker ps -a
+
+# Check if container is healthy before proceeding
+CONTAINER_STATUS=$(docker inspect --format='{{.State.Status}}' mmserver-server-1)
+if [ "$CONTAINER_STATUS" != "running" ]; then
+  echo "Container is not running (status: $CONTAINER_STATUS), dumping logs:"
+  docker logs mmserver-server-1
+  exit 1
+fi
+
 docker cp ../rtcd/build/test/config_patch.json mmserver-server-1:/mattermost && \
 docker exec mmserver-server-1 bin/mmctl --local config patch config_patch.json && \
 docker cp ${PLUGIN_BUILD_PATH} mmserver-server-1:/mattermost && \

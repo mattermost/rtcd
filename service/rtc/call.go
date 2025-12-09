@@ -20,6 +20,7 @@ type call struct {
 	screenSession *session
 	pliLimiters   map[webrtc.SSRC]*rate.Limiter
 	metrics       Metrics
+	log           mlog.LoggerIFace
 
 	mut sync.RWMutex
 }
@@ -114,7 +115,7 @@ func (c *call) clearScreenState(screenSession *session) error {
 			select {
 			case s.tracksCh <- trackActionContext{action: trackActionRemove, localTrack: s.screenTrackSender.Track()}:
 			default:
-				s.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", s.cfg.SessionID))
+				s.log.Error("failed to send screen track: channel is full")
 			}
 			s.screenTrackSender = nil
 		}
@@ -128,7 +129,7 @@ func (c *call) clearScreenState(screenSession *session) error {
 // closing session.
 // NOTE: this is expected to always be called under lock (call.mut).
 func (c *call) handleSessionClose(us *session) {
-	us.log.Debug("handleSessionClose", mlog.String("sessionID", us.cfg.SessionID))
+	us.log.Debug("handleSessionClose")
 
 	us.mut.Lock()
 	defer us.mut.Unlock()
@@ -166,7 +167,6 @@ func (c *call) handleSessionClose(us *session) {
 	for _, sender := range us.rtcConn.GetSenders() {
 		if track := sender.Track(); track != nil {
 			us.log.Debug("cleaning up out track on receiver",
-				mlog.String("sessionID", us.cfg.SessionID),
 				mlog.String("trackID", track.ID()),
 			)
 			cleanUp(us.cfg.SessionID, sender, track)
@@ -198,8 +198,7 @@ func (c *call) handleSessionClose(us *session) {
 
 	// Nothing left to do if the closing session wasn't sending anything.
 	if len(outTracks) == 0 {
-		us.log.Debug("no out tracks to cleanup, returning",
-			mlog.String("sessionID", us.cfg.SessionID))
+		us.log.Debug("no out tracks to cleanup, returning")
 		return
 	}
 
@@ -224,7 +223,7 @@ func (c *call) handleSessionClose(us *session) {
 					select {
 					case ss.tracksCh <- trackActionContext{action: trackActionRemove, localTrack: track}:
 					default:
-						ss.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", ss.cfg.SessionID))
+						ss.log.Error("failed to send screen track: channel is full")
 					}
 				} else {
 					cleanUp(ss.cfg.SessionID, sender, track)

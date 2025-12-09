@@ -8,11 +8,31 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/mattermost/logr/v2"
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
 	"github.com/pion/logging"
 )
 
 const pionPkgPrefix = "github.com/pion/"
+
+// loggerWithFieldsInterface defines a method for creating scoped loggers
+// that return the proper interface type.
+type loggerWithFieldsInterface interface {
+	WithFields(fields ...logr.Field) mlog.LoggerIFace
+}
+
+// loggerWith is a helper that safely calls .With() on any logger implementation.
+// It first checks if the logger implements WithFields(),
+// falling back to the standard .With() method for native mlog.Logger.
+func loggerWith(log mlog.LoggerIFace, fields ...logr.Field) mlog.LoggerIFace {
+	// Check if the logger implements WithFields (plugin logger wrapper)
+	if lwf, ok := log.(loggerWithFieldsInterface); ok {
+		return lwf.WithFields(fields...)
+	}
+
+	// Fall back to standard .With() for native mlog.Logger
+	return log.With(fields...)
+}
 
 func getLogOrigin() string {
 	pc, file, line, ok := runtime.Caller(2)
@@ -44,6 +64,15 @@ func newPionLeveledLogger(log mlog.LoggerIFace) logging.LeveledLogger {
 
 func (s *Server) NewLogger(_ string) logging.LeveledLogger {
 	return newPionLeveledLogger(s.log)
+}
+
+// sessionLoggerFactory wraps a logger with session context for Pion to use.
+type sessionLoggerFactory struct {
+	log mlog.LoggerIFace
+}
+
+func (f *sessionLoggerFactory) NewLogger(_ string) logging.LeveledLogger {
+	return newPionLeveledLogger(f.log)
 }
 
 func (log *pionLogger) Trace(msg string) {

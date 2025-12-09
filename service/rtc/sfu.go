@@ -24,6 +24,7 @@ import (
 	"github.com/pion/interceptor/pkg/cc"
 	"github.com/pion/interceptor/pkg/gcc"
 	"github.com/pion/interceptor/pkg/nack"
+	"github.com/pion/logging"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 )
@@ -76,9 +77,12 @@ const (
 	ScreenTrackMimeTypeDefault = webrtc.MimeTypeVP8
 )
 
-func (s *Server) initSettingEngine() (webrtc.SettingEngine, error) {
+func (s *Server) initSettingEngine(loggerFactory logging.LoggerFactory) (webrtc.SettingEngine, error) {
+	if loggerFactory == nil {
+		loggerFactory = s
+	}
 	sEngine := webrtc.SettingEngine{
-		LoggerFactory: s,
+		LoggerFactory: loggerFactory,
 	}
 	sEngine.EnableSCTPZeroChecksum(true)
 	sEngine.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
@@ -253,7 +257,17 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		return fmt.Errorf("failed to init interceptors: %w", err)
 	}
 
-	sEngine, err := s.initSettingEngine()
+	// Create a scoped logger with callID and sessionID for this session
+	// Use type assertion to handle plugin logger wrapper which may not properly support .With()
+	sessionLog := loggerWith(s.log,
+		mlog.String("callID", cfg.CallID),
+		mlog.String("sessionID", cfg.SessionID),
+	)
+
+	// Create a logger factory that will provide the scoped logger to Pion
+	loggerFactory := &sessionLoggerFactory{log: sessionLog}
+
+	sEngine, err := s.initSettingEngine(loggerFactory)
 	if err != nil {
 		return fmt.Errorf("failed to init setting engine: %w", err)
 	}
@@ -268,7 +282,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		return fmt.Errorf("failed to create peer connection: %w", err)
 	}
 
-	us, err := s.addSession(cfg, peerConn, closeCb)
+	us, err := s.addSession(cfg, peerConn, closeCb, sessionLog)
 	if err != nil {
 		// TODO: handle case session exists
 		return fmt.Errorf("failed to add session: %w", err)
@@ -287,8 +301,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 		if port := s.cfg.ICEHostPortOverride.SinglePort(); port != 0 && candidate.Typ == webrtc.ICECandidateTypeHost {
 			if m := getExternalAddrMapFromHostOverride(s.cfg.ICEHostOverride, s.publicAddrsMap); m[candidate.Address] {
-				s.log.Debug("overriding host candidate port",
-					mlog.String("sessionID", cfg.SessionID),
+				us.log.Debug("overriding host candidate port",
 					mlog.Uint("port", candidate.Port),
 					mlog.Int("override", port),
 					mlog.String("addr", candidate.Address),
@@ -299,13 +312,13 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 
 		msg, err := newICEMessage(us, candidate)
 		if err != nil {
-			s.log.Error("failed to create ICE message", mlog.Err(err), mlog.String("sessionID", cfg.SessionID))
+			us.log.Error("failed to create ICE message", mlog.Err(err))
 			return
 		}
 
 		select {
 		case <-us.closeCh:
-			s.log.Debug("closeCh closed during ICE gathering", mlog.Any("sessionCfg", us.cfg))
+			us.log.Debug("closeCh closed during ICE gathering", mlog.Any("sessionCfg", us.cfg))
 			return
 		default:
 		}
@@ -313,46 +326,46 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		select {
 		case s.receiveCh <- msg:
 		default:
-			s.log.Error("failed to send ICE message: channel is full", mlog.String("sessionID", cfg.SessionID))
+			us.log.Error("failed to send ICE message: channel is full")
 		}
 	})
 
 	peerConn.OnICEGatheringStateChange(func(state webrtc.ICEGatheringState) {
 		if state == webrtc.ICEGatheringStateComplete {
-			s.log.Debug("ice gathering complete", mlog.String("sessionID", cfg.SessionID))
+			us.log.Debug("ice gathering complete")
 		}
 	})
 
 	peerConn.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		if state == webrtc.PeerConnectionStateConnected {
-			s.log.Debug("rtc connected!", mlog.String("sessionID", cfg.SessionID))
+			us.log.Debug("rtc connected!")
 			s.metrics.IncRTCConnState("connected")
 			s.metrics.ObserveRTCConnectionTime(cfg.GroupID, time.Since(start).Seconds())
 		} else if state == webrtc.PeerConnectionStateDisconnected {
-			s.log.Debug("peer connection disconnected", mlog.String("sessionID", cfg.SessionID))
+			us.log.Debug("peer connection disconnected")
 			s.metrics.IncRTCConnState("disconnected")
 		} else if state == webrtc.PeerConnectionStateFailed {
-			s.log.Debug("peer connection failed", mlog.String("sessionID", cfg.SessionID))
+			us.log.Debug("peer connection failed")
 			s.metrics.IncRTCConnState("failed")
 		} else if state == webrtc.PeerConnectionStateClosed {
-			s.log.Debug("peer connection closed", mlog.String("sessionID", cfg.SessionID))
+			us.log.Debug("peer connection closed")
 			s.metrics.IncRTCConnState("closed")
 		}
 		switch state {
 		case webrtc.PeerConnectionStateClosed, webrtc.PeerConnectionStateFailed:
 			if err := s.CloseSession(cfg.SessionID); err != nil {
-				s.log.Error("failed to close RTC session", mlog.Err(err), mlog.Any("sessionCfg", cfg))
+				us.log.Error("failed to close RTC session", mlog.Err(err), mlog.Any("sessionCfg", cfg))
 			}
 		}
 	})
 
 	peerConn.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
 		if state == webrtc.ICEConnectionStateDisconnected {
-			s.log.Debug("ice disconnected", mlog.String("sessionID", cfg.SessionID))
+			us.log.Debug("ice disconnected")
 		} else if state == webrtc.ICEConnectionStateFailed {
-			s.log.Debug("ice failed", mlog.String("sessionID", cfg.SessionID))
+			us.log.Debug("ice failed")
 		} else if state == webrtc.ICEConnectionStateClosed {
-			s.log.Debug("ice closed", mlog.String("sessionID", cfg.SessionID))
+			us.log.Debug("ice closed")
 		}
 	})
 
@@ -410,13 +423,13 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		if trackMimeType == rtpAudioCodec.MimeType {
 			trackType := trackTypeVoice
 			if streamID != "" && streamID == screenStreamID {
-				s.log.Debug("received screen sharing audio track", mlog.String("sessionID", us.cfg.SessionID))
+				us.log.Debug("received screen sharing audio track")
 				trackType = trackTypeScreenAudio
 			}
 
 			outAudioTrack, err := webrtc.NewTrackLocalStaticRTP(rtpAudioCodec, genTrackID(trackType, us.cfg.SessionID), random.NewID())
 			if err != nil {
-				s.log.Error("failed to create local track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+				us.log.Error("failed to create local track", mlog.Err(err))
 				return
 			}
 
@@ -462,7 +475,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			var audioLevelExtensionID int
 			for _, ext := range receiver.GetParameters().HeaderExtensions {
 				if ext.URI == audioLevelExtensionURI {
-					s.log.Debug("found audio level extension", mlog.Any("ext", ext), mlog.String("sessionID", us.cfg.SessionID))
+					us.log.Debug("found audio level extension", mlog.Any("ext", ext))
 					audioLevelExtensionID = ext.ID
 					break
 				}
@@ -471,7 +484,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			var hasVAD bool
 			if audioLevelExtensionID > 0 {
 				if err := us.InitVAD(s.log, s.receiveCh); err != nil {
-					s.log.Error("failed to init VAD", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+					us.log.Error("failed to init VAD", mlog.Err(err))
 				} else {
 					hasVAD = true
 				}
@@ -801,7 +814,7 @@ func (s *Server) handleTracks(call *call, us *session) {
 		// in order to send out the AV1 track.
 		screenTrackMimeType := ScreenTrackMimeTypeDefault
 		if ss.supportsAV1() && us.supportsAV1() {
-			s.log.Debug("both sender and receiver support AV1", mlog.String("sessionID", us.cfg.SessionID))
+			us.log.Debug("both sender and receiver support AV1")
 			screenTrackMimeType = webrtc.MimeTypeAV1
 		}
 		outScreenTracks := ss.outScreenTracks[getTrackIndex(screenTrackMimeType, SimulcastLevelDefault)]
@@ -844,7 +857,7 @@ func (s *Server) handleTracks(call *call, us *session) {
 			}:
 			default:
 				s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
-				s.log.Error("failed to add track on join: channel is full", mlog.String("sessionID", us.cfg.SessionID))
+				us.log.Error("failed to add track on join: channel is full")
 			}
 		}
 	})
@@ -863,7 +876,7 @@ func (s *Server) handleTracks(call *call, us *session) {
 
 				if err := us.signaling(offerMsg.sdp, offerMsg.answerCh); err != nil {
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "signaling")
-					s.log.Error("failed to signal", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+					us.log.Error("failed to signal", mlog.Err(err))
 					continue
 				}
 			case <-us.closeCh:
@@ -889,18 +902,18 @@ func (s *Server) handleTracks(call *call, us *session) {
 			err := us.signalingLock.Lock(signalingLockTimeout)
 			s.metrics.ObserveRTCSignalingLockGrabTime(us.cfg.GroupID, time.Since(start).Seconds())
 			if err != nil {
-				s.log.Error("failed to grab signaling lock", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+				us.log.Error("failed to grab signaling lock", mlog.Err(err))
 				s.metrics.IncRTCErrors(us.cfg.GroupID, "signaling_lock_timeout")
 				continue
 			}
 
 			start = time.Now()
-			s.log.Debug("signaling lock acquired", mlog.String("sessionID", us.cfg.SessionID))
+			us.log.Debug("signaling lock acquired")
 
 			if ctx.action == trackActionAdd {
 				if err := us.addTrack(sdpCh, ctx.localTrack, ctx.remoteTrack, ctx.senderSession); err != nil {
 					s.metrics.IncRTCErrors(us.cfg.GroupID, "track")
-					s.log.Error("failed to add track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID), mlog.String("trackID", ctx.localTrack.ID()))
+					s.log.Error("failed to add track", mlog.Err(err), mlog.String("trackID", ctx.localTrack.ID()))
 				}
 			} else if ctx.action == trackActionRemove {
 				if err := us.removeTrack(sdpCh, ctx.localTrack); err != nil {
@@ -909,15 +922,15 @@ func (s *Server) handleTracks(call *call, us *session) {
 					if ctx.localTrack != nil {
 						trackID = ctx.localTrack.ID()
 					}
-					s.log.Error("failed to remove track", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID), mlog.String("trackID", trackID))
+					us.log.Error("failed to remove track", mlog.Err(err), mlog.String("trackID", trackID))
 				}
 			} else {
-				s.log.Error("invalid track action", mlog.Int("action", int(ctx.action)), mlog.String("sessionID", us.cfg.SessionID))
+				us.log.Error("invalid track action", mlog.Int("action", int(ctx.action)))
 			}
 
-			s.log.Debug("releasing signaling lock", mlog.String("sessionID", us.cfg.SessionID))
+			us.log.Debug("releasing signaling lock")
 			if err := us.signalingLock.Unlock(); err != nil {
-				s.log.Error("failed to unlock signaling lock", mlog.Err(err), mlog.String("sessionID", us.cfg.SessionID))
+				us.log.Error("failed to unlock signaling lock", mlog.Err(err))
 			}
 			s.metrics.ObserveRTCSignalingLockLockedTime(us.cfg.GroupID, time.Since(start).Seconds())
 		case <-us.closeCh:
