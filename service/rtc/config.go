@@ -82,18 +82,22 @@ func (c ServerConfig) IsValid() error {
 		return fmt.Errorf("invalid UDPSocketsCount value: should be greater than 0")
 	}
 
-	if c.NACKBufferSize < 32 {
-		return fmt.Errorf("invalid NACKBufferSize value: should be at least 32")
-	}
+	// NACKBufferSize validation only applies if explicitly set (non-zero)
+	// A zero value is allowed and will use the default from SetDefaults()
+	if c.NACKBufferSize != 0 {
+		if c.NACKBufferSize < 32 {
+			return fmt.Errorf("invalid NACKBufferSize value: should be at least 32")
+		}
 
-	if c.NACKBufferSize > 8192 {
-		return fmt.Errorf("invalid NACKBufferSize value: should not exceed 8192")
-	}
+		if c.NACKBufferSize > 8192 {
+			return fmt.Errorf("invalid NACKBufferSize value: should not exceed 8192")
+		}
 
-	// Buffer size must be a power of 2 (required by pion/interceptor ring buffer)
-	isPowerOfTwo := c.NACKBufferSize != 0 && (c.NACKBufferSize&(c.NACKBufferSize-1)) == 0
-	if !isPowerOfTwo {
-		return fmt.Errorf("invalid NACKBufferSize value: must be a power of 2 (32, 64, 128, 256, 512, 1024, 2048, 4096, 8192)")
+		// Buffer size must be a power of 2 (required by pion/interceptor ring buffer)
+		isPowerOfTwo := c.NACKBufferSize&(c.NACKBufferSize-1) == 0
+		if !isPowerOfTwo {
+			return fmt.Errorf("invalid NACKBufferSize value: must be a power of 2 (32, 64, 128, 256, 512, 1024, 2048, 4096, 8192)")
+		}
 	}
 
 	return nil

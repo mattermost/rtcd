@@ -134,6 +134,18 @@ func TestServerConfigIsValid(t *testing.T) {
 		require.EqualError(t, err, "invalid NACKBufferSize value: must be a power of 2 (32, 64, 128, 256, 512, 1024, 2048, 4096, 8192)")
 	})
 
+	t.Run("valid with NACKBufferSize zero (uses default)", func(t *testing.T) {
+		var cfg ServerConfig
+		cfg.ICEAddressUDP = "127.0.0.1"
+		cfg.ICEPortUDP = 8443
+		cfg.ICEPortTCP = 8443
+		cfg.TURNConfig.CredentialsExpirationMinutes = 1440
+		cfg.UDPSocketsCount = 1
+		cfg.NACKBufferSize = 0 // Zero is allowed, will use default
+		err := cfg.IsValid()
+		require.NoError(t, err)
+	})
+
 	t.Run("valid", func(t *testing.T) {
 		var cfg ServerConfig
 		cfg.ICEAddressUDP = "127.0.0.1"
