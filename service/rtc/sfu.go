@@ -164,8 +164,12 @@ func initInterceptors(m *webrtc.MediaEngine, cfg ServerConfig) (*interceptor.Reg
 	}
 
 	// NACK
+	bufferSize := cfg.NACKBufferSize
+	if bufferSize == 0 {
+		bufferSize = 256
+	}
 	responderOpts := []nack.ResponderOption{
-		nack.ResponderSize(cfg.NACKBufferSize),
+		nack.ResponderSize(bufferSize),
 	}
 	if cfg.NACKDisableCopy {
 		responderOpts = append(responderOpts, nack.DisableCopy())

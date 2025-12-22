@@ -141,7 +141,7 @@ func TestServerConfigIsValid(t *testing.T) {
 		cfg.ICEPortTCP = 8443
 		cfg.TURNConfig.CredentialsExpirationMinutes = 1440
 		cfg.UDPSocketsCount = 1
-		cfg.NACKBufferSize = 0 // Zero is allowed, will use default
+		cfg.NACKBufferSize = 0 // Zero is allowed, default applied when creating interceptor
 		err := cfg.IsValid()
 		require.NoError(t, err)
 	})

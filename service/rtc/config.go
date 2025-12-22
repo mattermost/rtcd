@@ -82,8 +82,6 @@ func (c ServerConfig) IsValid() error {
 		return fmt.Errorf("invalid UDPSocketsCount value: should be greater than 0")
 	}
 
-	// NACKBufferSize validation only applies if explicitly set (non-zero)
-	// A zero value is allowed and will use the default from SetDefaults()
 	if c.NACKBufferSize != 0 {
 		if c.NACKBufferSize < 32 {
 			return fmt.Errorf("invalid NACKBufferSize value: should be at least 32")
