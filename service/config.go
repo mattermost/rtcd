@@ -82,8 +82,8 @@ func (c *Config) SetDefaults() {
 	c.RTC.ICEPortTCP = 8443
 	c.RTC.TURNConfig.CredentialsExpirationMinutes = 1440
 	c.RTC.UDPSocketsCount = rtc.GetDefaultUDPListeningSocketsCount()
-	c.RTC.NACKBufferSize = 256       // Default: 256 packets (~8.5 seconds at 30fps)
-	c.RTC.NACKDisableCopy = true     // Default: true for backward compatibility (but not recommended)
+	c.RTC.NACKBufferSize = 256
+	c.RTC.NACKDisableCopy = true
 	c.Store.DataSource = "/tmp/rtcd_db"
 	c.Logger.EnableConsole = true
 	c.Logger.ConsoleJSON = false
