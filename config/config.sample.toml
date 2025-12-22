@@ -102,6 +102,19 @@ turn.credentials_expiration_minutes = 1440
 # network address will be open.
 # udp_sockets_count =
 
+# nack_buffer_size specifies the number of packets to buffer for NACK retransmission
+# per SSRC (video stream). A larger buffer allows clients to request older packets
+# but increases memory usage. Default is 256 packets (~8.5 seconds at 30fps).
+# Must be a power of 2. Valid values: 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192
+# nack_buffer_size = 256
+
+# nack_disable_copy controls whether the NACK responder should store packet copies
+# or just pointers. Setting this to true (disabling copy) improves performance but
+# can cause crashes due to memory corruption when the ring buffer wraps around.
+# Default is true for backward compatibility, but should be set to false for
+# production stability to avoid memory corruption crashes.
+# nack_disable_copy = true
+
 [store]
 # A path to a directory the service will use to store persistent data such as registered client IDs and hashed credentials.
 data_source = "/tmp/rtcd_db"

@@ -21,6 +21,8 @@ RTCD_RTC_TURNCONFIG_STATICAUTHSECRET                String
 RTCD_RTC_TURNCONFIG_CREDENTIALSEXPIRATIONMINUTES    Integer
 RTCD_RTC_ENABLEIPV6                                 True or False
 RTCD_RTC_UDPSOCKETSCOUNT                            Integer
+RTCD_RTC_NACKBUFFERSIZE                             Integer (power of 2: 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192)
+RTCD_RTC_NACKDISABLECOPY                            True or False
 RTCD_STORE_DATASOURCE                               String
 RTCD_LOGGER_ENABLECONSOLE                           True or False
 RTCD_LOGGER_CONSOLEJSON                             True or False
