@@ -104,6 +104,48 @@ func TestServerConfigIsValid(t *testing.T) {
 		require.EqualError(t, err, "invalid UDPSocketsCount value: should be greater than 0")
 	})
 
+	t.Run("invalid NACKBufferSize too small", func(t *testing.T) {
+		var cfg ServerConfig
+		cfg.ICEPortUDP = 8443
+		cfg.ICEPortTCP = 8443
+		cfg.UDPSocketsCount = 1
+		cfg.NACKBufferSize = 16
+		err := cfg.IsValid()
+		require.EqualError(t, err, "invalid NACKBufferSize value: should be at least 32")
+	})
+
+	t.Run("invalid NACKBufferSize too large", func(t *testing.T) {
+		var cfg ServerConfig
+		cfg.ICEPortUDP = 8443
+		cfg.ICEPortTCP = 8443
+		cfg.UDPSocketsCount = 1
+		cfg.NACKBufferSize = 16384
+		err := cfg.IsValid()
+		require.EqualError(t, err, "invalid NACKBufferSize value: should not exceed 8192")
+	})
+
+	t.Run("invalid NACKBufferSize not power of 2", func(t *testing.T) {
+		var cfg ServerConfig
+		cfg.ICEPortUDP = 8443
+		cfg.ICEPortTCP = 8443
+		cfg.UDPSocketsCount = 1
+		cfg.NACKBufferSize = 100
+		err := cfg.IsValid()
+		require.EqualError(t, err, "invalid NACKBufferSize value: must be a power of 2 (32, 64, 128, 256, 512, 1024, 2048, 4096, 8192)")
+	})
+
+	t.Run("valid with NACKBufferSize zero (uses default)", func(t *testing.T) {
+		var cfg ServerConfig
+		cfg.ICEAddressUDP = "127.0.0.1"
+		cfg.ICEPortUDP = 8443
+		cfg.ICEPortTCP = 8443
+		cfg.TURNConfig.CredentialsExpirationMinutes = 1440
+		cfg.UDPSocketsCount = 1
+		cfg.NACKBufferSize = 0 // Zero is allowed, default applied when creating interceptor
+		err := cfg.IsValid()
+		require.NoError(t, err)
+	})
+
 	t.Run("valid", func(t *testing.T) {
 		var cfg ServerConfig
 		cfg.ICEAddressUDP = "127.0.0.1"
@@ -111,6 +153,7 @@ func TestServerConfigIsValid(t *testing.T) {
 		cfg.ICEPortTCP = 8443
 		cfg.TURNConfig.CredentialsExpirationMinutes = 1440
 		cfg.UDPSocketsCount = 1
+		cfg.NACKBufferSize = 256
 		err := cfg.IsValid()
 		require.NoError(t, err)
 	})

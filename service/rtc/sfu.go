@@ -156,7 +156,7 @@ func initMediaEngine() (*webrtc.MediaEngine, error) {
 	return &m, nil
 }
 
-func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, <-chan cc.BandwidthEstimator, error) {
+func initInterceptors(m *webrtc.MediaEngine, cfg ServerConfig) (*interceptor.Registry, <-chan cc.BandwidthEstimator, error) {
 	var i interceptor.Registry
 	generator, err := nack.NewGeneratorInterceptor()
 	if err != nil {
@@ -164,7 +164,17 @@ func initInterceptors(m *webrtc.MediaEngine) (*interceptor.Registry, <-chan cc.B
 	}
 
 	// NACK
-	responder, err := nack.NewResponderInterceptor(nack.ResponderSize(nackResponderBufferSize), nack.DisableCopy())
+	bufferSize := cfg.NACKBufferSize
+	if bufferSize == 0 {
+		bufferSize = 256
+	}
+	responderOpts := []nack.ResponderOption{
+		nack.ResponderSize(bufferSize),
+	}
+	if cfg.NACKDisableCopy {
+		responderOpts = append(responderOpts, nack.DisableCopy())
+	}
+	responder, err := nack.NewResponderInterceptor(responderOpts...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -252,7 +262,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 		return fmt.Errorf("failed to init media engine: %w", err)
 	}
 
-	iRegistry, bwEstimatorCh, err := initInterceptors(mEngine)
+	iRegistry, bwEstimatorCh, err := initInterceptors(mEngine, s.cfg)
 	if err != nil {
 		return fmt.Errorf("failed to init interceptors: %w", err)
 	}

@@ -159,7 +159,7 @@ release: build github-release ## to build and release artifacts
 package: docker-login docker-build ## to build, package and push the artifact to a container registry
 
 .PHONY: sign
-sign: docker-sign docker-verify ## to sign the artifact and perform verification
+sign: docker-login docker-sign docker-verify ## to sign the artifact and perform verification
 
 .PHONY: lint
 lint: go-lint docker-lint ## to lint

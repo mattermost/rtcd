@@ -38,6 +38,15 @@ type ServerConfig struct {
 	// a constant multiplier of 100. E.g. On a 4 CPUs node, 400 sockets per local
 	// network address will be open.
 	UDPSocketsCount int `toml:"udp_sockets_count"`
+	// NACKBufferSize specifies the number of packets to buffer for NACK retransmission
+	// per SSRC. A larger buffer allows clients to request older packets but increases
+	// memory usage. Must be a power of 2. Default is 256 packets (~8.5 seconds at 30fps).
+	NACKBufferSize uint16 `toml:"nack_buffer_size"`
+	// NACKDisableCopy controls whether the NACK responder should store packet copies
+	// or just pointers. Disabling copy improves performance but can cause crashes due
+	// to memory corruption when the ring buffer wraps around. Default is true (disabled)
+	// for backward compatibility, but should be set to false for production stability.
+	NACKDisableCopy bool `toml:"nack_disable_copy"`
 }
 
 func (c ServerConfig) IsValid() error {
@@ -71,6 +80,22 @@ func (c ServerConfig) IsValid() error {
 
 	if c.UDPSocketsCount <= 0 {
 		return fmt.Errorf("invalid UDPSocketsCount value: should be greater than 0")
+	}
+
+	if c.NACKBufferSize != 0 {
+		if c.NACKBufferSize < 32 {
+			return fmt.Errorf("invalid NACKBufferSize value: should be at least 32")
+		}
+
+		if c.NACKBufferSize > 8192 {
+			return fmt.Errorf("invalid NACKBufferSize value: should not exceed 8192")
+		}
+
+		// Buffer size must be a power of 2 (required by pion/interceptor ring buffer)
+		isPowerOfTwo := c.NACKBufferSize&(c.NACKBufferSize-1) == 0
+		if !isPowerOfTwo {
+			return fmt.Errorf("invalid NACKBufferSize value: must be a power of 2 (32, 64, 128, 256, 512, 1024, 2048, 4096, 8192)")
+		}
 	}
 
 	return nil

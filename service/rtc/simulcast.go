@@ -70,7 +70,7 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 		select {
 		case rateCh <- rate:
 		default:
-			s.log.Error("failed to send on rateCh", mlog.String("sessionID", s.cfg.SessionID))
+			s.log.Error("failed to send on rateCh")
 		}
 	})
 
@@ -94,7 +94,6 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 		lastLossRate = lossRate
 
 		s.log.Debug("sender bwe",
-			mlog.String("sessionID", s.cfg.SessionID),
 			mlog.Int("delayRate", delayRate),
 			mlog.Int("lossRate", lossRate),
 			mlog.String("averageLoss", fmt.Sprintf("%.5f", averageLoss)),
@@ -109,7 +108,7 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 		// high rate track and there was a drop in the estimated rate
 		// in which case we want to act as quickly as possible.
 		if time.Since(lastLevelChangeAt) < backoff && (currLevel == SimulcastLevelLow || rateDiff >= 0) {
-			s.log.Debug("skipping bitrate check due to backoff, no drop", mlog.String("sessionID", s.cfg.SessionID))
+			s.log.Debug("skipping bitrate check due to backoff, no drop")
 			return
 		}
 
@@ -140,7 +139,7 @@ func (s *session) initBWEstimator(bwEstimator cc.BandwidthEstimator) {
 			select {
 			case rate, ok := <-rateCh:
 				if !ok {
-					s.log.Info("rateCh was closed, returning", mlog.String("sessionID", s.cfg.SessionID))
+					s.log.Info("rateCh was closed, returning")
 					return
 				}
 				rateChangeHandler(rate)
@@ -169,7 +168,7 @@ func (s *session) handleSenderBitrateChange(downRate int, lossRate int) (bool, i
 	currTrack := sender.Track()
 
 	if currTrack == nil {
-		s.log.Error("track should not be nil", mlog.String("sessionID", s.cfg.SessionID))
+		s.log.Error("track should not be nil")
 		return false, 0, ""
 	}
 
@@ -181,14 +180,14 @@ func (s *session) handleSenderBitrateChange(downRate int, lossRate int) (bool, i
 
 	localTrack, ok := currTrack.(*webrtc.TrackLocalStaticRTP)
 	if !ok {
-		s.log.Error("track conversion failed", mlog.String("sessionID", s.cfg.SessionID))
+		s.log.Error("track conversion failed")
 		return false, 0, ""
 	}
 	mimeType := localTrack.Codec().MimeType
 
 	currSourceRate := screenSession.getSourceRate(mimeType, currLevel)
 	if currSourceRate <= 0 {
-		s.log.Warn("current source rate not available yet", mlog.String("sessionID", s.cfg.SessionID))
+		s.log.Warn("current source rate not available yet")
 		return false, 0, ""
 	}
 
@@ -201,7 +200,7 @@ func (s *session) handleSenderBitrateChange(downRate int, lossRate int) (bool, i
 	// If the loss based rate estimation is greater than the source rate we avoid
 	// potentially downgrading the level due to fluctuating delay rate estimation.
 	if currLevel == SimulcastLevelHigh && lossRate > int(float32(currSourceRate)*rateTolerance) {
-		s.log.Debug("skipping level downgrade, no loss", mlog.String("sessionID", s.cfg.SessionID))
+		s.log.Debug("skipping level downgrade, no loss")
 		return false, 0, ""
 	}
 
@@ -213,12 +212,11 @@ func (s *session) handleSenderBitrateChange(downRate int, lossRate int) (bool, i
 
 	sourceRate := screenSession.getSourceRate(mimeType, newLevel)
 	if sourceRate <= 0 {
-		s.log.Warn("source rate not available", mlog.String("sessionID", s.cfg.SessionID))
+		s.log.Warn("source rate not available")
 		return false, 0, ""
 	}
 
 	s.log.Debug("switching simulcast level",
-		mlog.String("sessionID", s.cfg.SessionID),
 		mlog.String("currLevel", currLevel),
 		mlog.String("newLevel", newLevel),
 		mlog.Int("downRate", downRate),
@@ -229,14 +227,14 @@ func (s *session) handleSenderBitrateChange(downRate int, lossRate int) (bool, i
 	select {
 	case s.tracksCh <- trackActionContext{action: trackActionRemove, localTrack: currTrack}:
 	default:
-		s.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", s.cfg.SessionID))
+		s.log.Error("failed to send screen track: channel is full")
 		return false, 0, ""
 	}
 
 	select {
 	case s.tracksCh <- trackActionContext{action: trackActionAdd, localTrack: newTrack}:
 	default:
-		s.log.Error("failed to send screen track: channel is full", mlog.String("sessionID", s.cfg.SessionID))
+		s.log.Error("failed to send screen track: channel is full")
 		return false, 0, ""
 	}
 

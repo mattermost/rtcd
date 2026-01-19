@@ -232,7 +232,7 @@ func (s *session) getSourceRate(mimeType, rid string) int {
 	rm := s.screenRateMonitors[getTrackIndex(mimeType, rid)]
 
 	if rm == nil {
-		s.log.Warn("rate monitor should not be nil", mlog.String("sessionID", s.cfg.SessionID))
+		s.log.Warn("rate monitor should not be nil")
 		return -1
 	}
 
@@ -372,7 +372,7 @@ func (s *session) sendOffer(sdpOutCh chan<- Message) error {
 	}
 
 	if err := s.sendMediaMapping(); err != nil {
-		s.log.Error("failed to send media mapping", mlog.Err(err), mlog.String("sessionID", s.cfg.SessionID))
+		s.log.Error("failed to send media mapping", mlog.Err(err))
 	}
 
 	select {
@@ -636,13 +636,13 @@ func (s *session) sendMediaMapping() error {
 		}
 		track := trx.Sender().Track()
 		if track == nil {
-			s.log.Warn("track is nil", mlog.String("sessionID", s.cfg.SessionID))
+			s.log.Warn("track is nil")
 			continue
 		}
 		trackID := track.ID()
 		trackType := getTrackType(trackID)
 		if trackType == "" {
-			s.log.Warn("track type is empty", mlog.String("sessionID", s.cfg.SessionID), mlog.String("trackID", trackID))
+			s.log.Warn("track type is empty", mlog.String("trackID", trackID))
 			continue
 		}
 		mediaMap[trx.Mid()] = dc.TrackInfo{
