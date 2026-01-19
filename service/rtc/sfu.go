@@ -15,8 +15,6 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/mattermost/rtcd/service/random"
-
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
 
 	"github.com/pion/ice/v4"
@@ -437,7 +435,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				trackType = trackTypeScreenAudio
 			}
 
-			outAudioTrack, err := webrtc.NewTrackLocalStaticRTP(rtpAudioCodec, genTrackID(trackType, us.cfg.SessionID), random.NewID())
+			outAudioTrack, err := webrtc.NewTrackLocalStaticRTP(rtpAudioCodec, genTrackID(trackType, us.cfg.SessionID), us.cfg.SessionID)
 			if err != nil {
 				us.log.Error("failed to create local track", mlog.Err(err))
 				return
@@ -569,7 +567,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				outTracks := make([]*webrtc.TrackLocalStaticRTP, num)
 				for i := 0; i < num; i++ {
 					outTrack, err := webrtc.NewTrackLocalStaticRTP(params.RTPCodecCapability,
-						genTrackID(outTrackType, us.cfg.SessionID), random.NewID(), webrtc.WithRTPStreamID(remoteTrack.RID()))
+						genTrackID(outTrackType, us.cfg.SessionID), us.cfg.SessionID, webrtc.WithRTPStreamID(remoteTrack.RID()))
 					if err != nil {
 						return nil, fmt.Errorf("failed to create screen track")
 					}
