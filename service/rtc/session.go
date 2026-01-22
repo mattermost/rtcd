@@ -296,16 +296,39 @@ func (s *session) handleReceiverRTCP(receiver *webrtc.RTPReceiver, rid string) {
 	for {
 		// TODO: consider using a pool to optimize allocations.
 		rtcpBuf := make([]byte, receiveMTU)
+		var n int
 		if rid != "" {
-			_, _, err = receiver.ReadSimulcast(rtcpBuf, rid)
+			n, _, err = receiver.ReadSimulcast(rtcpBuf, rid)
 		} else {
-			_, _, err = receiver.Read(rtcpBuf)
+			n, _, err = receiver.Read(rtcpBuf)
 		}
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				s.log.Error("failed to read RTCP packet", mlog.Err(err))
 			}
 			return
+		}
+
+		// Parse RTCP packets to log Sender Reports
+		pkts, err := rtcp.Unmarshal(rtcpBuf[:n])
+		if err != nil {
+			s.log.Error("failed to unmarshal RTCP packet", mlog.Err(err))
+			continue
+		}
+
+		for _, pkt := range pkts {
+			if sr, ok := pkt.(*rtcp.SenderReport); ok {
+				// Log sender reports to diagnose lip sync issues.
+				// Compare NTP timestamps between audio and video SRs from the same session.
+				// If NTP times differ significantly (>100ms), the timing skew originates at the publisher.
+				s.log.Info("received RTCP Sender Report",
+					mlog.String("rid", rid),
+					mlog.Uint("ssrc", sr.SSRC),
+					mlog.Any("ntpTime", sr.NTPTime),
+					mlog.Uint("rtpTime", sr.RTPTime),
+					mlog.Uint("packetCount", sr.PacketCount),
+					mlog.Uint("octetCount", sr.OctetCount))
+			}
 		}
 	}
 }
