@@ -356,7 +356,21 @@ func (s *session) handleSenderRTCP(sender *webrtc.RTPSender, remoteTrack *webrtc
 
 // sendOffer creates and sends out a new SDP offer.
 func (s *session) sendOffer(sdpOutCh chan<- Message) error {
-	offer, err := s.rtcConn.CreateOffer(nil)
+	var iceRestart bool
+
+	// Check if this is a renegotiation
+	if remoteDesc := s.rtcConn.CurrentRemoteDescription(); remoteDesc != nil {
+		// If last remote was an offer, we were the answerer (CONTROLLED)
+		// Creating offer now will make us CONTROLLING, so need ICE restart
+		if remoteDesc.Type == webrtc.SDPTypeOffer {
+			iceRestart = true
+			s.log.Debug("ICE restart needed: transitioning CONTROLLED → CONTROLLING")
+		}
+	}
+
+	offer, err := s.rtcConn.CreateOffer(&webrtc.OfferOptions{
+		ICERestart: iceRestart,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create offer: %w", err)
 	}
