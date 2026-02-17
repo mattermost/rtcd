@@ -119,14 +119,8 @@ func (s *Server) initSettingEngine(loggerFactory logging.LoggerFactory) (webrtc.
 		return webrtc.SettingEngine{}, fmt.Errorf("failed to generate addresses pairs: %w", err)
 	} else if len(pairs) > 0 {
 		s.log.Debug("generated remote/local addrs pairs", mlog.Any("pairs", pairs))
-		// Convert to new ICEAddressRewriteRules API (replaces deprecated SetNAT1To1IPs)
-		if err := sEngine.SetICEAddressRewriteRules(webrtc.ICEAddressRewriteRule{
-			External:        pairs,
-			AsCandidateType: webrtc.ICECandidateTypeHost,
-			// Mode defaults to ICEAddressRewriteReplace for host candidates
-		}); err != nil {
-			return webrtc.SettingEngine{}, fmt.Errorf("failed to set ICE address rewrite rules: %w", err)
-		}
+		//nolint:staticcheck // SA1019: Using deprecated SetNAT1To1IPs until SetICEAddressRewriteRules properly supports external/internal mappings
+		sEngine.SetNAT1To1IPs(pairs, webrtc.ICECandidateTypeHost)
 	}
 
 	return sEngine, nil
