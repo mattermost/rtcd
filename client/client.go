@@ -137,6 +137,7 @@ func WithTLSConfig(tlsConfig *tls.Config) Option {
 	return func(c *Client) error {
 		transport := http.DefaultTransport.(*http.Transport).Clone()
 		transport.TLSClientConfig = tlsConfig
+		transport.ForceAttemptHTTP2 = true
 		c.apiClient.HTTPClient = &http.Client{Transport: transport}
 		c.tlsConfig = tlsConfig
 		return nil
