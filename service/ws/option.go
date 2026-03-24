@@ -5,6 +5,7 @@ package ws
 
 import (
 	"context"
+	"crypto/tls"
 	"log/slog"
 	"net"
 )
@@ -35,6 +36,16 @@ func WithDialFunc(dialFn DialContextFn) ClientOption {
 func WithLogger(log *slog.Logger) ClientOption {
 	return func(c *Client) error {
 		c.log = log
+		return nil
+	}
+}
+
+// WithTLSConfig lets the caller set an optional TLS configuration for the
+// WebSocket connection. This is needed when connecting to a server using a
+// self-signed or private CA certificate.
+func WithTLSConfig(tlsConfig *tls.Config) ClientOption {
+	return func(c *Client) error {
+		c.tlsConfig = tlsConfig
 		return nil
 	}
 }
