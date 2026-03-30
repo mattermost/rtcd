@@ -330,11 +330,15 @@ func (c *Client) handleWSMsg(msg ws.Message) error {
 }
 
 func (c *Client) wsOpen() error {
+	wsOpts := []ws.ClientOption{ws.WithLogger(c.log)}
+	if c.tlsConfig != nil {
+		wsOpts = append(wsOpts, ws.WithTLSConfig(c.tlsConfig))
+	}
 	ws, err := ws.NewClient(ws.ClientConfig{
 		URL:       c.cfg.wsURL,
 		AuthToken: c.cfg.AuthToken,
 		AuthType:  ws.BearerClientAuthType,
-	}, ws.WithLogger(c.log))
+	}, wsOpts...)
 	if err != nil {
 		return fmt.Errorf("failed to create websocket client: %w", err)
 	}

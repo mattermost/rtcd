@@ -4,9 +4,11 @@
 package client
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -113,6 +115,8 @@ type Client struct {
 
 	state int32
 
+	tlsConfig *tls.Config
+
 	mut sync.RWMutex
 }
 
@@ -121,6 +125,21 @@ type Option func(c *Client) error
 func WithLogger(log *slog.Logger) Option {
 	return func(c *Client) error {
 		c.log = log
+		return nil
+	}
+}
+
+// WithTLSConfig lets the caller set an optional TLS configuration for connections
+// to Mattermost. This is needed when the server uses a self-signed or private CA
+// certificate. The config is applied to both the HTTP API client and the WebSocket
+// connection.
+func WithTLSConfig(tlsConfig *tls.Config) Option {
+	return func(c *Client) error {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSClientConfig = tlsConfig
+		transport.ForceAttemptHTTP2 = true
+		c.apiClient.HTTPClient = &http.Client{Transport: transport}
+		c.tlsConfig = tlsConfig
 		return nil
 	}
 }

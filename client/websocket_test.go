@@ -4,6 +4,8 @@
 package client
 
 import (
+	"fmt"
+	"net"
 	"testing"
 	"time"
 
@@ -115,12 +117,21 @@ func TestClientWSReconnectTimeout(t *testing.T) {
 		require.Fail(t, "timed out waiting for connect event")
 	}
 
-	th.userClient.cfg.wsURL = "ws://localhost:8080"
+	// Bind a listener to get an unused port, then close it so the port gives
+	// immediate ECONNREFUSED on reconnect (avoids slow TCP timeouts from
+	// non-routable IPs, and avoids accidentally hitting a real server).
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	unusedAddr := ln.Addr().String()
+	ln.Close()
+	th.userClient.cfg.wsURL = fmt.Sprintf("ws://%s", unusedAddr)
 
-	errorCh := make(chan struct{})
+	errorCh := make(chan error, 1)
 	err = th.userClient.On(ErrorEvent, func(ctx any) error {
-		close(errorCh)
-		require.EqualError(t, ctx.(error), "ws reconnection timeout reached")
+		select {
+		case errorCh <- ctx.(error):
+		default:
+		}
 		return nil
 	})
 	require.NoError(t, err)
@@ -136,7 +147,8 @@ func TestClientWSReconnectTimeout(t *testing.T) {
 	require.NoError(t, err)
 
 	select {
-	case <-errorCh:
+	case err := <-errorCh:
+		require.EqualError(t, err, "ws reconnection timeout reached")
 	case <-time.After(wsReconnectionTimeout * 2):
 		require.Fail(t, "timed out waiting for error event")
 	}

@@ -4,6 +4,7 @@
 package ws
 
 import (
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -33,6 +34,7 @@ type Client struct {
 	wg            sync.WaitGroup
 	connState     int32
 	dialFn        DialContextFn
+	tlsConfig     *tls.Config
 	pingHandlerFn func(msg string) error
 	log           *slog.Logger
 }
@@ -72,6 +74,9 @@ func NewClient(cfg ClientConfig, opts ...ClientOption) (*Client, error) {
 	dialer := *websocket.DefaultDialer
 	if c.dialFn != nil {
 		dialer.NetDialContext = c.dialFn
+	}
+	if c.tlsConfig != nil {
+		dialer.TLSClientConfig = c.tlsConfig
 	}
 	ws, _, err := dialer.Dial(cfg.URL, header)
 	if err != nil {
