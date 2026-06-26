@@ -248,6 +248,13 @@ func (s *session) getOutScreenTrack(mimeType, rid string) *webrtc.TrackLocalStat
 	return pickRandom(s.outScreenTracks[getTrackIndex(mimeType, rid)])
 }
 
+func (s *session) getRemoteScreenTrack(mimeType, rid string) *webrtc.TrackRemote {
+	s.mut.RLock()
+	defer s.mut.RUnlock()
+
+	return s.remoteScreenTracks[getTrackIndex(mimeType, rid)]
+}
+
 func (s *session) getExpectedSimulcastLevel() string {
 	s.mut.RLock()
 	defer s.mut.RUnlock()
