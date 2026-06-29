@@ -210,9 +210,26 @@ func (s *session) handleSenderBitrateChange(downRate int, lossRate int) (bool, i
 		return false, 0, ""
 	}
 
+	// The remote track for the new layer is required to wire up PLI forwarding
+	// in addTrack (see handleSenderRTCP). If it's not registered yet we keep the
+	// current layer rather than enqueue an add that would be rejected.
+	newRemoteTrack := screenSession.getRemoteScreenTrack(mimeType, newLevel)
+	if newRemoteTrack == nil {
+		s.log.Warn("remote screen track not available for new level",
+			mlog.String("mimeType", mimeType),
+			mlog.String("currLevel", currLevel),
+			mlog.String("newLevel", newLevel),
+		)
+		return false, 0, ""
+	}
+
 	sourceRate := screenSession.getSourceRate(mimeType, newLevel)
 	if sourceRate <= 0 {
-		s.log.Warn("source rate not available")
+		s.log.Warn("source rate not available",
+			mlog.String("mimeType", mimeType),
+			mlog.String("currLevel", currLevel),
+			mlog.String("newLevel", newLevel),
+		)
 		return false, 0, ""
 	}
 
@@ -232,7 +249,7 @@ func (s *session) handleSenderBitrateChange(downRate int, lossRate int) (bool, i
 	}
 
 	select {
-	case s.tracksCh <- trackActionContext{action: trackActionAdd, localTrack: newTrack}:
+	case s.tracksCh <- trackActionContext{action: trackActionAdd, localTrack: newTrack, remoteTrack: newRemoteTrack, senderSession: screenSession}:
 	default:
 		s.log.Error("failed to send screen track: channel is full")
 		return false, 0, ""
