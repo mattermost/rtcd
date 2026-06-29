@@ -215,13 +215,21 @@ func (s *session) handleSenderBitrateChange(downRate int, lossRate int) (bool, i
 	// current layer rather than enqueue an add that would be rejected.
 	newRemoteTrack := screenSession.getRemoteScreenTrack(mimeType, newLevel)
 	if newRemoteTrack == nil {
-		s.log.Warn("remote screen track not available for new level")
+		s.log.Warn("remote screen track not available for new level",
+			mlog.String("mimeType", mimeType),
+			mlog.String("currLevel", currLevel),
+			mlog.String("newLevel", newLevel),
+		)
 		return false, 0, ""
 	}
 
 	sourceRate := screenSession.getSourceRate(mimeType, newLevel)
 	if sourceRate <= 0 {
-		s.log.Warn("source rate not available")
+		s.log.Warn("source rate not available",
+			mlog.String("mimeType", mimeType),
+			mlog.String("currLevel", currLevel),
+			mlog.String("newLevel", newLevel),
+		)
 		return false, 0, ""
 	}
 
