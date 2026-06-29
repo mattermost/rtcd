@@ -126,11 +126,19 @@ func TestClientWSReconnectTimeout(t *testing.T) {
 	ln.Close()
 	th.userClient.cfg.wsURL = fmt.Sprintf("ws://%s", unusedAddr)
 
+	// Client.Connect auto-joins a call on the initial Hello. Because this test
+	// uses a throwaway channel the user has no access to, that join races back
+	// a spurious "forbidden" error whose timing relative to this handler's
+	// registration is nondeterministic, which previously made the test flaky.
+	// Filter it (and any other unrelated error) out and only surface the
+	// reconnection-timeout error this test actually asserts on.
 	errorCh := make(chan error, 1)
 	err = th.userClient.On(ErrorEvent, func(ctx any) error {
-		select {
-		case errorCh <- ctx.(error):
-		default:
+		if err, _ := ctx.(error); err != nil && err.Error() == "ws reconnection timeout reached" {
+			select {
+			case errorCh <- err:
+			default:
+			}
 		}
 		return nil
 	})
