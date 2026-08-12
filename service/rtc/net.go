@@ -78,6 +78,39 @@ func getSystemIPs(log mlog.LoggerIFace, dualStack bool) ([]netip.Addr, error) {
 	return ips, nil
 }
 
+// filterLoopbackIPs returns the given addresses with any loopback address removed,
+// unless there's no routable address to fall back on (e.g. local development).
+//
+// Advertising a loopback host candidate on a host that has routable addresses is never
+// useful: a client running on the same host can always reach us through one of those.
+// It's also actively harmful since the ICE agent pairs the loopback candidate with every
+// remote candidate and burns connectivity checks on a loopback socket, which the kernel
+// rejects with EINVAL, resulting in a flood of "sendto: invalid argument" (UDP) and
+// "connect: invalid argument" (TCP) errors for the lifetime of every session.
+func filterLoopbackIPs(log mlog.LoggerIFace, ips []netip.Addr) []netip.Addr {
+	filtered := make([]netip.Addr, 0, len(ips))
+	var loopbackIPs []netip.Addr
+
+	for _, ip := range ips {
+		if ip.IsLoopback() {
+			loopbackIPs = append(loopbackIPs, ip)
+			continue
+		}
+		filtered = append(filtered, ip)
+	}
+
+	if len(filtered) == 0 {
+		return ips
+	}
+
+	for _, ip := range loopbackIPs {
+		log.Debug("rtc: ignoring loopback address since routable addresses were found",
+			mlog.String("addr", ip.String()))
+	}
+
+	return filtered
+}
+
 func createUDPConnsForAddr(log mlog.LoggerIFace, network, listenAddress string, socketsCount int) ([]net.PacketConn, error) {
 	var conns []net.PacketConn
 

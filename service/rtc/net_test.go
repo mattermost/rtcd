@@ -57,6 +57,45 @@ func TestGetSystemIPs(t *testing.T) {
 	})
 }
 
+func TestGetSystemIPsLoopback(t *testing.T) {
+	log, err := mlog.NewLogger()
+	require.NoError(t, err)
+	defer func() {
+		err := log.Shutdown()
+		require.NoError(t, err)
+	}()
+
+	t.Run("loopback only", func(t *testing.T) {
+		ips := []netip.Addr{netip.MustParseAddr("127.0.0.1")}
+		require.Equal(t, ips, filterLoopbackIPs(log, ips))
+	})
+
+	t.Run("loopback is filtered out", func(t *testing.T) {
+		ips := []netip.Addr{
+			netip.MustParseAddr("127.0.0.1"),
+			netip.MustParseAddr("10.0.0.1"),
+			netip.MustParseAddr("192.168.122.1"),
+		}
+		require.Equal(t, []netip.Addr{
+			netip.MustParseAddr("10.0.0.1"),
+			netip.MustParseAddr("192.168.122.1"),
+		}, filterLoopbackIPs(log, ips))
+	})
+
+	t.Run("ipv6 loopback is filtered out", func(t *testing.T) {
+		ips := []netip.Addr{
+			netip.MustParseAddr("::1"),
+			netip.MustParseAddr("127.0.0.1"),
+			netip.MustParseAddr("2001:db8::1"),
+		}
+		require.Equal(t, []netip.Addr{netip.MustParseAddr("2001:db8::1")}, filterLoopbackIPs(log, ips))
+	})
+
+	t.Run("no addresses", func(t *testing.T) {
+		require.Empty(t, filterLoopbackIPs(log, nil))
+	})
+}
+
 func TestCreateUDPConnsForAddr(t *testing.T) {
 	log, err := mlog.NewLogger()
 	require.NoError(t, err)

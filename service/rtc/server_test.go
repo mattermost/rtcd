@@ -131,6 +131,11 @@ func TestStartServer(t *testing.T) {
 		require.NoError(t, err)
 		require.NotEmpty(t, ips)
 
+		// No ICE address is configured so the server listens on the same set of
+		// addresses, loopback excluded.
+		ips = filterLoopbackIPs(log, ips)
+		require.NotEmpty(t, ips)
+
 		err = s.Start()
 		defer func() {
 			err := s.Stop()
@@ -577,6 +582,15 @@ func TestICEHostPortOverride(t *testing.T) {
 	metrics := perf.NewMetrics("rtcd", nil)
 	require.NotNil(t, metrics)
 
+	// The address mappings below need to be keyed on an address the server is actually
+	// listening on. Loopback doesn't qualify as it's excluded when routable addresses
+	// are available.
+	localIPs, err := getSystemIPs(log, false)
+	require.NoError(t, err)
+	localIPs = filterLoopbackIPs(log, localIPs)
+	require.NotEmpty(t, localIPs)
+	localIP := localIPs[0]
+
 	gatherCandidates := func(serverCfg ServerConfig, publicAddrsMap map[netip.Addr]string) <-chan ice.Candidate {
 		s, err := NewServer(serverCfg, log, metrics)
 		require.NoError(t, err)
@@ -702,7 +716,7 @@ func TestICEHostPortOverride(t *testing.T) {
 			ICEPortUDP:          30433,
 			ICEPortTCP:          30433,
 			ICEHostOverride:     "8.8.8.8",
-			ICEHostPortOverride: "127.0.0.1/8443",
+			ICEHostPortOverride: ICEHostPortOverride(localIP.String() + "/8443"),
 			UDPSocketsCount:     GetDefaultUDPListeningSocketsCount(),
 		}
 
@@ -732,7 +746,7 @@ func TestICEHostPortOverride(t *testing.T) {
 
 		publicIP := "8.8.8.8"
 		candidatesCh := gatherCandidates(serverCfg, map[netip.Addr]string{
-			netip.MustParseAddr("127.0.0.1"): publicIP,
+			localIP: publicIP,
 		})
 
 		require.NotEmpty(t, candidatesCh)

@@ -119,6 +119,11 @@ func (s *Server) Start() error {
 			}
 		}
 		s.log.Debug("rtc: ICE addresses set, only using filtered local IPs", mlog.Any("localIPs", s.localIPs))
+	} else {
+		// No explicit address was configured so we listen on all the interfaces we found. In
+		// this case we don't want to advertise loopback candidates as they can't be used by
+		// any remote client and only generate failing connectivity checks.
+		s.localIPs = filterLoopbackIPs(s.log, s.localIPs)
 	}
 
 	if m, _ := s.cfg.ICEHostPortOverride.ParseMap(); len(m) > 0 {
