@@ -71,10 +71,11 @@ type session struct {
 	remoteScreenTracks     map[string]*webrtc.TrackRemote
 	screenRateMonitors     map[string]*RateMonitor
 	// Video
-	videoStreamID     string
-	outVideoTracks    map[string][]*webrtc.TrackLocalStaticRTP
-	remoteVideoTracks map[string]*webrtc.TrackRemote
-	videoRateMonitors map[string]*RateMonitor
+	videoStreamID      string
+	videoTrackMimeType string
+	outVideoTracks     map[string][]*webrtc.TrackLocalStaticRTP
+	remoteVideoTracks  map[string]*webrtc.TrackRemote
+	videoRateMonitors  map[string]*RateMonitor
 
 	// Receiver
 	bwEstimator       cc.BandwidthEstimator

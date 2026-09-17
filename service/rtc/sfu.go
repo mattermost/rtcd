@@ -605,6 +605,7 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				us.remoteScreenTracks[trackIdx] = remoteTrack
 				us.screenRateMonitors[trackIdx] = rm
 			} else {
+				us.videoTrackMimeType = trackMimeType
 				us.outVideoTracks[trackIdx] = outTracks
 				us.remoteVideoTracks[trackIdx] = remoteTrack
 				us.videoRateMonitors[trackIdx] = rm
@@ -828,12 +829,16 @@ func (s *Server) handleTracks(call *call, us *session) {
 		}
 		outScreenTracks := ss.outScreenTracks[getTrackIndex(screenTrackMimeType, SimulcastLevelDefault)]
 		outScreenAudioTrack := ss.outScreenAudioTrack
-		outVideoTracks := ss.outVideoTracks[getTrackIndex(screenTrackMimeType, SimulcastLevelDefault)]
+		// Camera video may be stored under a different codec than screen (e.g. VP8 even when both
+		// support AV1), so use the mime type captured when the track was received rather than reusing
+		// screenTrackMimeType.
+		videoTrackMimeType := ss.videoTrackMimeType
+		outVideoTracks := ss.outVideoTracks[getTrackIndex(videoTrackMimeType, SimulcastLevelDefault)]
 
 		remoteVoiceTrack := ss.remoteVoiceTrack
 		remoteScreenTrack := ss.remoteScreenTracks[getTrackIndex(screenTrackMimeType, SimulcastLevelDefault)]
 		remoteScreenAudioTrack := ss.remoteScreenAudioTrack
-		remoteVideoTrack := ss.remoteVideoTracks[getTrackIndex(screenTrackMimeType, SimulcastLevelDefault)]
+		remoteVideoTrack := ss.remoteVideoTracks[getTrackIndex(videoTrackMimeType, SimulcastLevelDefault)]
 
 		ss.mut.RUnlock()
 
