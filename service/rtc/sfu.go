@@ -612,6 +612,11 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 			}
 			us.mut.Unlock()
 
+			if !isScreen {
+				// Clear this camera track's state once it ends so late joiners don't pick up a stale track.
+				defer us.clearVideoTrack(trackIdx, remoteTrack)
+			}
+
 			call.iterSessions(func(ss *session) {
 				// We skip sending the track to the current session (the one sending it) and to any session
 				// that hasn't finished initializing its tracks (they are still connecting).

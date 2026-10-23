@@ -667,3 +667,32 @@ func (s *session) sendMediaMapping() error {
 
 	return nil
 }
+
+// clearVideoTrack removes the camera track stored at trackIdx, but only if it is still
+// the given remote track (a replacement track may already have taken its place).
+func (s *session) clearVideoTrack(trackIdx string, remoteTrack *webrtc.TrackRemote) {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
+	if s.remoteVideoTracks[trackIdx] != remoteTrack {
+		return
+	}
+
+	delete(s.outVideoTracks, trackIdx)
+	delete(s.remoteVideoTracks, trackIdx)
+	delete(s.videoRateMonitors, trackIdx)
+	if len(s.remoteVideoTracks) == 0 {
+		s.videoTrackMimeType = ""
+	}
+}
+
+// clearVideoTracks removes all stored camera track state.
+func (s *session) clearVideoTracks() {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
+	clear(s.outVideoTracks)
+	clear(s.remoteVideoTracks)
+	clear(s.videoRateMonitors)
+	s.videoTrackMimeType = ""
+}
