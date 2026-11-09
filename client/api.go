@@ -275,7 +275,7 @@ func (c *Client) LowerHand() error {
 func (c *Client) StartRecording() error {
 	ctx, cancel := context.WithTimeout(context.Background(), httpRequestTimeout)
 	defer cancel()
-	res, err := c.apiClient.DoAPIRequest(ctx, http.MethodPost,
+	res, err := doAPIRequest(ctx, c.apiClient, http.MethodPost,
 		fmt.Sprintf("%s/plugins/%s/calls/%s/recording/start", c.cfg.SiteURL, pluginID, c.cfg.ChannelID), "", "")
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
@@ -292,7 +292,7 @@ func (c *Client) StartRecording() error {
 func (c *Client) StopRecording() error {
 	ctx, cancel := context.WithTimeout(context.Background(), httpRequestTimeout)
 	defer cancel()
-	res, err := c.apiClient.DoAPIRequest(ctx, http.MethodPost,
+	res, err := doAPIRequest(ctx, c.apiClient, http.MethodPost,
 		fmt.Sprintf("%s/plugins/%s/calls/%s/recording/stop", c.cfg.SiteURL, pluginID, c.cfg.ChannelID), "", "")
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
@@ -310,7 +310,7 @@ func (c *Client) StopRecording() error {
 func (c *Client) GetCallsConfig() (map[string]any, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), httpRequestTimeout)
 	defer cancel()
-	res, err := c.apiClient.DoAPIRequest(ctx, http.MethodGet,
+	res, err := doAPIRequest(ctx, c.apiClient, http.MethodGet,
 		fmt.Sprintf("%s/plugins/%s/config", c.cfg.SiteURL, pluginID), "", "")
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
