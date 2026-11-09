@@ -22,8 +22,6 @@ linters:
         - shadow
       enable-all: true
     staticcheck:
-      # v1 enabled staticcheck (SA*) and gosimple (S*). v2 folds gosimple into
-      # staticcheck and would also run stylecheck (ST*) and quickfix (QF*).
       checks:
         - SA*
         - S*
