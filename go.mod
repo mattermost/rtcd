@@ -9,7 +9,7 @@ require (
 	github.com/grafana/pyroscope-go/godeltaprof v0.1.12
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/mattermost/logr/v2 v2.0.25
-	github.com/mattermost/mattermost/server/public v0.6.0
+	github.com/mattermost/mattermost/server/public v0.6.1
 	github.com/pborman/uuid v1.2.1
 	github.com/pion/ice/v4 v4.2.0
 	github.com/pion/interceptor v0.1.44
