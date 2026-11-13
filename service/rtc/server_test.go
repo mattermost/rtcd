@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -152,6 +153,38 @@ func TestStartServer(t *testing.T) {
 			require.NoError(t, err)
 		}()
 		require.NoError(t, err)
+	})
+
+	t.Run("loopback skips STUN lookup", func(t *testing.T) {
+		// Local UDP listener acting as a STUN server, so we can detect whether
+		// any lookup request is sent.
+		stunConn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+		require.NoError(t, err)
+		defer stunConn.Close()
+
+		cfg := cfg
+		cfg.ICEAddressUDP = "127.0.0.1"
+		cfg.ICEServers = ICEServers{{URLs: []string{"stun:" + stunConn.LocalAddr().String()}}}
+
+		s, err := NewServer(cfg, log, metrics)
+		require.NoError(t, err)
+		require.NotNil(t, s)
+
+		err = s.Start()
+		defer func() {
+			err := s.Stop()
+			require.NoError(t, err)
+		}()
+		require.NoError(t, err)
+
+		loopback := netip.MustParseAddr("127.0.0.1")
+		require.Equal(t, []netip.Addr{loopback}, s.localIPs)
+		require.Equal(t, map[netip.Addr]string{loopback: ""}, s.publicAddrsMap)
+
+		err = stunConn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		require.NoError(t, err)
+		_, _, err = stunConn.ReadFrom(make([]byte, 1500))
+		require.ErrorIs(t, err, os.ErrDeadlineExceeded, "no STUN request should have been sent")
 	})
 }
 
