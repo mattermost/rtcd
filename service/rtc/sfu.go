@@ -605,6 +605,13 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 				us.remoteScreenTracks[trackIdx] = remoteTrack
 				us.screenRateMonitors[trackIdx] = rm
 			} else {
+				// The video-off handler clears videoStreamID, so if it no longer matches this track
+				// the camera was turned off while we were setting up; don't reinstall stale state.
+				if us.videoStreamID != streamID {
+					us.mut.Unlock()
+					call.mut.Unlock()
+					return
+				}
 				us.videoTrackMimeType = trackMimeType
 				us.outVideoTracks[trackIdx] = outTracks
 				us.remoteVideoTracks[trackIdx] = remoteTrack
@@ -635,13 +642,8 @@ func (s *Server) InitSession(cfg SessionConfig, closeCb func() error) error {
 					return
 				}
 
-				if trackMimeType == ScreenTrackMimeTypeDefault && us.supportsAV1() && ss.supportsAV1() {
-					s.log.Debug("skipping VP8 track for AV1 supported receiver",
-						mlog.String("sessionID", ss.cfg.SessionID),
-					)
-					return
-				} else if trackMimeType == webrtc.MimeTypeAV1 && !ss.supportsAV1() {
-					s.log.Debug("skipping AV1 track for unsupported receiver",
+				if skip, reason := shouldSkipTrack(isScreen, trackMimeType, us.supportsAV1(), ss.supportsAV1()); skip {
+					s.log.Debug("skipping track: "+reason,
 						mlog.String("sessionID", ss.cfg.SessionID),
 					)
 					return
@@ -956,4 +958,18 @@ func (s *Server) handleTracks(call *call, us *session) {
 			return
 		}
 	}
+}
+
+// shouldSkipTrack reports whether a received track should not be forwarded to a receiver,
+// along with a short reason for logging.
+// The VP8/AV1 duplication only applies to screen tracks: a camera is sent with a single codec,
+// so a VP8 camera must still be forwarded to AV1-capable receivers.
+func shouldSkipTrack(isScreen bool, mimeType string, senderAV1, receiverAV1 bool) (bool, string) {
+	if isScreen && mimeType == ScreenTrackMimeTypeDefault && senderAV1 && receiverAV1 {
+		return true, "VP8 screen track superseded by AV1"
+	}
+	if mimeType == webrtc.MimeTypeAV1 && !receiverAV1 {
+		return true, "AV1 track for receiver without AV1 support"
+	}
+	return false, ""
 }
