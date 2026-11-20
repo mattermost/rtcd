@@ -287,6 +287,10 @@ func (s *Server) msgReader() {
 			session.videoStreamID = data["videoStreamID"]
 			session.mut.Unlock()
 		case VideoOffMessage:
+			session.mut.Lock()
+			session.videoStreamID = ""
+			session.mut.Unlock()
+			session.clearVideoTracks()
 		case MuteMessage, UnmuteMessage:
 			session.mut.RLock()
 			track := session.outVoiceTrack
