@@ -34,8 +34,7 @@ func NewServer(cfg Config, log mlog.LoggerIFace) (*Server, error) {
 			WriteTimeout: 60 * time.Second,
 			IdleTimeout:  30 * time.Second,
 			TLSConfig: &tls.Config{
-				MinVersion:               tls.VersionTLS12,
-				PreferServerCipherSuites: true,
+				MinVersion: tls.VersionTLS12,
 				CurvePreferences: []tls.CurveID{
 					tls.CurveP256,
 				},
