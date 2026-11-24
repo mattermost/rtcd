@@ -8,9 +8,6 @@ import (
 	"github.com/mattermost/mattermost/server/public/model"
 )
 
-// mattermost/server/public v0.6 unexported Client4.DoAPIRequest. This wrapper
-// keeps the previous behavior of calling a fully-qualified plugin URL and
-// turning non-2xx responses into an AppError.
 func doAPIRequest(ctx context.Context, apiClient *model.Client4, method, rawURL, data, etag string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, rawURL, bytes.NewReader([]byte(data)))
 	if err != nil {
