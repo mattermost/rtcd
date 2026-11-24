@@ -170,7 +170,8 @@ func TestClientJoinCall(t *testing.T) {
 		}
 
 		select {
-		case <-errorCh:
+		case err = <-errorCh:
+			require.Error(t, err)
 		case <-time.After(waitTimeout):
 			require.Fail(t, "timed out waiting for error event")
 		}
