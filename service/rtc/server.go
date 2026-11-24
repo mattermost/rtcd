@@ -137,11 +137,12 @@ func (s *Server) Start() error {
 	// Populate public IP addresses map if override is not set and STUN is provided.
 	if s.cfg.ICEHostOverride == "" && len(s.cfg.ICEServers) > 0 {
 		for _, ip := range s.localIPs {
-			// A STUN request sent from a loopback address can't reach an external
-			// server, so we skip the lookup. We still store an empty public address
-			// to keep the map in the same state as for a failed lookup.
+			// Loopback addresses have no public address to discover, and a STUN
+			// request sent from one fails for any non-loopback server, so we skip
+			// the lookup. We still store an empty public address, the same value a
+			// failed STUN lookup stores, so generateAddrsPairs sees the entry.
 			if ip.IsLoopback() {
-				s.log.Debug("skipping public IP lookup for loopback address", mlog.String("localAddr", ip.String()))
+				s.log.Debug("rtc: skipping public IP lookup for loopback address", mlog.String("localAddr", ip.String()))
 				s.publicAddrsMap[ip] = ""
 				continue
 			}
